@@ -102,7 +102,7 @@ func (r *VaultRepository) Vault(ctx context.Context, vaultID int64) (*vault.Vaul
 func (r *VaultRepository) VaultsByMember(ctx context.Context, userID int64) ([]vault.Summary, error) {
 	const query = `
 		SELECT v.id, v.client_id, v.owner_id, v.meta, v.meta_nonce, v.change_seq, v.created_at, v.updated_at,
-		       m.role, m.key_state, ks.id, ks.key_version,
+		       m.role, m.key_state, ks.client_id, ks.id, ks.key_version,
 		       (SELECT count(*) FROM files f WHERE f.vault_id = v.id AND f.deleted_at IS NULL),
 		       (SELECT count(*) FROM vault_members vm WHERE vm.vault_id = v.id)
 		  FROM vaults v
@@ -123,7 +123,7 @@ func (r *VaultRepository) VaultsByMember(ctx context.Context, userID int64) ([]v
 
 		err := rows.Scan(
 			&s.ID, &s.ClientID, &s.OwnerID, &s.Meta.Ciphertext, &s.Meta.Nonce, &s.ChangeSeq, &s.CreatedAt, &s.UpdatedAt,
-			&s.Role, &s.KeyState, &s.KeyScopeID, &s.KeyVersion, &s.NoteCount, &s.MemberCount,
+			&s.Role, &s.KeyState, &s.KeyScopeClientID, &s.KeyScopeID, &s.KeyVersion, &s.NoteCount, &s.MemberCount,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan vault summary: %w", err)

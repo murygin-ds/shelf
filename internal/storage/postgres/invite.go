@@ -170,10 +170,11 @@ func (r *AccessRepository) challenge(ctx context.Context, query string, args ...
 
 func (r *AccessRepository) inviteKeys(ctx context.Context, inviteID int64) ([]access.SealedKey, error) {
 	const query = `
-		SELECT scope_id, key_version, wrapped_key, nonce, wrap_algorithm
-		  FROM key_grants
-		 WHERE subject_type = 'invite' AND subject_id = $1
-		 ORDER BY scope_id, key_version`
+		SELECT kg.scope_id, ks.client_id, kg.key_version, kg.wrapped_key, kg.nonce, kg.wrap_algorithm
+		  FROM key_grants kg
+		  JOIN key_scopes ks ON ks.id = kg.scope_id
+		 WHERE kg.subject_type = 'invite' AND kg.subject_id = $1
+		 ORDER BY kg.scope_id, kg.key_version`
 
 	rows, err := r.pool.Query(ctx, query, inviteID)
 	if err != nil {
@@ -186,7 +187,9 @@ func (r *AccessRepository) inviteKeys(ctx context.Context, inviteID int64) ([]ac
 	for rows.Next() {
 		var key access.SealedKey
 
-		if err := rows.Scan(&key.ScopeID, &key.KeyVersion, &key.WrappedKey, &key.Nonce, &key.Algorithm); err != nil {
+		err := rows.Scan(&key.ScopeID, &key.ScopeClientID, &key.KeyVersion,
+			&key.WrappedKey, &key.Nonce, &key.Algorithm)
+		if err != nil {
 			return nil, fmt.Errorf("scan invite key: %w", err)
 		}
 

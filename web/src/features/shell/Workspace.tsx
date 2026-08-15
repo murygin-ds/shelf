@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
+import { MembersModal } from '@/features/access/MembersModal';
+import { PermissionsModal } from '@/features/access/PermissionsModal';
 import { Editor } from '@/features/editor/Editor';
 import { SearchView } from '@/features/search/SearchView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
@@ -17,6 +20,9 @@ export function Workspace() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [permissionsFor, setPermissionsFor] = useState<number | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (identity) void load(identity);
@@ -43,6 +49,10 @@ export function Workspace() {
   }, []);
 
   const vault = vaults.find((v) => v.id === vaultId);
+  const permissionsFolder =
+    permissionsFor === null
+      ? null
+      : (workspace.tree.folders.find((folder) => folder.id === permissionsFor) ?? null);
 
   const newVault = () => {
     const name = window.prompt('Vault name', 'Personal');
@@ -100,6 +110,17 @@ export function Workspace() {
                   <Icon name="plus" size={13} />
                   New vault
                 </button>
+                <button
+                  type="button"
+                  className={styles.menuAction}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate('/join');
+                  }}
+                >
+                  <Icon name="key" size={13} />
+                  Join with code
+                </button>
               </div>
             </div>
           ) : null}
@@ -120,6 +141,15 @@ export function Workspace() {
         </div>
 
         <div className={styles.topbarRight}>
+          {vault ? (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => setMembersOpen(true)}
+            >
+              Share
+            </button>
+          ) : null}
           <button type="button" className={styles.iconButton} title="Lock keys" onClick={lock}>
             <Icon name="lock" size={16} />
           </button>
@@ -149,7 +179,10 @@ export function Workspace() {
       ) : null}
 
       <div className={styles.body}>
-        <Sidebar onOpenPalette={() => setPaletteOpen(true)} />
+        <Sidebar
+          onOpenPalette={() => setPaletteOpen(true)}
+          onOpenPermissions={(folderId) => setPermissionsFor(folderId)}
+        />
 
         <div className={styles.canvas}>
           {view === 'search' ? (
@@ -205,6 +238,10 @@ export function Workspace() {
       </div>
 
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
+      {membersOpen ? <MembersModal onClose={() => setMembersOpen(false)} /> : null}
+      {permissionsFolder ? (
+        <PermissionsModal folder={permissionsFolder} onClose={() => setPermissionsFor(null)} />
+      ) : null}
     </div>
   );
 }

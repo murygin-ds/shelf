@@ -163,6 +163,8 @@ definitions:
           format: byte
           type: integer
         type: array
+      scope_client_id:
+        type: string
       scope_id:
         example: 1
         type: integer
@@ -837,6 +839,8 @@ definitions:
       inherit_access:
         example: true
         type: boolean
+      key_scope_client_id:
+        type: string
       key_scope_id:
         example: 1
         type: integer
@@ -897,6 +901,8 @@ definitions:
       inherit_access:
         example: true
         type: boolean
+      key_scope_client_id:
+        type: string
       key_scope_id:
         example: 1
         type: integer
@@ -1088,6 +1094,11 @@ definitions:
       id:
         example: 1
         type: integer
+      key_scope_client_id:
+        description: |-
+          KeyScopeClientID is what a sealed key names. Sealing against the vault's own client
+          id instead produces a key that silently refuses to open.
+        type: string
       key_scope_id:
         example: 1
         type: integer

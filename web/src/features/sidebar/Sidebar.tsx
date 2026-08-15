@@ -11,7 +11,13 @@ import styles from './sidebar.module.css';
 
 const INDENT = 13;
 
-export function Sidebar({ onOpenPalette }: { onOpenPalette: () => void }) {
+export function Sidebar({
+  onOpenPalette,
+  onOpenPermissions,
+}: {
+  onOpenPalette: () => void;
+  onOpenPermissions: (folderId: number) => void;
+}) {
   const { user } = useSession();
   const {
     vaults,
@@ -191,6 +197,16 @@ export function Sidebar({ onOpenPalette }: { onOpenPalette: () => void }) {
 
               {!node.locked ? (
                 <span className={styles.rowActions} onClick={(event) => event.stopPropagation()}>
+                  {isFolder ? (
+                    <button
+                      type="button"
+                      className={styles.rowAction}
+                      title="Permissions"
+                      onClick={() => onOpenPermissions(node.id)}
+                    >
+                      <Icon name="user" size={12} />
+                    </button>
+                  ) : null}
                   {isFolder ? (
                     <button
                       type="button"

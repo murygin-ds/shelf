@@ -2329,6 +2329,9 @@ const docTemplate = `{
                         "format": "byte"
                     }
                 },
+                "scope_client_id": {
+                    "type": "string"
+                },
                 "scope_id": {
                     "type": "integer",
                     "example": 1
@@ -3241,6 +3244,9 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": true
                 },
+                "key_scope_client_id": {
+                    "type": "string"
+                },
                 "key_scope_id": {
                     "type": "integer",
                     "example": 1
@@ -3325,6 +3331,9 @@ const docTemplate = `{
                 "inherit_access": {
                     "type": "boolean",
                     "example": true
+                },
+                "key_scope_client_id": {
+                    "type": "string"
                 },
                 "key_scope_id": {
                     "type": "integer",
@@ -3597,6 +3606,10 @@ const docTemplate = `{
                 "id": {
                     "type": "integer",
                     "example": 1
+                },
+                "key_scope_client_id": {
+                    "description": "KeyScopeClientID is what a sealed key names. Sealing against the vault's own client\nid instead produces a key that silently refuses to open.",
+                    "type": "string"
                 },
                 "key_scope_id": {
                     "type": "integer",

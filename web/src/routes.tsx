@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import { JoinWithCode } from '@/features/auth/JoinWithCode';
 import { Recover } from '@/features/auth/Recover';
 import { RecoveryKit } from '@/features/auth/RecoveryKit';
 import { SignIn } from '@/features/auth/SignIn';
@@ -64,6 +65,8 @@ export function AppRoutes() {
         }
       />
       <Route path={KIT_PATH} element={<RecoveryKit />} />
+      {/* Reachable signed in or not: whoever holds a code may still need an account. */}
+      <Route path="/join" element={<JoinWithCode />} />
       <Route
         path="/*"
         element={

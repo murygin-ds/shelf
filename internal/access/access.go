@@ -69,11 +69,14 @@ type Grant struct {
 
 // SealedKey is a scope key sealed to a subject, travelling alongside the grant it serves.
 type SealedKey struct {
-	ScopeID    int64
-	KeyVersion int32
-	WrappedKey []byte
-	Nonce      []byte
-	Algorithm  string
+	ScopeID int64
+	// ScopeClientID names the scope inside the seal, so a redeemer can re-seal the key to
+	// themselves in a form the keyring will open.
+	ScopeClientID string
+	KeyVersion    int32
+	WrappedKey    []byte
+	Nonce         []byte
+	Algorithm     string
 }
 
 // GrantInput sets or replaces one subject's permission on one node.

@@ -9,6 +9,7 @@ function note(id: number, name: string, updatedAt = '2026-08-16T00:00:00Z'): Not
     id,
     clientId: `client-${id}`,
     vaultId: 1,
+    keyScopeClientId: 'scope-1',
     name,
     icon: undefined,
     locked: false,

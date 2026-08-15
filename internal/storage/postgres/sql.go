@@ -82,15 +82,16 @@ scope_grants AS (
 
 // The aliased column lists are for the joined reads; the plain ones for RETURNING, where
 // no alias is in scope. They must stay in the same order as their scan helpers.
-const folderColumns = `f.id, f.client_id, f.vault_id, f.parent_id, f.key_scope_id, f.key_version,
+const folderColumns = `f.id, f.client_id, f.vault_id, f.parent_id, ks.client_id, f.key_scope_id, f.key_version,
 	f.meta, f.meta_nonce, f.inherit_access, f.depth, f.position,
 	f.updated_seq, f.updated_by, f.deleted_at, f.created_at, f.updated_at`
 
-const folderReturning = `id, client_id, vault_id, parent_id, key_scope_id, key_version,
+const folderReturning = `id, client_id, vault_id, parent_id,
+	(SELECT client_id FROM key_scopes WHERE id = folders.key_scope_id), key_scope_id, key_version,
 	meta, meta_nonce, inherit_access, depth, position,
 	updated_seq, updated_by, deleted_at, created_at, updated_at`
 
-const fileColumns = `fi.id, fi.client_id, fi.vault_id, fi.folder_id, fi.key_scope_id, fi.key_version,
+const fileColumns = `fi.id, fi.client_id, fi.vault_id, fi.folder_id, ks.client_id, fi.key_scope_id, fi.key_version,
 	fi.meta, fi.meta_nonce, fi.content_seq, fi.inherit_access,
 	fi.updated_seq, fi.updated_by, fi.deleted_at, fi.created_at, fi.updated_at`
 
@@ -98,7 +99,8 @@ const fileColumns = `fi.id, fi.client_id, fi.vault_id, fi.folder_id, fi.key_scop
 // it; the tree stays cheap on purpose.
 const fileBodyColumns = fileColumns + `, fi.content, fi.content_nonce, octet_length(fi.content)`
 
-const fileReturning = `id, client_id, vault_id, folder_id, key_scope_id, key_version,
+const fileReturning = `id, client_id, vault_id, folder_id,
+	(SELECT client_id FROM key_scopes WHERE id = files.key_scope_id), key_scope_id, key_version,
 	meta, meta_nonce, content_seq, inherit_access,
 	updated_seq, updated_by, deleted_at, created_at, updated_at,
 	content, content_nonce, octet_length(content)`

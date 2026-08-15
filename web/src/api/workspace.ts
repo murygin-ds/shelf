@@ -24,6 +24,8 @@ interface NodeDto {
   id: number;
   client_id: string;
   vault_id: number;
+  /** Names the scope in a sealed key. Not the node's own client id, which names the slot. */
+  key_scope_client_id: string;
   key_scope_id: number;
   key_version: number;
   meta: B64;
@@ -55,6 +57,7 @@ export interface FileDto extends NodeDto {
 export interface VaultSummaryDto {
   id: number;
   client_id: string;
+  key_scope_client_id: string;
   owner_id: number;
   meta: B64;
   meta_nonce: B64;
@@ -72,6 +75,8 @@ export interface Node {
   id: number;
   clientId: string;
   vaultId: number;
+  /** What a sealed key for this node names. Sealing to clientId instead silently fails. */
+  keyScopeClientId: string;
   name: string;
   icon: string | undefined;
   locked: boolean;
@@ -99,6 +104,7 @@ export interface NoteNode extends Node {
 export interface Vault {
   id: number;
   clientId: string;
+  keyScopeClientId: string;
   name: string;
   emoji: string | undefined;
   locked: boolean;
@@ -198,6 +204,7 @@ async function openVault(summary: VaultSummaryDto, identity: Identity): Promise<
   return {
     id: summary.id,
     clientId: summary.client_id,
+    keyScopeClientId: summary.key_scope_client_id,
     name: locked ? LOCKED_NAME : opened.name,
     emoji: locked ? undefined : opened.icon,
     locked,
@@ -265,6 +272,7 @@ async function openNode(dto: NodeDto, entity: EntityType, keyring: ScopeKeyring)
     id: dto.id,
     clientId: dto.client_id,
     vaultId: dto.vault_id,
+    keyScopeClientId: dto.key_scope_client_id,
     name: locked ? LOCKED_NAME : opened.name,
     icon: locked ? undefined : opened.icon,
     locked,

@@ -122,12 +122,15 @@ type Vault struct {
 // Summary is a vault as the switcher shows it: the counts and the caller's own standing.
 type Summary struct {
 	Vault
-	Role        Role
-	KeyState    KeyState
-	KeyScopeID  int64
-	KeyVersion  int32
-	NoteCount   int
-	MemberCount int
+	Role     Role
+	KeyState KeyState
+	// KeyScopeClientID names the scope a client must seal against. Sealing to the vault's
+	// own client id instead is a mistake nothing detects until a key refuses to open.
+	KeyScopeClientID string
+	KeyScopeID       int64
+	KeyVersion       int32
+	NoteCount        int
+	MemberCount      int
 }
 
 // Access is the caller-specific view of one node, resolved by the query that read it.
@@ -141,43 +144,47 @@ type Access struct {
 
 // Folder is a node of the tree. Its name and icon live inside the encrypted meta blob.
 type Folder struct {
-	ID            int64
-	ClientID      string
-	VaultID       int64
-	ParentID      *int64
-	KeyScopeID    int64
-	KeyVersion    int32
-	Meta          Blob
-	InheritAccess bool
-	Depth         int32
-	Position      int32
-	UpdatedSeq    int64
-	UpdatedBy     *int64
-	DeletedAt     *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Access        Access
+	ID       int64
+	ClientID string
+	VaultID  int64
+	ParentID *int64
+	// KeyScopeClientID identifies the scope holding this node's key, which is what a
+	// sealed key names — not the node's own client id.
+	KeyScopeClientID string
+	KeyScopeID       int64
+	KeyVersion       int32
+	Meta             Blob
+	InheritAccess    bool
+	Depth            int32
+	Position         int32
+	UpdatedSeq       int64
+	UpdatedBy        *int64
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Access           Access
 }
 
 // File is a note. Its title and icon live in meta, its body in content.
 type File struct {
-	ID            int64
-	ClientID      string
-	VaultID       int64
-	FolderID      *int64
-	KeyScopeID    int64
-	KeyVersion    int32
-	Meta          Blob
-	Content       Blob
-	ContentSeq    int64
-	ContentSize   int
-	InheritAccess bool
-	UpdatedSeq    int64
-	UpdatedBy     *int64
-	DeletedAt     *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Access        Access
+	ID               int64
+	ClientID         string
+	VaultID          int64
+	FolderID         *int64
+	KeyScopeClientID string
+	KeyScopeID       int64
+	KeyVersion       int32
+	Meta             Blob
+	Content          Blob
+	ContentSeq       int64
+	ContentSize      int
+	InheritAccess    bool
+	UpdatedSeq       int64
+	UpdatedBy        *int64
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Access           Access
 }
 
 // Ref is the minimum a write needs to know about its target: where it lives, what the

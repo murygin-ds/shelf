@@ -154,7 +154,7 @@ func scanFolderRow(row pgx.Row) (*vault.Folder, error) {
 	var f vault.Folder
 
 	err := row.Scan(
-		&f.ID, &f.ClientID, &f.VaultID, &f.ParentID, &f.KeyScopeID, &f.KeyVersion,
+		&f.ID, &f.ClientID, &f.VaultID, &f.ParentID, &f.KeyScopeClientID, &f.KeyScopeID, &f.KeyVersion,
 		&f.Meta.Ciphertext, &f.Meta.Nonce, &f.InheritAccess, &f.Depth, &f.Position,
 		&f.UpdatedSeq, &f.UpdatedBy, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
 		&f.Access.Permission, &f.Access.OwnScope, &f.Access.GrantCount,
@@ -170,7 +170,7 @@ func scanFileRow(row pgx.Row) (*vault.File, error) {
 	var f vault.File
 
 	err := row.Scan(
-		&f.ID, &f.ClientID, &f.VaultID, &f.FolderID, &f.KeyScopeID, &f.KeyVersion,
+		&f.ID, &f.ClientID, &f.VaultID, &f.FolderID, &f.KeyScopeClientID, &f.KeyScopeID, &f.KeyVersion,
 		&f.Meta.Ciphertext, &f.Meta.Nonce, &f.ContentSeq, &f.InheritAccess,
 		&f.UpdatedSeq, &f.UpdatedBy, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
 		&f.ContentSize, &f.Access.Permission, &f.Access.OwnScope, &f.Access.GrantCount,

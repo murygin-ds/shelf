@@ -149,11 +149,12 @@ type ChallengeResponse struct {
 }
 
 type SealedKeyResponse struct {
-	ScopeID    int64  `json:"scope_id"       example:"1"`
-	KeyVersion int32  `json:"key_version"    example:"1"`
-	WrappedKey []byte `json:"wrapped_key"    format:"byte"`
-	Nonce      []byte `json:"nonce"          format:"byte"`
-	Algorithm  string `json:"wrap_algorithm" example:"aesgcm-invite-v1"`
+	ScopeID       int64  `json:"scope_id"        example:"1"`
+	ScopeClientID string `json:"scope_client_id"`
+	KeyVersion    int32  `json:"key_version"    example:"1"`
+	WrappedKey    []byte `json:"wrapped_key"    format:"byte"`
+	Nonce         []byte `json:"nonce"          format:"byte"`
+	Algorithm     string `json:"wrap_algorithm" example:"aesgcm-invite-v1"`
 }
 
 func members(list []access.Member) MembersResponse {
@@ -238,11 +239,12 @@ func challenge(found *access.Challenge) ChallengeResponse {
 
 	for _, key := range found.Keys {
 		keys = append(keys, SealedKeyResponse{
-			ScopeID:    key.ScopeID,
-			KeyVersion: key.KeyVersion,
-			WrappedKey: key.WrappedKey,
-			Nonce:      key.Nonce,
-			Algorithm:  key.Algorithm,
+			ScopeID:       key.ScopeID,
+			ScopeClientID: key.ScopeClientID,
+			KeyVersion:    key.KeyVersion,
+			WrappedKey:    key.WrappedKey,
+			Nonce:         key.Nonce,
+			Algorithm:     key.Algorithm,
 		})
 	}
 

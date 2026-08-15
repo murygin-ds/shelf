@@ -380,7 +380,7 @@ func scanFolder(row pgx.Row) (*vault.Folder, error) {
 	var f vault.Folder
 
 	err := row.Scan(
-		&f.ID, &f.ClientID, &f.VaultID, &f.ParentID, &f.KeyScopeID, &f.KeyVersion,
+		&f.ID, &f.ClientID, &f.VaultID, &f.ParentID, &f.KeyScopeClientID, &f.KeyScopeID, &f.KeyVersion,
 		&f.Meta.Ciphertext, &f.Meta.Nonce, &f.InheritAccess, &f.Depth, &f.Position,
 		&f.UpdatedSeq, &f.UpdatedBy, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
 	)

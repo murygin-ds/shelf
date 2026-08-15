@@ -86,12 +86,15 @@ type VaultResponse struct {
 // VaultSummaryResponse adds what the vault switcher shows next to the name.
 type VaultSummaryResponse struct {
 	VaultResponse
-	Role        string `json:"role"         example:"owner"`
-	KeyState    string `json:"key_state"    example:"ok"`
-	KeyScopeID  int64  `json:"key_scope_id" example:"1"`
-	KeyVersion  int32  `json:"key_version"  example:"1"`
-	NoteCount   int    `json:"note_count"   example:"213"`
-	MemberCount int    `json:"member_count" example:"6"`
+	Role     string `json:"role"      example:"owner"`
+	KeyState string `json:"key_state" example:"ok"`
+	// KeyScopeClientID is what a sealed key names. Sealing against the vault's own client
+	// id instead produces a key that silently refuses to open.
+	KeyScopeClientID string `json:"key_scope_client_id"`
+	KeyScopeID       int64  `json:"key_scope_id" example:"1"`
+	KeyVersion       int32  `json:"key_version"  example:"1"`
+	NoteCount        int    `json:"note_count"   example:"213"`
+	MemberCount      int    `json:"member_count" example:"6"`
 }
 
 type VaultsResponse struct {
@@ -133,51 +136,53 @@ type ScopesResponse struct {
 // FolderResponse is a tree node. OwnScope with a grant count of one is what the sidebar
 // renders as a solo key.
 type FolderResponse struct {
-	ID            int64      `json:"id"             example:"12"`
-	ClientID      string     `json:"client_id"`
-	VaultID       int64      `json:"vault_id"       example:"1"`
-	ParentID      *int64     `json:"parent_id"`
-	KeyScopeID    int64      `json:"key_scope_id"   example:"1"`
-	KeyVersion    int32      `json:"key_version"    example:"1"`
-	Meta          []byte     `json:"meta"           format:"byte"`
-	MetaNonce     []byte     `json:"meta_nonce"     format:"byte"`
-	InheritAccess bool       `json:"inherit_access" example:"true"`
-	Depth         int32      `json:"depth"          example:"0"`
-	Position      int32      `json:"position"       example:"0"`
-	Permission    string     `json:"permission"     example:"own"`
-	OwnScope      bool       `json:"own_scope"      example:"false"`
-	GrantCount    int        `json:"grant_count"    example:"1"`
-	UpdatedSeq    int64      `json:"updated_seq"    example:"41"`
-	UpdatedBy     *int64     `json:"updated_by"`
-	DeletedAt     *time.Time `json:"deleted_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID               int64      `json:"id"             example:"12"`
+	ClientID         string     `json:"client_id"`
+	VaultID          int64      `json:"vault_id"       example:"1"`
+	ParentID         *int64     `json:"parent_id"`
+	KeyScopeClientID string     `json:"key_scope_client_id"`
+	KeyScopeID       int64      `json:"key_scope_id"   example:"1"`
+	KeyVersion       int32      `json:"key_version"    example:"1"`
+	Meta             []byte     `json:"meta"           format:"byte"`
+	MetaNonce        []byte     `json:"meta_nonce"     format:"byte"`
+	InheritAccess    bool       `json:"inherit_access" example:"true"`
+	Depth            int32      `json:"depth"          example:"0"`
+	Position         int32      `json:"position"       example:"0"`
+	Permission       string     `json:"permission"     example:"own"`
+	OwnScope         bool       `json:"own_scope"      example:"false"`
+	GrantCount       int        `json:"grant_count"    example:"1"`
+	UpdatedSeq       int64      `json:"updated_seq"    example:"41"`
+	UpdatedBy        *int64     `json:"updated_by"`
+	DeletedAt        *time.Time `json:"deleted_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // FileResponse is a note. Content is only filled by the single read and the bulk
 // hydration; the tree deliberately leaves it out.
 type FileResponse struct {
-	ID            int64      `json:"id"                       example:"88"`
-	ClientID      string     `json:"client_id"`
-	VaultID       int64      `json:"vault_id"                 example:"1"`
-	FolderID      *int64     `json:"folder_id"`
-	KeyScopeID    int64      `json:"key_scope_id"             example:"1"`
-	KeyVersion    int32      `json:"key_version"              example:"1"`
-	Meta          []byte     `json:"meta"                     format:"byte"`
-	MetaNonce     []byte     `json:"meta_nonce"               format:"byte"`
-	Content       []byte     `json:"content,omitempty"        format:"byte"`
-	ContentNonce  []byte     `json:"content_nonce,omitempty"  format:"byte"`
-	ContentSeq    int64      `json:"content_seq"              example:"14"`
-	ContentSize   int        `json:"content_size"             example:"8192"`
-	InheritAccess bool       `json:"inherit_access"           example:"true"`
-	Permission    string     `json:"permission"               example:"edit"`
-	OwnScope      bool       `json:"own_scope"                example:"false"`
-	GrantCount    int        `json:"grant_count"              example:"1"`
-	UpdatedSeq    int64      `json:"updated_seq"              example:"42"`
-	UpdatedBy     *int64     `json:"updated_by"`
-	DeletedAt     *time.Time `json:"deleted_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID               int64      `json:"id"                       example:"88"`
+	ClientID         string     `json:"client_id"`
+	VaultID          int64      `json:"vault_id"                 example:"1"`
+	FolderID         *int64     `json:"folder_id"`
+	KeyScopeClientID string     `json:"key_scope_client_id"`
+	KeyScopeID       int64      `json:"key_scope_id"             example:"1"`
+	KeyVersion       int32      `json:"key_version"              example:"1"`
+	Meta             []byte     `json:"meta"                     format:"byte"`
+	MetaNonce        []byte     `json:"meta_nonce"               format:"byte"`
+	Content          []byte     `json:"content,omitempty"        format:"byte"`
+	ContentNonce     []byte     `json:"content_nonce,omitempty"  format:"byte"`
+	ContentSeq       int64      `json:"content_seq"              example:"14"`
+	ContentSize      int        `json:"content_size"             example:"8192"`
+	InheritAccess    bool       `json:"inherit_access"           example:"true"`
+	Permission       string     `json:"permission"               example:"edit"`
+	OwnScope         bool       `json:"own_scope"                example:"false"`
+	GrantCount       int        `json:"grant_count"              example:"1"`
+	UpdatedSeq       int64      `json:"updated_seq"              example:"42"`
+	UpdatedBy        *int64     `json:"updated_by"`
+	DeletedAt        *time.Time `json:"deleted_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // TreeResponse is the whole visible tree without any note bodies.
@@ -270,13 +275,14 @@ func vaultSummaries(summaries []vault.Summary) VaultsResponse {
 
 	for _, s := range summaries {
 		out = append(out, VaultSummaryResponse{
-			VaultResponse: vaultResponse(&s.Vault),
-			Role:          string(s.Role),
-			KeyState:      string(s.KeyState),
-			KeyScopeID:    s.KeyScopeID,
-			KeyVersion:    s.KeyVersion,
-			NoteCount:     s.NoteCount,
-			MemberCount:   s.MemberCount,
+			VaultResponse:    vaultResponse(&s.Vault),
+			Role:             string(s.Role),
+			KeyState:         string(s.KeyState),
+			KeyScopeClientID: s.KeyScopeClientID,
+			KeyScopeID:       s.KeyScopeID,
+			KeyVersion:       s.KeyVersion,
+			NoteCount:        s.NoteCount,
+			MemberCount:      s.MemberCount,
 		})
 	}
 
@@ -322,25 +328,26 @@ func scopes(list []vault.ScopeStatus) ScopesResponse {
 
 func folderResponse(f *vault.Folder) FolderResponse {
 	return FolderResponse{
-		ID:            f.ID,
-		ClientID:      f.ClientID,
-		VaultID:       f.VaultID,
-		ParentID:      f.ParentID,
-		KeyScopeID:    f.KeyScopeID,
-		KeyVersion:    f.KeyVersion,
-		Meta:          f.Meta.Ciphertext,
-		MetaNonce:     f.Meta.Nonce,
-		InheritAccess: f.InheritAccess,
-		Depth:         f.Depth,
-		Position:      f.Position,
-		Permission:    string(f.Access.Permission),
-		OwnScope:      f.Access.OwnScope,
-		GrantCount:    f.Access.GrantCount,
-		UpdatedSeq:    f.UpdatedSeq,
-		UpdatedBy:     f.UpdatedBy,
-		DeletedAt:     f.DeletedAt,
-		CreatedAt:     f.CreatedAt,
-		UpdatedAt:     f.UpdatedAt,
+		ID:               f.ID,
+		ClientID:         f.ClientID,
+		VaultID:          f.VaultID,
+		ParentID:         f.ParentID,
+		KeyScopeClientID: f.KeyScopeClientID,
+		KeyScopeID:       f.KeyScopeID,
+		KeyVersion:       f.KeyVersion,
+		Meta:             f.Meta.Ciphertext,
+		MetaNonce:        f.Meta.Nonce,
+		InheritAccess:    f.InheritAccess,
+		Depth:            f.Depth,
+		Position:         f.Position,
+		Permission:       string(f.Access.Permission),
+		OwnScope:         f.Access.OwnScope,
+		GrantCount:       f.Access.GrantCount,
+		UpdatedSeq:       f.UpdatedSeq,
+		UpdatedBy:        f.UpdatedBy,
+		DeletedAt:        f.DeletedAt,
+		CreatedAt:        f.CreatedAt,
+		UpdatedAt:        f.UpdatedAt,
 	}
 }
 
@@ -348,25 +355,26 @@ func folderResponse(f *vault.Folder) FolderResponse {
 // along, which is what keeps the tree small.
 func fileResponse(f *vault.File, withBody bool) FileResponse {
 	out := FileResponse{
-		ID:            f.ID,
-		ClientID:      f.ClientID,
-		VaultID:       f.VaultID,
-		FolderID:      f.FolderID,
-		KeyScopeID:    f.KeyScopeID,
-		KeyVersion:    f.KeyVersion,
-		Meta:          f.Meta.Ciphertext,
-		MetaNonce:     f.Meta.Nonce,
-		ContentSeq:    f.ContentSeq,
-		ContentSize:   f.ContentSize,
-		InheritAccess: f.InheritAccess,
-		Permission:    string(f.Access.Permission),
-		OwnScope:      f.Access.OwnScope,
-		GrantCount:    f.Access.GrantCount,
-		UpdatedSeq:    f.UpdatedSeq,
-		UpdatedBy:     f.UpdatedBy,
-		DeletedAt:     f.DeletedAt,
-		CreatedAt:     f.CreatedAt,
-		UpdatedAt:     f.UpdatedAt,
+		ID:               f.ID,
+		ClientID:         f.ClientID,
+		VaultID:          f.VaultID,
+		FolderID:         f.FolderID,
+		KeyScopeClientID: f.KeyScopeClientID,
+		KeyScopeID:       f.KeyScopeID,
+		KeyVersion:       f.KeyVersion,
+		Meta:             f.Meta.Ciphertext,
+		MetaNonce:        f.Meta.Nonce,
+		ContentSeq:       f.ContentSeq,
+		ContentSize:      f.ContentSize,
+		InheritAccess:    f.InheritAccess,
+		Permission:       string(f.Access.Permission),
+		OwnScope:         f.Access.OwnScope,
+		GrantCount:       f.Access.GrantCount,
+		UpdatedSeq:       f.UpdatedSeq,
+		UpdatedBy:        f.UpdatedBy,
+		DeletedAt:        f.DeletedAt,
+		CreatedAt:        f.CreatedAt,
+		UpdatedAt:        f.UpdatedAt,
 	}
 
 	if withBody {
