@@ -13,8 +13,11 @@ BIN			:= $(BIN_DIR)/$(APP_NAME)
 MIGRATIONS_DIR := migrations
 DOCS_DIR	   := docs
 COVERAGE_FILE  := coverage.out
+WEB_DIR		:= web
+WEB_DIST	   := internal/web/dist
 
 GO			 ?= go
+NPM			?= npm
 MIGRATE		?= migrate
 SWAG		   ?= swag
 GOLANGCI_LINT  ?= golangci-lint
@@ -47,13 +50,37 @@ run: ## Start local
 	$(GO) run $(MAIN_PKG)
 
 .PHONY: build
-build: ## Build to the bin
+build: web ## Build the frontend and the binary to the bin
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w" -o $(BIN) $(MAIN_PKG)
 
 .PHONY: clean
 clean: ## Delete build artefacts
 	@rm -rf $(BIN_DIR) $(COVERAGE_FILE) coverage.html
+	@find $(WEB_DIST) -mindepth 1 ! -name .gitkeep -delete 2>/dev/null || true
+
+# Frontend
+
+.PHONY: web-install
+web-install: ## Install frontend dependencies
+	cd $(WEB_DIR) && $(NPM) ci
+
+.PHONY: web
+web: ## Build the frontend into internal/web/dist (embedded into the binary)
+	cd $(WEB_DIR) && $(NPM) run build
+	@touch $(WEB_DIST)/.gitkeep
+
+.PHONY: web-dev
+web-dev: ## Start the Vite dev server on :5173, proxying /api to :8080
+	cd $(WEB_DIR) && $(NPM) run dev
+
+.PHONY: web-test
+web-test: ## Frontend tests
+	cd $(WEB_DIR) && $(NPM) run test
+
+.PHONY: web-typecheck
+web-typecheck: ## Frontend type check
+	cd $(WEB_DIR) && $(NPM) run typecheck
 
 .PHONY: tidy
 tidy: ## Tidy
@@ -96,6 +123,12 @@ check: fmt vet lint test ## Full check
 swagger: ## Build swagger-docs to docs/
 	@command -v $(SWAG) >/dev/null || { echo "swag is not installed: make tools"; exit 1; }
 	$(SWAG) init -g $(MAIN_PKG)/main.go -o $(DOCS_DIR) --parseInternal
+
+.PHONY: swagger-check
+swagger-check: ## Fail if docs/ is out of date with the annotations
+	@command -v $(SWAG) >/dev/null || { echo "swag is not installed: make tools"; exit 1; }
+	@$(SWAG) init -g $(MAIN_PKG)/main.go -o $(DOCS_DIR) --parseInternal >/dev/null
+	@git diff --quiet -- $(DOCS_DIR) || { echo "$(DOCS_DIR)/ is stale: commit the result of make swagger"; exit 1; }
 
 .PHONY: swagger-fmt
 swagger-fmt: ## Format swagger-annotations

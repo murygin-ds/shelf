@@ -81,6 +81,11 @@ type HTTP struct {
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
 	// SwaggerEnabled turns on serving the Swagger UI at /swagger/index.html
 	SwaggerEnabled bool `mapstructure:"swagger_enabled"`
+	// MaxBodyBytes caps the request body: gin imposes no limit of its own, and the
+	// batch endpoints accept enough ciphertext to be worth bounding
+	MaxBodyBytes int64 `mapstructure:"max_body_bytes" validate:"required,min=65536"`
+	// StaticCacheMaxAge is the freshness of the hashed frontend assets
+	StaticCacheMaxAge time.Duration `mapstructure:"static_cache_max_age" validate:"required"`
 }
 
 // Addr returns the listen address in the host:port form
@@ -256,6 +261,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.allowed_origins", []string{"*"})
 	v.SetDefault("http.trusted_proxies", []string{})
 	v.SetDefault("http.swagger_enabled", true)
+	v.SetDefault("http.max_body_bytes", 8*1024*1024)
+	v.SetDefault("http.static_cache_max_age", 365*24*time.Hour)
 
 	v.SetDefault("postgres.host", "localhost")
 	v.SetDefault("postgres.port", 5432)

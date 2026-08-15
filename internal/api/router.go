@@ -3,9 +3,15 @@ package api
 
 import (
 	"fmt"
+
 	"shelf/internal/api/middleware"
 	v1 "shelf/internal/api/v1"
 	"shelf/internal/config"
+	"shelf/internal/web"
+
+	// The generated package registers the swagger spec in its init, without which
+	// /swagger/doc.json has nothing to serve.
+	_ "shelf/docs"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,10 +29,15 @@ type Deps struct {
 
 // Paths of the service endpoints.
 const (
-	pathHealth = "/health"
-	pathReady  = "/ready"
-	pathAPI    = "/api"
+	pathHealth  = "/health"
+	pathReady   = "/ready"
+	pathAPI     = "/api"
+	pathSwagger = "/swagger"
 )
+
+// serverPrefixes are the paths that belong to the server rather than to the client
+// router, so an unmatched request under them is a genuine 404 and not a page.
+var serverPrefixes = []string{pathAPI, pathHealth, pathReady, pathSwagger}
 
 // NewRouter builds a gin.Engine with all middleware and routes.
 func NewRouter(deps Deps) (*gin.Engine, error) {
@@ -48,9 +59,19 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		middleware.Logger(deps.Logger, pathHealth, pathReady),
 		middleware.Recovery(deps.Logger),
 		middleware.CORS(deps.Config.HTTP),
+		middleware.MaxBody(deps.Config.HTTP.MaxBodyBytes),
 	)
 
-	engine.NoRoute(notFound)
+	spa, err := web.NewSPA(deps.Config.HTTP.StaticCacheMaxAge)
+	if err != nil {
+		return nil, fmt.Errorf("load frontend bundle: %w", err)
+	}
+
+	if !spa.Built() {
+		deps.Logger.Warn("frontend bundle is missing, only the API is served")
+	}
+
+	engine.NoRoute(spaFallback(spa))
 	engine.NoMethod(methodNotAllowed)
 
 	health := NewHealthHandler(deps.Pool, deps.Config.App.Name)
@@ -59,7 +80,7 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 
 	// Swagger UI must not be exposed in production — it is enabled by the http.swagger_enabled flag.
 	if deps.Config.HTTP.SwaggerEnabled {
-		engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		engine.GET(pathSwagger+"/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	}
 
 	api := engine.Group(pathAPI)

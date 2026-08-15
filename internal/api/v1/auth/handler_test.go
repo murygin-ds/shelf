@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,9 +153,10 @@ func validRegisterBody() map[string]any {
 	b64 := func(n int, fill byte) []byte { return bytes.Repeat([]byte{fill}, n) }
 
 	return map[string]any{
-		"login":     "dmitry",
-		"auth_hash": b64(32, 1),
-		"kdf_salt":  b64(16, 2),
+		"login":        "dmitry",
+		"display_name": "Dmitry Murygin",
+		"auth_hash":    b64(32, 1),
+		"kdf_salt":     b64(16, 2),
 		"kdf_params": map[string]any{
 			"algorithm": "argon2id", "memory": 65536, "iterations": 3, "parallelism": 2,
 		},
@@ -240,6 +242,8 @@ func TestRegisterEndpointErrors(t *testing.T) {
 
 	invalid := map[string]func(map[string]any){
 		"short login":              func(b map[string]any) { b["login"] = "ab" },
+		"no display_name":          func(b map[string]any) { delete(b, "display_name") },
+		"overlong display_name":    func(b map[string]any) { b["display_name"] = strings.Repeat("a", 129) },
 		"no auth_hash":             func(b map[string]any) { delete(b, "auth_hash") },
 		"short salt":               func(b map[string]any) { b["kdf_salt"] = bytes.Repeat([]byte{1}, 4) },
 		"weak kdf_params":          func(b map[string]any) { b["kdf_params"].(map[string]any)["memory"] = 1024 },

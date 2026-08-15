@@ -17,6 +17,7 @@ const (
 	CodeForbidden    = "forbidden"
 	CodeNotFound     = "not_found"
 	CodeConflict     = "conflict"
+	CodeTooLarge     = "payload_too_large"
 	CodeTooManyReqs  = "too_many_requests"
 	CodeInternal     = "internal_error"
 )

@@ -88,10 +88,11 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, meta ClientMet
 	}
 
 	user, err := s.repo.CreateUser(ctx, NewUser{
-		Login:    strings.TrimSpace(in.Login),
-		AuthHash: authHash,
-		Keys:     in.Keys,
-		Recovery: *recovery,
+		Login:       strings.TrimSpace(in.Login),
+		DisplayName: strings.TrimSpace(in.DisplayName),
+		AuthHash:    authHash,
+		Keys:        in.Keys,
+		Recovery:    *recovery,
 	})
 	if err != nil {
 		return nil, TokenPair{}, err

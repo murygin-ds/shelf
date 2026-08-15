@@ -1,0 +1,840 @@
+basePath: /
+definitions:
+  api.HealthResponse:
+    properties:
+      service:
+        example: shelf-backend
+        type: string
+      status:
+        example: ok
+        type: string
+    type: object
+  auth.DeviceResponse:
+    properties:
+      created_at:
+        type: string
+      current:
+        example: true
+        type: boolean
+      expires_at:
+        type: string
+      id:
+        example: 12
+        type: integer
+      ip:
+        example: 203.0.113.7
+        type: string
+      last_used_at:
+        type: string
+      user_agent:
+        type: string
+    type: object
+  auth.DevicesResponse:
+    properties:
+      sessions:
+        items:
+          $ref: '#/definitions/auth.DeviceResponse'
+        type: array
+    type: object
+  auth.KDFParams:
+    properties:
+      algorithm:
+        type: string
+      iterations:
+        type: integer
+      memory:
+        type: integer
+      parallelism:
+        type: integer
+    type: object
+  auth.KeysResponse:
+    properties:
+      kdf_params:
+        $ref: '#/definitions/auth.KDFParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        type: array
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      private_key_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_private_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  auth.PreloginResponse:
+    properties:
+      kdf_params:
+        $ref: '#/definitions/auth.KDFParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  auth.RecoveryChallengeResponse:
+    properties:
+      expires_at:
+        type: string
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      recovery_token:
+        type: string
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  auth.SessionResponse:
+    properties:
+      keys:
+        $ref: '#/definitions/auth.KeysResponse'
+      tokens:
+        $ref: '#/definitions/auth.TokensResponse'
+      user:
+        $ref: '#/definitions/auth.UserResponse'
+    type: object
+  auth.TokensResponse:
+    properties:
+      access_expires_at:
+        type: string
+      access_token:
+        type: string
+      refresh_expires_at:
+        type: string
+      refresh_token:
+        type: string
+      token_type:
+        example: Bearer
+        type: string
+    type: object
+  auth.UserResponse:
+    properties:
+      created_at:
+        type: string
+      display_name:
+        example: Dmitry Murygin
+        type: string
+      id:
+        example: 1
+        type: integer
+      login:
+        example: dmitry
+        type: string
+    type: object
+  auth.changePasswordRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      current_auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      kdf_params:
+        $ref: '#/definitions/auth.kdfParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 16
+        type: array
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      recovery:
+        $ref: '#/definitions/auth.recoveryKey'
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - current_auth_hash
+    - kdf_params
+    - kdf_salt
+    - master_key_nonce
+    - wrapped_master_key
+    type: object
+  auth.kdfParams:
+    properties:
+      algorithm:
+        enum:
+        - argon2id
+        example: argon2id
+        type: string
+      iterations:
+        example: 3
+        maximum: 16
+        minimum: 2
+        type: integer
+      memory:
+        example: 65536
+        minimum: 19456
+        type: integer
+      parallelism:
+        example: 2
+        maximum: 16
+        minimum: 1
+        type: integer
+    required:
+    - algorithm
+    - iterations
+    - memory
+    - parallelism
+    type: object
+  auth.loginRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+    required:
+    - auth_hash
+    - login
+    type: object
+  auth.preloginRequest:
+    properties:
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+    required:
+    - login
+    type: object
+  auth.recoveryCompleteRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      kdf_params:
+        $ref: '#/definitions/auth.kdfParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 16
+        type: array
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      recovery:
+        $ref: '#/definitions/auth.recoveryKey'
+      recovery_token:
+        type: string
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - kdf_params
+    - kdf_salt
+    - master_key_nonce
+    - recovery_token
+    - wrapped_master_key
+    type: object
+  auth.recoveryKey:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - nonce
+    - wrapped_master_key
+    type: object
+  auth.recoveryStartRequest:
+    properties:
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+      recovery_auth_hash:
+        description: AuthHash is derived by the client from the recovery code and
+          serves as the verifier.
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+    required:
+    - login
+    - recovery_auth_hash
+    type: object
+  auth.refreshRequest:
+    properties:
+      refresh_token:
+        maxLength: 256
+        minLength: 16
+        type: string
+    required:
+    - refresh_token
+    type: object
+  auth.registerRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      display_name:
+        example: Dmitry Murygin
+        maxLength: 128
+        minLength: 1
+        type: string
+      kdf_params:
+        $ref: '#/definitions/auth.kdfParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 16
+        type: array
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      private_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      public_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+      recovery:
+        $ref: '#/definitions/auth.recoveryKey'
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+      wrapped_private_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - display_name
+    - kdf_params
+    - kdf_salt
+    - login
+    - master_key_nonce
+    - private_key_nonce
+    - public_key
+    - recovery
+    - wrapped_master_key
+    - wrapped_private_key
+    type: object
+  response.Error:
+    properties:
+      code:
+        example: not_found
+        type: string
+      details:
+        additionalProperties:
+          type: string
+        type: object
+      message:
+        example: resource not found
+        type: string
+      request_id:
+        example: 1f8c1a5e-2b3d-4d6a-9c0e-5f5a5a7d1234
+        type: string
+    type: object
+  response.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/response.Error'
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: dmitr.murygin@gmail.com
+    name: Shelf Backend
+  description: REST API of the Shelf service.
+  license:
+    name: Proprietary
+  title: Shelf API
+  version: "1.0"
+paths:
+  /api/v1/auth/keys:
+    get:
+      description: 'Returns the wrapped keys: the client needs them after a restart
+        while the access token is still alive.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.KeysResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cryptographic material of the user
+      tags:
+      - auth
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Verifies auth_hash and returns the wrapped keys together with a
+        token pair.
+      parameters:
+      - description: Login and auth_hash
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.SessionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Login
+      tags:
+      - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Revokes the session the refresh token belongs to.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.refreshRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Logout
+      tags:
+      - auth
+  /api/v1/auth/logout-all:
+    post:
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout on every device
+      tags:
+      - auth
+  /api/v1/auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Current user
+      tags:
+      - auth
+  /api/v1/auth/password:
+    post:
+      consumes:
+      - application/json
+      description: Accepts the master key re-encrypted with the new wrapping key.
+        All sessions are revoked and the response carries a new token pair.
+      parameters:
+      - description: New authentication data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.changePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TokensResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Password change
+      tags:
+      - auth
+  /api/v1/auth/prelogin:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Returns the salt and the KDF parameters the client needs to compute auth_hash.
+        For an unknown login it returns plausible values so the endpoint does not reveal whether the account exists.
+      parameters:
+      - description: Login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.preloginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.PreloginResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Key derivation parameters
+      tags:
+      - auth
+  /api/v1/auth/recovery/complete:
+    post:
+      consumes:
+      - application/json
+      description: Sets the new authentication data using the token issued by recovery/start.
+      parameters:
+      - description: New authentication data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.recoveryCompleteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TokensResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Access recovery completion
+      tags:
+      - auth
+  /api/v1/auth/recovery/start:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Verifies ownership of the recovery code and returns the master key wrapped with it
+        together with a short-lived token for completing the recovery.
+      parameters:
+      - description: Login and recovery code verifier
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.recoveryStartRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RecoveryChallengeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Access recovery start
+      tags:
+      - auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 'Exchanges a refresh token for a new pair. The token is single-use:
+        presenting it again revokes all sessions.'
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.refreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TokensResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Token pair refresh
+      tags:
+      - auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Creates an account from the cryptographic material prepared by the client and opens a session.
+        The server never sees the password: the client derives the master key wrapping key and auth_hash from it.
+      parameters:
+      - description: Registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/auth.SessionResponse'
+        "409":
+          description: Login is already taken
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Registration
+      tags:
+      - auth
+  /api/v1/auth/sessions:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.DevicesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Active sessions
+      tags:
+      - auth
+  /api/v1/auth/sessions/{id}:
+    delete:
+      parameters:
+      - description: Session identifier
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Session revocation
+      tags:
+      - auth
+  /health:
+    get:
+      description: Returns 200 while the process is alive. Does not check external
+        dependencies.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HealthResponse'
+      summary: Liveness probe
+      tags:
+      - system
+  /ready:
+    get:
+      description: Checks that PostgreSQL is reachable. Returns 503 if the database
+        is unavailable.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Readiness probe
+      tags:
+      - system
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT token in the format: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

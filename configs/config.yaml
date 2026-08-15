@@ -17,6 +17,8 @@ http:
     - "*"
   trusted_proxies: [ ] # for example: ["10.0.0.0/8"] behind nginx/ingress
   swagger_enabled: true
+  max_body_bytes: 8388608 # 8 MiB, the ceiling for the batch endpoints
+  static_cache_max_age: 8760h # hashed frontend assets never change under the same name
 
 postgres:
   host: localhost
