@@ -2,7 +2,9 @@
 package v1
 
 import (
+	"shelf/internal/access"
 	"shelf/internal/api/middleware"
+	accessapi "shelf/internal/api/v1/access"
 	authapi "shelf/internal/api/v1/auth"
 	vaultapi "shelf/internal/api/v1/vault"
 	"shelf/internal/auth"
@@ -42,8 +44,27 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 		Logger:  deps.Logger,
 	})
 
+	accessService := access.NewService(access.Deps{
+		Repo:   postgres.NewAccessRepository(deps.Pool),
+		Nodes:  workspace,
+		Logger: deps.Logger,
+	})
+
 	protected := group.Group("", middleware.Auth(authService))
 	vaultapi.NewHandler(vaultService, deps.Logger).RegisterRoutes(protected)
+	accessapi.NewHandler(accessService, inviteLookupLimit(deps.Auth.RateLimit), deps.Logger).
+		RegisterRoutes(group, protected)
+}
+
+// inviteLookupLimit throttles the anonymous invite lookup. A resolved code hands the
+// attempt back, so only failed guesses spend the counter and a team onboarding several
+// people from one office never runs into it.
+func inviteLookupLimit(cfg config.RateLimit) middleware.Limiter {
+	if !cfg.Enabled {
+		return ratelimit.Nop{}
+	}
+
+	return ratelimit.New(cfg.InviteIP.Limit, cfg.InviteIP.Window)
 }
 
 // authLimits builds the rate limiters. Disabled limits stay zero:

@@ -155,6 +155,9 @@ type RateLimit struct {
 	RecoveryIP Rule `mapstructure:"recovery_ip"`
 	// RecoveryAccount counts recovery attempts against a single account from all addresses
 	RecoveryAccount Rule `mapstructure:"recovery_account"`
+	// InviteIP counts invite-code lookups from a single address. The code carries 125 bits,
+	// so this is not what stops a brute force — it stops the endpoint being a free oracle
+	InviteIP Rule `mapstructure:"invite_ip"`
 }
 
 // Rule is the allowed number of requests per window
@@ -296,6 +299,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.rate_limit.recovery_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.recovery_account.limit", 10)
 	v.SetDefault("auth.rate_limit.recovery_account.window", time.Hour)
+	v.SetDefault("auth.rate_limit.invite_ip.limit", 20)
+	v.SetDefault("auth.rate_limit.invite_ip.window", 15*time.Minute)
 
 	v.SetDefault("log.level", "debug")
 	v.SetDefault("log.format", "console")

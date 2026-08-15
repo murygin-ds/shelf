@@ -191,9 +191,6 @@ CREATE INDEX IF NOT EXISTS group_members_user_id_idx ON group_members (user_id);
 CREATE TABLE IF NOT EXISTS grants
 (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    -- Chosen by the client, like the entity ids: a scope key is sealed to a subject before
-    -- the scope row exists, and the seal has to name the scope it unlocks.
-    client_id    UUID        NOT NULL UNIQUE,
     vault_id     BIGINT      NOT NULL REFERENCES vaults (id) ON DELETE CASCADE,
     scope_type   TEXT        NOT NULL,
     scope_ref_id BIGINT      NOT NULL,

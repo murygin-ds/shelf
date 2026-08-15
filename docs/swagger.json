@@ -1000,6 +1000,164 @@
                 }
             }
         },
+        "/api/v1/invites/lookup": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Resolve an invite code",
+                "parameters": [
+                    {
+                        "description": "digest of the invite code",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.lookupInviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.ChallengeResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/invites/redeem": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Redeem an invite",
+                "parameters": [
+                    {
+                        "description": "the invite and the scope keys re-sealed to the caller",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.redeemInviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.InviteResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/me/invites": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List my invites",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.InvitesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/lookup": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Look up an account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "account login",
+                        "name": "login",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.DirectoryResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/vaults": {
             "get": {
                 "security": [
@@ -1329,6 +1487,252 @@
                 }
             }
         },
+        "/api/v1/vaults/{id}/grants": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List grants on a node",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "folder or file",
+                        "name": "scope_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "node id",
+                        "name": "scope_ref_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GrantsResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Grant or narrow access to a node",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "permission and the scope keys sealed to the subject",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.putGrantRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GrantResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/grants/{grant_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Remove a grant",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "grant id",
+                        "name": "grant_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/invites": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List pending invites",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.InvitesResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Create an invite",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "invite and the scope keys sealed to it",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.createInviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/access.InviteResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/invites/{invite_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Revoke an invite",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "invite id",
+                        "name": "invite_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/api/v1/vaults/{id}/keys": {
             "get": {
                 "security": [
@@ -1361,6 +1765,135 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List members",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.MembersResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/members/{member_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Remove a member",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "member user id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.RemovalResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Change a member's role",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "member user id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "new role",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.setRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -1560,6 +2093,472 @@
         }
     },
     "definitions": {
+        "access.ChallengeResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "invite_id": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "key_grants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.SealedKeyResponse"
+                    }
+                },
+                "preview_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_preview": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.DirectoryResponse": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
+        "access.GrantResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "edit"
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "example": 12
+                },
+                "scope_type": {
+                    "type": "string",
+                    "example": "folder"
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "subject_label": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "subject_type": {
+                    "type": "string",
+                    "example": "user"
+                }
+            }
+        },
+        "access.GrantsResponse": {
+            "type": "object",
+            "properties": {
+                "grants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GrantResponse"
+                    }
+                }
+            }
+        },
+        "access.InviteResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email_hint": {
+                    "type": "string",
+                    "example": "dana@acme.dev"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "inviter_name": {
+                    "type": "string",
+                    "example": "Ilya Volkov"
+                },
+                "redeemed_at": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "editor"
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "access.InvitesResponse": {
+            "type": "object",
+            "properties": {
+                "invites": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.InviteResponse"
+                    }
+                }
+            }
+        },
+        "access.MemberResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "folder_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_state": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "last_active": {
+                    "type": "string"
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "role": {
+                    "type": "string",
+                    "example": "editor"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
+        "access.MembersResponse": {
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.MemberResponse"
+                    }
+                }
+            }
+        },
+        "access.RemovalResponse": {
+            "type": "object",
+            "properties": {
+                "pending_rotation": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "access.SealedKeyResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "example": "aesgcm-invite-v1"
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.createInviteRequest": {
+            "type": "object",
+            "required": [
+                "key_grants",
+                "role"
+            ],
+            "properties": {
+                "email_hint": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "preview_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "editor",
+                        "viewer"
+                    ]
+                },
+                "target_user_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "token_hash": {
+                    "description": "TokenHash is the digest of a code the server never sees. Exactly one of this and\nTargetUserID is set.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_preview": {
+                    "description": "Preview holds the vault name and the inviter, encrypted under the same code, so an\nunauthenticated lookup reveals nothing.",
+                    "type": "array",
+                    "maxItems": 2048,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.lookupInviteRequest": {
+            "type": "object",
+            "required": [
+                "token_hash"
+            ],
+            "properties": {
+                "token_hash": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.putGrantRequest": {
+            "type": "object",
+            "required": [
+                "permission",
+                "scope_ref_id",
+                "scope_type",
+                "subject_id",
+                "subject_type"
+            ],
+            "properties": {
+                "key_grants": {
+                    "description": "Keys must cover the node's scope whenever the permission allows reading: without\nthem the subject would see an entry it can never open.",
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "permission": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "view",
+                        "comment",
+                        "edit",
+                        "own"
+                    ]
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "scope_type": {
+                    "type": "string",
+                    "enum": [
+                        "folder",
+                        "file"
+                    ]
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "subject_type": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "group"
+                    ]
+                }
+            }
+        },
+        "access.redeemInviteRequest": {
+            "type": "object",
+            "required": [
+                "key_grants"
+            ],
+            "properties": {
+                "invite_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "token_hash": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.sealedKeyRequest": {
+            "type": "object",
+            "required": [
+                "key_version",
+                "nonce",
+                "scope_id",
+                "wrapped_key"
+            ],
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "wrap_algorithm": {
+                    "description": "Algorithm names the wrapping format. Invite keys use a code-derived symmetric key\nrather than a sealed box, because nobody knows yet whose key to seal to.",
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 2048,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.setRoleRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "editor",
+                        "viewer"
+                    ]
+                }
+            }
+        },
         "api.HealthResponse": {
             "type": "object",
             "properties": {

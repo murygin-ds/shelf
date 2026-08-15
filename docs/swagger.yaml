@@ -1,5 +1,346 @@
 basePath: /
 definitions:
+  access.ChallengeResponse:
+    properties:
+      expires_at:
+        type: string
+      invite_id:
+        example: 4
+        type: integer
+      key_grants:
+        items:
+          $ref: '#/definitions/access.SealedKeyResponse'
+        type: array
+      preview_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_preview:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  access.DirectoryResponse:
+    properties:
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      login:
+        example: marta@acme.dev
+        type: string
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      user_id:
+        example: 7
+        type: integer
+    type: object
+  access.GrantResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        example: 3
+        type: integer
+      permission:
+        example: edit
+        type: string
+      scope_ref_id:
+        example: 12
+        type: integer
+      scope_type:
+        example: folder
+        type: string
+      subject_id:
+        example: 7
+        type: integer
+      subject_label:
+        example: Marta Chen
+        type: string
+      subject_type:
+        example: user
+        type: string
+    type: object
+  access.GrantsResponse:
+    properties:
+      grants:
+        items:
+          $ref: '#/definitions/access.GrantResponse'
+        type: array
+    type: object
+  access.InviteResponse:
+    properties:
+      created_at:
+        type: string
+      email_hint:
+        example: dana@acme.dev
+        type: string
+      expires_at:
+        type: string
+      id:
+        example: 4
+        type: integer
+      inviter_name:
+        example: Ilya Volkov
+        type: string
+      redeemed_at:
+        type: string
+      role:
+        example: editor
+        type: string
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  access.InvitesResponse:
+    properties:
+      invites:
+        items:
+          $ref: '#/definitions/access.InviteResponse'
+        type: array
+    type: object
+  access.MemberResponse:
+    properties:
+      created_at:
+        type: string
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      folder_count:
+        example: 3
+        type: integer
+      key_state:
+        example: ok
+        type: string
+      last_active:
+        type: string
+      login:
+        example: marta@acme.dev
+        type: string
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      role:
+        example: editor
+        type: string
+      user_id:
+        example: 7
+        type: integer
+    type: object
+  access.MembersResponse:
+    properties:
+      members:
+        items:
+          $ref: '#/definitions/access.MemberResponse'
+        type: array
+    type: object
+  access.RemovalResponse:
+    properties:
+      pending_rotation:
+        items:
+          type: integer
+        type: array
+    type: object
+  access.SealedKeyResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      scope_id:
+        example: 1
+        type: integer
+      wrap_algorithm:
+        example: aesgcm-invite-v1
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  access.createInviteRequest:
+    properties:
+      email_hint:
+        maxLength: 128
+        type: string
+      expires_at:
+        type: string
+      key_grants:
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 64
+        minItems: 1
+        type: array
+      preview_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      role:
+        enum:
+        - admin
+        - editor
+        - viewer
+        type: string
+      target_user_id:
+        minimum: 1
+        type: integer
+      token_hash:
+        description: |-
+          TokenHash is the digest of a code the server never sees. Exactly one of this and
+          TargetUserID is set.
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_preview:
+        description: |-
+          Preview holds the vault name and the inviter, encrypted under the same code, so an
+          unauthenticated lookup reveals nothing.
+        items:
+          format: byte
+          type: integer
+        maxItems: 2048
+        minItems: 16
+        type: array
+    required:
+    - key_grants
+    - role
+    type: object
+  access.lookupInviteRequest:
+    properties:
+      token_hash:
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - token_hash
+    type: object
+  access.putGrantRequest:
+    properties:
+      key_grants:
+        description: |-
+          Keys must cover the node's scope whenever the permission allows reading: without
+          them the subject would see an entry it can never open.
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 64
+        type: array
+      permission:
+        enum:
+        - none
+        - view
+        - comment
+        - edit
+        - own
+        type: string
+      scope_ref_id:
+        minimum: 1
+        type: integer
+      scope_type:
+        enum:
+        - folder
+        - file
+        type: string
+      subject_id:
+        minimum: 1
+        type: integer
+      subject_type:
+        enum:
+        - user
+        - group
+        type: string
+    required:
+    - permission
+    - scope_ref_id
+    - scope_type
+    - subject_id
+    - subject_type
+    type: object
+  access.redeemInviteRequest:
+    properties:
+      invite_id:
+        minimum: 1
+        type: integer
+      key_grants:
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 64
+        minItems: 1
+        type: array
+      token_hash:
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - key_grants
+    type: object
+  access.sealedKeyRequest:
+    properties:
+      key_version:
+        minimum: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      scope_id:
+        minimum: 1
+        type: integer
+      wrap_algorithm:
+        description: |-
+          Algorithm names the wrapping format. Invite keys use a code-derived symmetric key
+          rather than a sealed box, because nobody knows yet whose key to seal to.
+        maxLength: 64
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 2048
+        minItems: 32
+        type: array
+    required:
+    - key_version
+    - nonce
+    - scope_id
+    - wrapped_key
+    type: object
+  access.setRoleRequest:
+    properties:
+      role:
+        enum:
+        - admin
+        - editor
+        - viewer
+        type: string
+    required:
+    - role
+    type: object
   api.HealthResponse:
     properties:
       service:
@@ -1632,6 +1973,104 @@ paths:
       summary: Restore a folder
       tags:
       - folders
+  /api/v1/invites/lookup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: digest of the invite code
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.lookupInviteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.ChallengeResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Resolve an invite code
+      tags:
+      - access
+  /api/v1/invites/redeem:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: the invite and the scope keys re-sealed to the caller
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.redeemInviteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.InviteResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Redeem an invite
+      tags:
+      - access
+  /api/v1/me/invites:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.InvitesResponse'
+      security:
+      - BearerAuth: []
+      summary: List my invites
+      tags:
+      - access
+  /api/v1/users/lookup:
+    get:
+      parameters:
+      - description: account login
+        in: query
+        name: login
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.DirectoryResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Look up an account
+      tags:
+      - access
   /api/v1/vaults:
     get:
       produces:
@@ -1836,6 +2275,160 @@ paths:
       summary: Create a folder
       tags:
       - folders
+  /api/v1/vaults/{id}/grants:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: folder or file
+        in: query
+        name: scope_type
+        required: true
+        type: string
+      - description: node id
+        in: query
+        name: scope_ref_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GrantsResponse'
+      security:
+      - BearerAuth: []
+      summary: List grants on a node
+      tags:
+      - access
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: permission and the scope keys sealed to the subject
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.putGrantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GrantResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Grant or narrow access to a node
+      tags:
+      - access
+  /api/v1/vaults/{id}/grants/{grant_id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: grant id
+        in: path
+        name: grant_id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Remove a grant
+      tags:
+      - access
+  /api/v1/vaults/{id}/invites:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.InvitesResponse'
+      security:
+      - BearerAuth: []
+      summary: List pending invites
+      tags:
+      - access
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: invite and the scope keys sealed to it
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.createInviteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/access.InviteResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an invite
+      tags:
+      - access
+  /api/v1/vaults/{id}/invites/{invite_id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: invite id
+        in: path
+        name: invite_id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Revoke an invite
+      tags:
+      - access
   /api/v1/vaults/{id}/keys:
     get:
       parameters:
@@ -1860,6 +2453,87 @@ paths:
       summary: List the caller's key grants
       tags:
       - vaults
+  /api/v1/vaults/{id}/members:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.MembersResponse'
+      security:
+      - BearerAuth: []
+      summary: List members
+      tags:
+      - access
+  /api/v1/vaults/{id}/members/{member_id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: member user id
+        in: path
+        name: member_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.RemovalResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a member
+      tags:
+      - access
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: member user id
+        in: path
+        name: member_id
+        required: true
+        type: integer
+      - description: new role
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.setRoleRequest'
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change a member's role
+      tags:
+      - access
   /api/v1/vaults/{id}/scopes:
     get:
       parameters:
