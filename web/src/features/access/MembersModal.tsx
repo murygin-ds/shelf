@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 
 import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import type { RekeyProgress } from '@/api/rekey';
 import type { Role } from '@/api/workspace';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -12,8 +13,8 @@ import styles from './access.module.css';
 const ROLES: Role[] = ['admin', 'editor', 'viewer'];
 
 export function MembersModal({ onClose }: { onClose: () => void }) {
-  const { user } = useSession();
-  const { vaultId, vaults, keyring } = useWorkspace();
+  const { user, identity } = useSession();
+  const { vaultId, vaults, keyring, rekey } = useWorkspace();
 
   const [members, setMembers] = useState<collab.MemberDto[]>([]);
   const [invites, setInvites] = useState<collab.InviteDto[]>([]);
@@ -22,6 +23,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   const [pending, setPending] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<RekeyProgress | null>(null);
 
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = vault?.role === 'owner' || vault?.role === 'admin';
@@ -59,12 +61,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
           role,
           folders: [],
         },
-        [
-          {
-            scope: { id: vault.keyScopeId, version: vault.keyVersion },
-            scopeClientId: vault.keyScopeClientId,
-          },
-        ],
+        [{ id: vault.keyScopeId, clientId: vault.keyScopeClientId, version: vault.keyVersion }],
         keyring,
       );
 
@@ -97,6 +94,27 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
       await reload();
     } catch (cause) {
       setError(describe(cause));
+    }
+  };
+
+  // Rotating the vault key is what makes the revocation retroactive: every row under that
+  // scope is written back under a key the removed member never held.
+  const rotate = async () => {
+    if (!identity || vaultId === null) return;
+
+    setBusy(true);
+    setError(null);
+    setProgress({ done: 0, total: 0 });
+
+    try {
+      await rekey({ scopeType: 'vault', scopeRefId: vaultId }, identity, setProgress);
+      setPending([]);
+      await reload();
+    } catch (cause) {
+      setError(describe(cause));
+    } finally {
+      setBusy(false);
+      setProgress(null);
     }
   };
 
@@ -161,10 +179,27 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
           {pending.length ? (
             <div className={`${styles.note} ${styles.noteWarn}`}>
               <Icon name="warn" size={14} style={{ flex: 'none', marginTop: 2 }} />
-              <span>
-                Access was revoked immediately, which protects everything written from now on.
-                It cannot un-read what was already read: {pending.length} key
-                {pending.length === 1 ? '' : 's'} still need rotating for that.
+              <span className={styles.noteBody}>
+                <span>
+                  Access was revoked immediately, which protects everything written from now
+                  on. It cannot un-read what was already read: {pending.length} key
+                  {pending.length === 1 ? '' : 's'} still need rotating for that.
+                </span>
+
+                <button
+                  type="button"
+                  className={styles.noteAction}
+                  disabled={busy || !identity}
+                  onClick={() => void rotate()}
+                >
+                  Rotate the vault key
+                </button>
+
+                {progress ? (
+                  <span className={styles.progress}>
+                    RE-ENCRYPTING {progress.done}/{progress.total || '…'}
+                  </span>
+                ) : null}
               </span>
             </div>
           ) : null}

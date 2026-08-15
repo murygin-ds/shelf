@@ -46,9 +46,18 @@ func (r *AccessRepository) CreateInvite(ctx context.Context, in access.NewInvite
 			return err
 		}
 
-		created, err = scanInviteTx(ctx, tx, inviteID)
+		if created, err = scanInviteTx(ctx, tx, inviteID); err != nil {
+			return err
+		}
 
-		return err
+		return recordAudit(ctx, tx, auditEntry{
+			VaultID:     in.VaultID,
+			ActorID:     in.InvitedBy,
+			Action:      vault.AuditInviteMade,
+			SubjectType: string(vault.SubjectInvite),
+			SubjectID:   inviteID,
+			Detail:      fmt.Sprintf(`{"role":%q,"by_code":%t}`, in.Role, in.TargetUser == nil),
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -105,21 +114,29 @@ func (r *AccessRepository) queryInvites(ctx context.Context, query string, arg i
 	return invites, nil
 }
 
-func (r *AccessRepository) RevokeInvite(ctx context.Context, vaultID, inviteID int64) error {
-	const query = `
-		UPDATE invites SET revoked_at = now()
-		 WHERE id = $1 AND vault_id = $2 AND redeemed_at IS NULL AND revoked_at IS NULL`
+func (r *AccessRepository) RevokeInvite(ctx context.Context, vaultID, inviteID, actorID int64) error {
+	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+		const query = `
+			UPDATE invites SET revoked_at = now()
+			 WHERE id = $1 AND vault_id = $2 AND redeemed_at IS NULL AND revoked_at IS NULL`
 
-	tag, err := r.pool.Exec(ctx, query, inviteID, vaultID)
-	if err != nil {
-		return fmt.Errorf("revoke invite: %w", err)
-	}
+		tag, err := tx.Exec(ctx, query, inviteID, vaultID)
+		if err != nil {
+			return fmt.Errorf("revoke invite: %w", err)
+		}
 
-	if tag.RowsAffected() == 0 {
-		return access.ErrNotFound
-	}
+		if tag.RowsAffected() == 0 {
+			return access.ErrNotFound
+		}
 
-	return nil
+		return recordAudit(ctx, tx, auditEntry{
+			VaultID:     vaultID,
+			ActorID:     actorID,
+			Action:      vault.AuditInviteGone,
+			SubjectType: string(vault.SubjectInvite),
+			SubjectID:   inviteID,
+		})
+	})
 }
 
 // ChallengeByToken resolves a code invite for an anonymous caller. Every reason it might
@@ -268,9 +285,18 @@ func (r *AccessRepository) Redeem(
 			return fmt.Errorf("delete invite keys: %w", err)
 		}
 
-		redeemed, err = scanInviteTx(ctx, tx, inviteID)
+		if redeemed, err = scanInviteTx(ctx, tx, inviteID); err != nil {
+			return err
+		}
 
-		return err
+		return recordAudit(ctx, tx, auditEntry{
+			VaultID:     vaultID,
+			ActorID:     userID,
+			Action:      vault.AuditMemberJoined,
+			SubjectType: string(vault.SubjectUser),
+			SubjectID:   userID,
+			Detail:      fmt.Sprintf(`{"role":%q,"invite_id":%d}`, role, inviteID),
+		})
 	})
 	if err != nil {
 		return nil, err

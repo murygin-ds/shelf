@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { ApiError, OfflineError } from '@/api/client';
 import { ErrorCode } from '@/api/types';
+import * as rekeyApi from '@/api/rekey';
 import * as ws from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
@@ -60,6 +61,15 @@ interface WorkspaceState {
   setView: (view: View) => void;
   setQuery: (query: string) => void;
   reset: () => Promise<void>;
+  /**
+   * Gives a node its own key, or rotates the one it has. The whole job runs here rather
+   * than in the component, so a modal closing mid-way cannot abandon a half-staged re-key.
+   */
+  rekey: (
+    target: { scopeType: 'vault' | 'folder' | 'file'; scopeRefId: number },
+    identity: Identity,
+    onProgress?: (progress: rekeyApi.RekeyProgress) => void,
+  ) => Promise<void>;
 }
 
 const emptyTree: ws.Tree = { folders: [], notes: [] };
@@ -336,6 +346,46 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setView: (view) => set({ view }),
   setQuery: (query) => set({ query, view: query ? 'search' : get().view }),
 
+  rekey: async (target, identity, onProgress) => {
+    const { vaultId, vaults, tree, keyring } = get();
+    const vault = vaults.find((v) => v.id === vaultId);
+
+    if (vaultId === null || !vault || !keyring) throw new Error('open a vault first');
+
+    const plan = await rekeyApi.startRekey(
+      vaultId,
+      target.scopeType,
+      target.scopeRefId,
+      target.scopeType === 'vault' ? undefined : crypto.randomUUID(),
+    );
+
+    try {
+      // The trash is part of the scope even though it is not part of the tree on screen.
+      const trashed = await ws.loadTree(vaultId, keyring, true);
+
+      await rekeyApi.runRekey(
+        plan,
+        {
+          vault,
+          folders: [...tree.folders, ...trashed.folders],
+          notes: [...tree.notes, ...trashed.notes],
+        },
+        keyring,
+        onProgress,
+      );
+    } catch (cause) {
+      // Leaving the job staging would block the node until it expires, and the next attempt
+      // would meet a conflict instead of a plan.
+      await rekeyApi.abortRekey(plan.id).catch(() => undefined);
+      throw cause;
+    }
+
+    // The new key exists only on the server now; the keyring has to be re-read before the
+    // rows it protects can be opened again.
+    set({ keyring: await ws.loadKeyring(vaultId, identity), vaults: await ws.listVaults(identity) });
+    await get().syncNow();
+  },
+
   reset: async () => {
     await cache.dropAll();
 
@@ -383,13 +433,15 @@ function allOpen(folders: ws.FolderNode[]): Set<number> {
 function scopeOf(state: WorkspaceState, parentId: number | null): ws.Scope {
   if (parentId !== null) {
     const parent = state.tree.folders.find((folder) => folder.id === parentId);
-    if (parent) return { id: parent.keyScopeId, version: parent.keyVersion };
+    if (parent) {
+      return { id: parent.keyScopeId, clientId: parent.keyScopeClientId, version: parent.keyVersion };
+    }
   }
 
   const vault = state.vaults.find((v) => v.id === state.vaultId);
   if (!vault) throw new Error('no active vault');
 
-  return { id: vault.keyScopeId, version: vault.keyVersion };
+  return { id: vault.keyScopeId, clientId: vault.keyScopeClientId, version: vault.keyVersion };
 }
 
 function report(set: Setter, cause: unknown): void {

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 
 import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import type { RekeyProgress } from '@/api/rekey';
 import type { FolderNode, Permission } from '@/api/workspace';
+import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
 
@@ -23,12 +25,14 @@ export function PermissionsModal({
   folder: FolderNode;
   onClose: () => void;
 }) {
-  const { vaultId, vaults, keyring, syncNow } = useWorkspace();
+  const { vaultId, vaults, keyring, syncNow, rekey } = useWorkspace();
+  const identity = useSession((state) => state.identity);
 
   const [members, setMembers] = useState<collab.MemberDto[]>([]);
   const [grants, setGrants] = useState<collab.GrantDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<RekeyProgress | null>(null);
 
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = folder.permission === 'own';
@@ -70,10 +74,14 @@ export function PermissionsModal({
         {
           scopeType: 'folder',
           scopeRefId: folder.id,
-          scope: { id: folder.keyScopeId, version: folder.keyVersion },
-          // The seal names the scope holding this folder's key, which the server reports
-          // alongside the node — deriving it from the folder or the vault would be a guess.
-          scopeClientId: folder.keyScopeClientId,
+          // The scope is the one the server reports alongside the node; deriving it from
+          // the folder or the vault would be a guess, and a wrong guess seals a key nobody
+          // can open.
+          scope: {
+            id: folder.keyScopeId,
+            clientId: folder.keyScopeClientId,
+            version: folder.keyVersion,
+          },
         },
         member.user_id,
         permission,
@@ -87,6 +95,27 @@ export function PermissionsModal({
       setError(describe(cause));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Re-encrypts the folder and everything under it with a key of its own, sealed only to
+  // the people who still have access. It is the moment a denial stops depending on the
+  // server behaving.
+  const protectFolder = async () => {
+    if (!identity) return;
+
+    setBusy(true);
+    setError(null);
+    setProgress({ done: 0, total: 0 });
+
+    try {
+      await rekey({ scopeType: 'folder', scopeRefId: folder.id }, identity, setProgress);
+      await reload();
+    } catch (cause) {
+      setError(describe(cause));
+    } finally {
+      setBusy(false);
+      setProgress(null);
     }
   };
 
@@ -135,11 +164,29 @@ export function PermissionsModal({
           {inheritsKey ? (
             <div className={`${styles.note} ${styles.noteWarn}`}>
               <Icon name="warn" size={14} style={{ flex: 'none', marginTop: 2 }} />
-              <span>
-                This folder is encrypted with the vault key, so narrowing access here is
-                enforced by the server only — everyone who already holds that key still holds
-                it. Giving the folder its own key is what makes a denial real, and it arrives
-                with key rotation.
+              <span className={styles.noteBody}>
+                <span>
+                  This folder is encrypted with the vault key, so narrowing access here is
+                  enforced by the server only — everyone who already holds that key still
+                  holds it. Giving the folder its own key is what makes a denial real.
+                </span>
+
+                {canManage ? (
+                  <button
+                    type="button"
+                    className={styles.noteAction}
+                    disabled={busy || !identity}
+                    onClick={() => void protectFolder()}
+                  >
+                    Protect with its own key
+                  </button>
+                ) : null}
+
+                {progress ? (
+                  <span className={styles.progress}>
+                    RE-ENCRYPTING {progress.done}/{progress.total || '…'}
+                  </span>
+                ) : null}
               </span>
             </div>
           ) : (

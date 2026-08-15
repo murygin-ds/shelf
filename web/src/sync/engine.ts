@@ -124,6 +124,7 @@ export async function hydrate(
         vault_id: note.vaultId,
         client_id: note.clientId,
         key_scope_id: note.keyScopeId,
+        key_scope_client_id: note.keyScopeClientId,
         key_version: note.keyVersion,
       },
       body.content,

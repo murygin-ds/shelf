@@ -39,7 +39,7 @@ const REF: EntityRef = {
   vaultId: 1,
   entity: 'file',
   entityId: '8f14e45f-ceea-467a-9f6b-1d2c3b4a5e60',
-  scopeId: 7,
+  scopeClientId: 'ba5eba11-0000-4000-8000-000000000001',
   keyVersion: 2,
 };
 
@@ -367,5 +367,39 @@ describe('wire format bounds', () => {
     expect(within(wrappedMaster.nonce, 12, 32)).toBe(true);
     expect(within(newSalt(), 16, 64)).toBe(true);
     expect(within(new Uint8Array(32), 16, 128)).toBe(true);
+  });
+});
+
+describe('re-keying', () => {
+  // A re-key writes a row back under a scope and a version that did not exist when the row
+  // was first sealed. Both belong to the additional data, so both have to be carried
+  // explicitly — reading a rotated row at its old version is how a rotation silently turns
+  // a whole vault into locked rows.
+  it('binds a row to the version it was sealed under', async () => {
+    const oldKey = await generateKey();
+    const newKey = await generateKey();
+
+    const before: EntityRef = { ...REF, keyVersion: 1 };
+    const after: EntityRef = { ...REF, keyVersion: 2 };
+
+    const sealed = await encryptContent(oldKey, 'ship on tuesday', before);
+    expect(await decryptContent(oldKey, sealed, before)).toBe('ship on tuesday');
+
+    // The same key at the wrong version does not open it, which is what makes the version
+    // part of the slot rather than a label.
+    expect(isLocked(await decryptContent(oldKey, sealed, after))).toBe(true);
+
+    const rotated = await encryptContent(newKey, 'ship on tuesday', after);
+    expect(await decryptContent(newKey, rotated, after)).toBe('ship on tuesday');
+    expect(isLocked(await decryptContent(oldKey, rotated, after))).toBe(true);
+  });
+
+  it('refuses a row moved to another scope', async () => {
+    const key = await generateKey();
+
+    const sealed = await encryptMeta(key, { name: 'Research' }, REF);
+    const moved: EntityRef = { ...REF, scopeClientId: OTHER_SCOPE };
+
+    expect(isLocked(await decryptMeta(key, sealed, moved))).toBe(true);
   });
 });

@@ -41,15 +41,42 @@ interface Schema extends DBSchema {
 
 let db: Promise<IDBPDatabase<Schema>> | null = null;
 
-function open(): Promise<IDBPDatabase<Schema>> {
-  db ??= openDB<Schema>(NAME, VERSION, {
-    upgrade(database) {
-      for (const store of ['folders', 'notes', 'bodies'] as const) {
-        database.createObjectStore(store, { keyPath: ['vaultId', 'id'] }).createIndex('vault', 'vaultId');
-      }
+/**
+ * How long to wait for the browser to hand over the database.
+ *
+ * An open request that is blocked by another connection never settles: it neither resolves
+ * nor rejects. Awaiting it forever would leave the workspace on a status line that reads
+ * "synced" while nothing at all is happening, which is worse than having no cache — so
+ * after this the cache is treated as absent and the network answers instead.
+ */
+const OPEN_TIMEOUT_MS = 3000;
 
-      database.createObjectStore('cursors', { keyPath: 'vaultId' });
-    },
+class CacheUnavailable extends Error {
+  constructor() {
+    super('the local cache is not available in this browser');
+    this.name = 'CacheUnavailable';
+  }
+}
+
+function open(): Promise<IDBPDatabase<Schema>> {
+  db ??= Promise.race([
+    openDB<Schema>(NAME, VERSION, {
+      upgrade(database) {
+        for (const store of ['folders', 'notes', 'bodies'] as const) {
+          database.createObjectStore(store, { keyPath: ['vaultId', 'id'] }).createIndex('vault', 'vaultId');
+        }
+
+        database.createObjectStore('cursors', { keyPath: 'vaultId' });
+      },
+    }),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new CacheUnavailable()), OPEN_TIMEOUT_MS);
+    }),
+  ]).catch((cause: unknown) => {
+    // Retry on the next call rather than remembering the failure forever: a blocked open
+    // usually clears as soon as the other tab goes away.
+    db = null;
+    throw cause;
   });
 
   return db;

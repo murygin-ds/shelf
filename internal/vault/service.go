@@ -15,6 +15,8 @@ type Deps struct {
 	Files   FileRepository
 	Tree    TreeRepository
 	Sync    SyncRepository
+	Rekeys  RekeyRepository
+	Audit   AuditRepository
 	Logger  *zap.Logger
 }
 
@@ -26,6 +28,8 @@ type Service struct {
 	files   FileRepository
 	tree    TreeRepository
 	sync    SyncRepository
+	rekeys  RekeyRepository
+	audit   AuditRepository
 	log     *zap.Logger
 }
 
@@ -36,6 +40,8 @@ func NewService(deps Deps) *Service {
 		files:   deps.Files,
 		tree:    deps.Tree,
 		sync:    deps.Sync,
+		rekeys:  deps.Rekeys,
+		audit:   deps.Audit,
 		log:     deps.Logger,
 	}
 }

@@ -6,15 +6,16 @@ export type EntityType = 'vault' | 'folder' | 'file' | 'group' | 'revision';
 /**
  * Identifies the exact slot a ciphertext belongs to.
  *
- * The entity is named by the client id rather than the serial one: the client picks it
- * before the row exists, which is what lets metadata be sealed with its final additional
- * data in a single round trip.
+ * Both the entity and its key scope are named by client ids rather than serial ones: the
+ * client picks them before the rows exist, which is what lets metadata be sealed with its
+ * final additional data in a single round trip — and what lets a re-key encrypt under a
+ * scope that the commit has not created yet.
  */
 export interface EntityRef {
   vaultId: number;
   entity: EntityType;
   entityId: string;
-  scopeId: number;
+  scopeClientId: string;
   keyVersion: number;
 }
 
@@ -25,7 +26,7 @@ export interface EntityRef {
  */
 export function aad(ref: EntityRef): Uint8Array {
   return utf8(
-    `shelf/v1|${ref.vaultId}|${ref.entity}|${ref.entityId}|${ref.scopeId}|${ref.keyVersion}`,
+    `shelf/v1|${ref.vaultId}|${ref.entity}|${ref.entityId}|${ref.scopeClientId}|${ref.keyVersion}`,
   );
 }
 

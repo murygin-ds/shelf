@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { MembersModal } from '@/features/access/MembersModal';
 import { PermissionsModal } from '@/features/access/PermissionsModal';
+import { SecurityModal } from '@/features/access/SecurityModal';
 import { Editor } from '@/features/editor/Editor';
 import { SearchView } from '@/features/search/SearchView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
@@ -22,6 +23,7 @@ export function Workspace() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [permissionsFor, setPermissionsFor] = useState<number | null>(null);
+  const [securityOpen, setSecurityOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -142,13 +144,33 @@ export function Workspace() {
 
         <div className={styles.topbarRight}>
           {vault ? (
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => setMembersOpen(true)}
-            >
-              Share
-            </button>
+            <>
+              <button
+                type="button"
+                className={styles.iconButton}
+                title={
+                  vault.keyState === 'pending_rotation'
+                    ? 'A removed member still holds this key — rotate it'
+                    : 'Keys & history'
+                }
+                onClick={() => setSecurityOpen(true)}
+              >
+                <Icon
+                  name={vault.keyState === 'pending_rotation' ? 'warn' : 'key'}
+                  size={16}
+                  {...(vault.keyState === 'pending_rotation'
+                    ? { style: { color: 'var(--warn)' } }
+                    : {})}
+                />
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => setMembersOpen(true)}
+              >
+                Share
+              </button>
+            </>
           ) : null}
           <button type="button" className={styles.iconButton} title="Lock keys" onClick={lock}>
             <Icon name="lock" size={16} />
@@ -239,6 +261,7 @@ export function Workspace() {
 
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
       {membersOpen ? <MembersModal onClose={() => setMembersOpen(false)} /> : null}
+      {securityOpen ? <SecurityModal onClose={() => setSecurityOpen(false)} /> : null}
       {permissionsFolder ? (
         <PermissionsModal folder={permissionsFolder} onClose={() => setPermissionsFor(null)} />
       ) : null}

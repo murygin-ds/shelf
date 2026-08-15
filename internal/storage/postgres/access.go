@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base32"
 	"errors"
 	"fmt"
 	"strings"
@@ -60,7 +58,7 @@ func (r *AccessRepository) Members(ctx context.Context, vaultID int64) ([]access
 			return nil, fmt.Errorf("scan member: %w", err)
 		}
 
-		m.Fingerprint = Fingerprint(m.PublicKey)
+		m.Fingerprint = vault.Fingerprint(m.PublicKey)
 		members = append(members, m)
 	}
 
@@ -94,7 +92,7 @@ func (r *AccessRepository) Membership(ctx context.Context, vaultID, userID int64
 
 // SetRole changes the floor a member starts from. It also bumps access_seq, which is what
 // tells that member's clients their cached view is no longer authoritative.
-func (r *AccessRepository) SetRole(ctx context.Context, vaultID, userID int64, role vault.Role) error {
+func (r *AccessRepository) SetRole(ctx context.Context, vaultID, userID int64, role vault.Role, actorID int64) error {
 	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
 		seq, err := nextSeq(ctx, tx, vaultID)
 		if err != nil {
@@ -114,14 +112,21 @@ func (r *AccessRepository) SetRole(ctx context.Context, vaultID, userID int64, r
 			return access.ErrNotFound
 		}
 
-		return nil
+		return recordAudit(ctx, tx, auditEntry{
+			VaultID:     vaultID,
+			ActorID:     actorID,
+			Action:      vault.AuditMemberRole,
+			SubjectType: string(vault.SubjectUser),
+			SubjectID:   userID,
+			Detail:      fmt.Sprintf(`{"role":%q}`, role),
+		})
 	})
 }
 
 // RemoveMember revokes everything at once: the membership, the permission grants and the
 // key grants at every version. It returns the scopes the member could read, which now
 // need rotating before the revocation is retroactive rather than merely forward-looking.
-func (r *AccessRepository) RemoveMember(ctx context.Context, vaultID, userID int64) ([]int64, error) {
+func (r *AccessRepository) RemoveMember(ctx context.Context, vaultID, userID, actorID int64) ([]int64, error) {
 	var scopes []int64
 
 	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -211,7 +216,14 @@ func (r *AccessRepository) RemoveMember(ctx context.Context, vaultID, userID int
 			return fmt.Errorf("bump access sequence: %w", err)
 		}
 
-		return nil
+		return recordAudit(ctx, tx, auditEntry{
+			VaultID:     vaultID,
+			ActorID:     actorID,
+			Action:      vault.AuditMemberRemove,
+			SubjectType: string(vault.SubjectUser),
+			SubjectID:   userID,
+			Detail:      fmt.Sprintf(`{"scopes_pending_rotation":%d}`, len(scopes)),
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -238,7 +250,7 @@ func (r *AccessRepository) Lookup(ctx context.Context, login string) (*access.Di
 		return nil, fmt.Errorf("select account: %w", err)
 	}
 
-	found.Fingerprint = Fingerprint(found.PublicKey)
+	found.Fingerprint = vault.Fingerprint(found.PublicKey)
 
 	return &found, nil
 }
@@ -345,7 +357,16 @@ func (r *AccessRepository) PutGrant(
 
 		granted = &g
 
-		return nil
+		return recordAudit(ctx, tx, auditEntry{
+			VaultID:     in.VaultID,
+			ActorID:     actorID,
+			Action:      vault.AuditGrantSet,
+			TargetType:  string(in.ScopeType),
+			TargetID:    in.ScopeRefID,
+			SubjectType: string(in.Subject.Type),
+			SubjectID:   in.Subject.ID,
+			Detail:      fmt.Sprintf(`{"permission":%q,"keys":%d}`, in.Permission, len(in.Keys)),
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -354,7 +375,7 @@ func (r *AccessRepository) PutGrant(
 	return granted, nil
 }
 
-func (r *AccessRepository) DeleteGrant(ctx context.Context, vaultID, grantID int64) error {
+func (r *AccessRepository) DeleteGrant(ctx context.Context, vaultID, grantID, actorID int64) error {
 	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
 		const query = `
 			DELETE FROM grants WHERE id = $1 AND vault_id = $2
@@ -371,7 +392,17 @@ func (r *AccessRepository) DeleteGrant(ctx context.Context, vaultID, grantID int
 			return fmt.Errorf("delete grant: %w", err)
 		}
 
-		return bumpAccess(ctx, tx, vaultID, subject)
+		if err := bumpAccess(ctx, tx, vaultID, subject); err != nil {
+			return err
+		}
+
+		return recordAudit(ctx, tx, auditEntry{
+			VaultID:     vaultID,
+			ActorID:     actorID,
+			Action:      vault.AuditGrantCleared,
+			SubjectType: string(subject.Type),
+			SubjectID:   subject.ID,
+		})
 	})
 }
 
@@ -428,29 +459,6 @@ func bumpAccess(ctx context.Context, tx pgx.Tx, vaultID int64, subject vault.Sub
 	}
 
 	return nil
-}
-
-// Fingerprint is the short digest shown next to a member, so two people can compare keys
-// out of band. The server hands out public keys, so it could hand out its own.
-func Fingerprint(publicKey []byte) string {
-	if len(publicKey) == 0 {
-		return ""
-	}
-
-	digest := sha256.Sum256(publicKey)
-	encoded := base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding).
-		EncodeToString(digest[:])
-
-	var out strings.Builder
-	for i := 0; i < 16; i += 4 {
-		if i > 0 {
-			out.WriteByte(' ')
-		}
-
-		out.WriteString(encoded[i : i+4])
-	}
-
-	return out.String()
 }
 
 func isUniqueViolation(err error) bool {

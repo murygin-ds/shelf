@@ -87,7 +87,7 @@ func (s *Service) SetRole(ctx context.Context, actorID, vaultID, targetID int64,
 		return ErrSelfTarget
 	}
 
-	if err := s.repo.SetRole(ctx, vaultID, targetID, role); err != nil {
+	if err := s.repo.SetRole(ctx, vaultID, targetID, role, actorID); err != nil {
 		return fmt.Errorf("set role: %w", err)
 	}
 
@@ -118,7 +118,7 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, vaultID, targetID i
 		return nil, ErrSelfTarget
 	}
 
-	scopes, err := s.repo.RemoveMember(ctx, vaultID, targetID)
+	scopes, err := s.repo.RemoveMember(ctx, vaultID, targetID, actorID)
 	if err != nil {
 		return nil, fmt.Errorf("remove member: %w", err)
 	}
@@ -187,7 +187,7 @@ func (s *Service) DeleteGrant(ctx context.Context, actorID, vaultID, grantID int
 		return err
 	}
 
-	if err := s.repo.DeleteGrant(ctx, vaultID, grantID); err != nil {
+	if err := s.repo.DeleteGrant(ctx, vaultID, grantID, actorID); err != nil {
 		return translate(err, "delete grant")
 	}
 
@@ -253,7 +253,7 @@ func (s *Service) RevokeInvite(ctx context.Context, actorID, vaultID, inviteID i
 		return err
 	}
 
-	if err := s.repo.RevokeInvite(ctx, vaultID, inviteID); err != nil {
+	if err := s.repo.RevokeInvite(ctx, vaultID, inviteID, actorID); err != nil {
 		return translate(err, "revoke invite")
 	}
 

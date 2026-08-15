@@ -1121,6 +1121,129 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/rekeys/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Abort a re-key",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "rekey id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/rekeys/{id}/commit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Commit a re-key",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "rekey id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the new key sealed to everyone who keeps access",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.commitRekeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RekeyResultResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/rekeys/{id}/items": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Stage re-encrypted rows",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "rekey id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "re-encrypted rows",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.stageRekeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/lookup": {
             "get": {
                 "security": [
@@ -1332,6 +1455,57 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/audit": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the audit log",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "id of the oldest entry already seen",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.AuditResponse"
+                        }
                     },
                     "403": {
                         "description": "Forbidden",
@@ -1896,6 +2070,57 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/rekeys": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Start a re-key",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the node to re-key",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.startRekeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RekeyPlanResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -3179,6 +3404,66 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.AuditEventResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "example": "key.rotated"
+                },
+                "actor_id": {
+                    "type": "integer"
+                },
+                "actor_login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "actor_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "detail": {
+                    "type": "object"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 91
+                },
+                "subject_id": {
+                    "type": "integer"
+                },
+                "subject_type": {
+                    "type": "string",
+                    "example": "user"
+                },
+                "target_id": {
+                    "type": "integer"
+                },
+                "target_type": {
+                    "type": "string",
+                    "example": "folder"
+                }
+            }
+        },
+        "vault.AuditResponse": {
+            "type": "object",
+            "properties": {
+                "cursor": {
+                    "description": "Cursor is the id to pass as before= for the next page; zero when the log is exhausted.",
+                    "type": "integer",
+                    "example": 91
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.AuditEventResponse"
+                    }
+                }
+            }
+        },
         "vault.ContentResponse": {
             "type": "object",
             "properties": {
@@ -3458,6 +3743,107 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.RekeyPlanResponse": {
+            "type": "object",
+            "properties": {
+                "covers_vault": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "creates_scope": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "from_version": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "example": 12
+                },
+                "scope_type": {
+                    "type": "string",
+                    "example": "folder"
+                },
+                "subjects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.RekeySubjectResponse"
+                    }
+                },
+                "to_version": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "vault.RekeyResultResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 4
+                }
+            }
+        },
+        "vault.RekeySubjectResponse": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
         "vault.ScopeResponse": {
             "type": "object",
             "properties": {
@@ -3685,6 +4071,22 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.commitRekeyRequest": {
+            "type": "object",
+            "required": [
+                "key_grants"
+            ],
+            "properties": {
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/vault.rekeyGrantRequest"
+                    }
+                }
+            }
+        },
         "vault.createFileRequest": {
             "type": "object",
             "required": [
@@ -3873,6 +4275,150 @@ const docTemplate = `{
                 "position": {
                     "type": "integer",
                     "minimum": 0
+                }
+            }
+        },
+        "vault.rekeyGrantRequest": {
+            "type": "object",
+            "required": [
+                "nonce",
+                "subject_id",
+                "subject_type",
+                "wrapped_key"
+            ],
+            "properties": {
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "subject_type": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "group"
+                    ]
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 2048,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.rekeyItemRequest": {
+            "type": "object",
+            "required": [
+                "entity_id",
+                "entity_type",
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "vault",
+                        "folder",
+                        "file"
+                    ]
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.stageRekeyRequest": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/vault.rekeyItemRequest"
+                    }
+                }
+            }
+        },
+        "vault.startRekeyRequest": {
+            "type": "object",
+            "required": [
+                "scope_ref_id",
+                "scope_type"
+            ],
+            "properties": {
+                "new_scope_client_id": {
+                    "description": "NewScopeClientID names the scope the new key belongs to. It is required when the job\ncreates a scope, because the sealed keys have to name it before the row exists.",
+                    "type": "string"
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "scope_type": {
+                    "type": "string",
+                    "enum": [
+                        "vault",
+                        "folder",
+                        "file"
+                    ]
                 }
             }
         },

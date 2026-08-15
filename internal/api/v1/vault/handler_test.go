@@ -37,6 +37,12 @@ type stubService struct {
 	lastNew    vault.NewFolder
 	lastCursor int64
 	lastLimit  int
+	rekeyPlan  *vault.RekeyPlan
+	scope      *vault.KeyScope
+	lastRekey  vault.NewRekey
+	lastItems  []vault.RekeyItem
+	lastGrants []vault.RekeyGrant
+	events     []vault.AuditEvent
 }
 
 func (s *stubService) CreateVault(context.Context, int64, string, string, vault.Blob, vault.SealedKey) (*vault.Vault, error) {
@@ -105,6 +111,23 @@ func (s *stubService) MoveFile(context.Context, int64, int64, vault.Move) (*vaul
 func (s *stubService) DeleteFile(context.Context, int64, int64) error  { return s.err }
 func (s *stubService) RestoreFile(context.Context, int64, int64) error { return s.err }
 func (s *stubService) PurgeFile(context.Context, int64, int64) error   { return s.err }
+func (s *stubService) StartRekey(_ context.Context, _ int64, in vault.NewRekey) (*vault.RekeyPlan, error) {
+	s.lastRekey = in
+	return s.rekeyPlan, s.err
+}
+func (s *stubService) StageRekeyItems(_ context.Context, _, _ int64, items []vault.RekeyItem) error {
+	s.lastItems = items
+	return s.err
+}
+func (s *stubService) CommitRekey(_ context.Context, _, _ int64, grants []vault.RekeyGrant) (*vault.KeyScope, error) {
+	s.lastGrants = grants
+	return s.scope, s.err
+}
+func (s *stubService) AbortRekey(context.Context, int64, int64) error { return s.err }
+func (s *stubService) Audit(_ context.Context, _, _, _ int64, limit int) ([]vault.AuditEvent, error) {
+	s.lastLimit = limit
+	return s.events, s.err
+}
 
 // newTestRouter mounts the handler behind a middleware that stands in for the real token
 // check, so the routes see an authenticated caller without issuing a JWT.
@@ -522,5 +545,142 @@ func TestMissingCallerIsUnauthorized(t *testing.T) {
 	rec := doJSON(t, router, http.MethodGet, "/api/v1/vaults", nil, nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body)
+	}
+}
+
+func sealedKeyBody() map[string]any {
+	blob := func(n int, fill byte) []byte { return bytes.Repeat([]byte{fill}, n) }
+
+	return map[string]any{
+		"subject_type": "user",
+		"subject_id":   7,
+		"wrapped_key":  blob(113, 1),
+		"nonce":        blob(12, 2),
+	}
+}
+
+// TestRekeyCommitNeedsAKey pins the rule the whole job exists to uphold: a new key that
+// reaches nobody would make every row it touches unreadable.
+func TestRekeyCommitNeedsAKey(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, &stubService{scope: &vault.KeyScope{ID: 4, KeyVersion: 1}})
+
+	rec := doJSON(t, router, http.MethodPost, "/api/v1/rekeys/1/commit",
+		map[string]any{"key_grants": []any{}}, nil)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+	}
+}
+
+func TestRekeyCommitPassesTheGrantsThrough(t *testing.T) {
+	t.Parallel()
+
+	service := &stubService{scope: &vault.KeyScope{ID: 4, ClientID: "scope-uuid", KeyVersion: 2}}
+
+	rec := doJSON(t, newTestRouter(t, service), http.MethodPost, "/api/v1/rekeys/1/commit",
+		map[string]any{"key_grants": []any{sealedKeyBody()}}, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body)
+	}
+
+	if len(service.lastGrants) != 1 || service.lastGrants[0].Subject.ID != 7 {
+		t.Fatalf("grants = %+v, want the one that was sent", service.lastGrants)
+	}
+
+	var body handler.RekeyResultResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// The client needs both to seal anything else against this scope afterwards.
+	if body.ScopeClientID == "" || body.KeyVersion != 2 {
+		t.Fatalf("result = %+v, want the scope identity and its new version", body)
+	}
+}
+
+func TestStaleRekeyIsAConflict(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, &stubService{err: vault.ErrRekeyStale})
+
+	rec := doJSON(t, router, http.MethodPost, "/api/v1/rekeys/1/commit",
+		map[string]any{"key_grants": []any{sealedKeyBody()}}, nil)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusConflict, rec.Body)
+	}
+}
+
+func TestStagingBatchIsBounded(t *testing.T) {
+	t.Parallel()
+
+	blob := func(n int, fill byte) []byte { return bytes.Repeat([]byte{fill}, n) }
+
+	item := map[string]any{
+		"entity_type": "folder",
+		"entity_id":   1,
+		"meta":        blob(64, 1),
+		"meta_nonce":  blob(12, 2),
+	}
+
+	items := make([]any, 201)
+	for i := range items {
+		items[i] = item
+	}
+
+	router := newTestRouter(t, &stubService{})
+
+	tooMany := doJSON(t, router, http.MethodPut, "/api/v1/rekeys/1/items", map[string]any{"items": items}, nil)
+	if tooMany.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", tooMany.Code, http.StatusUnprocessableEntity)
+	}
+
+	empty := doJSON(t, router, http.MethodPut, "/api/v1/rekeys/1/items", map[string]any{"items": []any{}}, nil)
+	if empty.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", empty.Code, http.StatusUnprocessableEntity)
+	}
+}
+
+// TestAuditIsForManagersOnly pins who may read the history: it records who works with whom,
+// which is more than the tree itself gives away.
+func TestAuditIsForManagersOnly(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, &stubService{err: vault.ErrForbidden})
+
+	rec := doJSON(t, router, http.MethodGet, "/api/v1/vaults/1/audit", nil, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusForbidden, rec.Body)
+	}
+}
+
+func TestAuditPagesFromTheOldestEntrySeen(t *testing.T) {
+	t.Parallel()
+
+	service := &stubService{events: []vault.AuditEvent{
+		{ID: 9, Action: vault.AuditKeyRotated, Detail: json.RawMessage(`{"to_version":2}`)},
+		{ID: 4, Action: vault.AuditMemberRemove},
+	}}
+
+	rec := doJSON(t, newTestRouter(t, service), http.MethodGet, "/api/v1/vaults/1/audit?limit=2", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body)
+	}
+
+	var body handler.AuditResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if service.lastLimit != 2 {
+		t.Fatalf("limit = %d, want 2", service.lastLimit)
+	}
+
+	// The cursor is the oldest entry of the page, not the newest: the next page continues
+	// downwards, and a concurrent write at the top must not shift it.
+	if body.Cursor != 4 {
+		t.Fatalf("cursor = %d, want 4", body.Cursor)
 	}
 }

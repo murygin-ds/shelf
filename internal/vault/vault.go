@@ -26,6 +26,12 @@ var (
 	ErrCycle         = errors.New("a folder cannot be moved into itself")
 	ErrDepthExceeded = errors.New("folder tree is too deep")
 	ErrOwnerRequired = errors.New("a vault must keep an owner")
+	// ErrKeyGrantMissing means a re-key would land without the new key sealed to anyone,
+	// which would make every row it touches unreadable.
+	ErrKeyGrantMissing = errors.New("the new key must be sealed to at least one subject")
+	// ErrRekeyStale means the job was committed, aborted or left to expire.
+	ErrRekeyStale = errors.New("this re-key is no longer open")
+	ErrRekeyBatch = errors.New("a staging batch must hold between 1 and 200 rows")
 )
 
 // MaxDepth mirrors the CHECK on folders.depth. It bounds the recursive descent.

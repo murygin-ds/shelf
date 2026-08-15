@@ -143,11 +143,11 @@ type Redemption struct {
 type Repository interface {
 	Members(ctx context.Context, vaultID int64) ([]Member, error)
 	Membership(ctx context.Context, vaultID, userID int64) (*vault.Membership, error)
-	SetRole(ctx context.Context, vaultID, userID int64, role vault.Role) error
+	SetRole(ctx context.Context, vaultID, userID int64, role vault.Role, actorID int64) error
 	// RemoveMember deletes the membership, every permission grant and every key grant the
 	// member held at any version, and marks the scopes they could read as needing a
 	// rotation. Revocation is immediate; rotation is what makes it retroactive.
-	RemoveMember(ctx context.Context, vaultID, userID int64) ([]int64, error)
+	RemoveMember(ctx context.Context, vaultID, userID, actorID int64) ([]int64, error)
 
 	Lookup(ctx context.Context, login string) (*Directory, error)
 	PublicKey(ctx context.Context, userID int64) ([]byte, error)
@@ -155,12 +155,12 @@ type Repository interface {
 	Grants(ctx context.Context, vaultID int64, scopeType vault.ScopeType, scopeRefID int64) ([]Grant, error)
 	// PutGrant writes the permission and the sealed keys in one transaction.
 	PutGrant(ctx context.Context, in GrantInput, actorID int64) (*Grant, error)
-	DeleteGrant(ctx context.Context, vaultID, grantID int64) error
+	DeleteGrant(ctx context.Context, vaultID, grantID, actorID int64) error
 
 	CreateInvite(ctx context.Context, in NewInvite) (*Invite, error)
 	Invites(ctx context.Context, vaultID int64) ([]Invite, error)
 	InvitesFor(ctx context.Context, userID int64) ([]Invite, error)
-	RevokeInvite(ctx context.Context, vaultID, inviteID int64) error
+	RevokeInvite(ctx context.Context, vaultID, inviteID, actorID int64) error
 	// ChallengeByToken resolves a code invite for an anonymous caller.
 	ChallengeByToken(ctx context.Context, tokenHash []byte) (*Challenge, error)
 	ChallengeForUser(ctx context.Context, inviteID, userID int64) (*Challenge, error)

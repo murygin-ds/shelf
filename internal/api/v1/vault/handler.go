@@ -26,6 +26,13 @@ type Service interface {
 	Scopes(ctx context.Context, userID, vaultID int64) ([]vault.ScopeStatus, error)
 	Tree(ctx context.Context, userID, vaultID int64) ([]vault.Folder, []vault.File, error)
 	Sync(ctx context.Context, userID, vaultID, cursor int64, limit int) (*vault.Delta, error)
+
+	StartRekey(ctx context.Context, userID int64, in vault.NewRekey) (*vault.RekeyPlan, error)
+	StageRekeyItems(ctx context.Context, userID, rekeyID int64, items []vault.RekeyItem) error
+	CommitRekey(ctx context.Context, userID, rekeyID int64, grants []vault.RekeyGrant) (*vault.KeyScope, error)
+	AbortRekey(ctx context.Context, userID, rekeyID int64) error
+
+	Audit(ctx context.Context, userID, vaultID, before int64, limit int) ([]vault.AuditEvent, error)
 	Trash(ctx context.Context, userID, vaultID int64) ([]vault.Folder, []vault.File, error)
 
 	CreateFolder(ctx context.Context, userID int64, in vault.NewFolder) (*vault.Folder, error)
@@ -68,9 +75,16 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	vaults.GET("/:id/tree", h.Tree)
 	vaults.GET("/:id/sync", h.Sync)
 	vaults.GET("/:id/trash", h.Trash)
+	vaults.GET("/:id/audit", h.Audit)
 	vaults.POST("/:id/folders", h.CreateFolder)
 	vaults.POST("/:id/files", h.CreateFile)
 	vaults.POST("/:id/files/bulk", h.BulkFiles)
+	vaults.POST("/:id/rekeys", h.StartRekey)
+
+	rekeys := rg.Group("/rekeys")
+	rekeys.PUT("/:id/items", h.StageRekey)
+	rekeys.POST("/:id/commit", h.CommitRekey)
+	rekeys.DELETE("/:id", h.AbortRekey)
 
 	folders := rg.Group("/folders")
 	folders.PATCH("/:id", h.UpdateFolder)
@@ -353,6 +367,172 @@ func (h *Handler) Sync(c *gin.Context) {
 	}
 
 	response.OK(c, syncResponse(delta))
+}
+
+// Audit reads the access history of a vault.
+//
+//	@Summary	Read the audit log
+//	@Tags		vaults
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id		path		int	true	"vault id"
+//	@Param		before	query		int	false	"id of the oldest entry already seen"
+//	@Param		limit	query		int	false	"page size"
+//	@Success	200		{object}	AuditResponse
+//	@Failure	403		{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/audit [get]
+func (h *Handler) Audit(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	before, ok := request.Query(c, "before", 0)
+	if !ok {
+		return
+	}
+
+	limit, ok := request.Query(c, "limit", vault.DefaultAuditLimit)
+	if !ok {
+		return
+	}
+
+	events, err := h.service.Audit(c.Request.Context(), userID, vaultID, before, int(limit))
+	if err != nil {
+		h.fail(c, "read audit", err)
+		return
+	}
+
+	response.OK(c, auditResponse(events))
+}
+
+// StartRekey plans a re-encryption: giving a node its own key, or rotating the one it has.
+//
+//	@Summary	Start a re-key
+//	@Tags		keys
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		int					true	"vault id"
+//	@Param		request	body		startRekeyRequest	true	"the node to re-key"
+//	@Success	201		{object}	RekeyPlanResponse
+//	@Failure	409		{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/rekeys [post]
+func (h *Handler) StartRekey(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req startRekeyRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	plan, err := h.service.StartRekey(c.Request.Context(), userID, vault.NewRekey{
+		VaultID:          vaultID,
+		ScopeType:        vault.ScopeType(req.ScopeType),
+		ScopeRefID:       req.ScopeRefID,
+		NewScopeClientID: req.NewScopeClientID,
+	})
+	if err != nil {
+		h.fail(c, "start rekey", err)
+		return
+	}
+
+	response.Created(c, rekeyPlan(plan, vault.Fingerprint))
+}
+
+// StageRekey accepts a batch of re-encrypted rows.
+//
+// Staging rather than writing straight through is what lets a large subtree survive the
+// write timeout, and what makes a browser that dies mid-way leave staging rows instead of
+// a half-encrypted vault.
+//
+//	@Summary	Stage re-encrypted rows
+//	@Tags		keys
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Param		id		path	int					true	"rekey id"
+//	@Param		request	body	stageRekeyRequest	true	"re-encrypted rows"
+//	@Success	204
+//	@Failure	409	{object}	response.ErrorResponse
+//	@Router		/api/v1/rekeys/{id}/items [put]
+func (h *Handler) StageRekey(c *gin.Context) {
+	userID, rekeyID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req stageRekeyRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	if err := h.service.StageRekeyItems(c.Request.Context(), userID, rekeyID, rekeyItems(req.Items)); err != nil {
+		h.fail(c, "stage rekey items", err)
+		return
+	}
+
+	response.NoContent(c)
+}
+
+// CommitRekey applies the job in one transaction.
+//
+//	@Summary	Commit a re-key
+//	@Tags		keys
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		int					true	"rekey id"
+//	@Param		request	body		commitRekeyRequest	true	"the new key sealed to everyone who keeps access"
+//	@Success	200		{object}	RekeyResultResponse
+//	@Failure	409		{object}	response.ErrorResponse
+//	@Router		/api/v1/rekeys/{id}/commit [post]
+func (h *Handler) CommitRekey(c *gin.Context) {
+	userID, rekeyID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req commitRekeyRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	scope, err := h.service.CommitRekey(c.Request.Context(), userID, rekeyID, rekeyGrants(req.Keys))
+	if err != nil {
+		h.fail(c, "commit rekey", err)
+		return
+	}
+
+	response.OK(c, RekeyResultResponse{
+		ScopeID:       scope.ID,
+		ScopeClientID: scope.ClientID,
+		KeyVersion:    scope.KeyVersion,
+	})
+}
+
+// AbortRekey drops a job and its staged rows.
+//
+//	@Summary	Abort a re-key
+//	@Tags		keys
+//	@Security	BearerAuth
+//	@Param		id	path	int	true	"rekey id"
+//	@Success	204
+//	@Router		/api/v1/rekeys/{id} [delete]
+func (h *Handler) AbortRekey(c *gin.Context) {
+	userID, rekeyID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	if err := h.service.AbortRekey(c.Request.Context(), userID, rekeyID); err != nil {
+		h.fail(c, "abort rekey", err)
+		return
+	}
+
+	response.NoContent(c)
 }
 
 // CreateFolder adds a folder to the tree.
@@ -806,6 +986,15 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 	case errors.Is(err, vault.ErrDepthExceeded):
 		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
 			"the folder tree would become too deep")
+	case errors.Is(err, vault.ErrRekeyStale):
+		response.Fail(c, http.StatusConflict, response.CodeConflict,
+			"this re-key is no longer open")
+	case errors.Is(err, vault.ErrKeyGrantMissing):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"the new key must be sealed to at least one subject")
+	case errors.Is(err, vault.ErrRekeyBatch):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"a staging batch must hold between 1 and 200 rows")
 	default:
 		middleware.LoggerFrom(c).Error("vault handler failed", zap.String("op", op), zap.Error(err))
 		response.Internal(c)

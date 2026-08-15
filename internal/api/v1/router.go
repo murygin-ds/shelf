@@ -41,6 +41,8 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 		Files:   workspace,
 		Tree:    workspace,
 		Sync:    workspace,
+		Rekeys:  workspace,
+		Audit:   workspace,
 		Logger:  deps.Logger,
 	})
 

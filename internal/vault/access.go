@@ -1,5 +1,11 @@
 package vault
 
+import (
+	"crypto/sha256"
+	"encoding/base32"
+	"strings"
+)
+
 // Role is the membership level in a vault. It sets the floor under every node a member
 // can reach; grants narrow or widen it from there.
 type Role string
@@ -140,4 +146,37 @@ func Resolve(floor Permission, chain []Node) Permission {
 	}
 
 	return effective
+}
+
+// fingerprintAlphabet drops I, L, O and U, so a fingerprint read aloud survives the trip.
+const fingerprintAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+const (
+	fingerprintChars = 16
+	fingerprintGroup = 4
+)
+
+// Fingerprint is the short digest shown next to a member so two people can compare keys
+// out of band. The server hands out public keys, which means it could hand out its own;
+// comparing fingerprints is the only thing that rules that out.
+func Fingerprint(publicKey []byte) string {
+	if len(publicKey) == 0 {
+		return ""
+	}
+
+	digest := sha256.Sum256(publicKey)
+	encoded := base32.NewEncoding(fingerprintAlphabet).WithPadding(base32.NoPadding).
+		EncodeToString(digest[:])
+
+	var out strings.Builder
+
+	for i := 0; i < fingerprintChars; i += fingerprintGroup {
+		if i > 0 {
+			out.WriteByte(' ')
+		}
+
+		out.WriteString(encoded[i : i+fingerprintGroup])
+	}
+
+	return out.String()
 }

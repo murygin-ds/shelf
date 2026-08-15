@@ -793,6 +793,49 @@ definitions:
       error:
         $ref: '#/definitions/response.Error'
     type: object
+  vault.AuditEventResponse:
+    properties:
+      action:
+        example: key.rotated
+        type: string
+      actor_id:
+        type: integer
+      actor_login:
+        example: marta@acme.dev
+        type: string
+      actor_name:
+        example: Marta Chen
+        type: string
+      created_at:
+        type: string
+      detail:
+        type: object
+      id:
+        example: 91
+        type: integer
+      subject_id:
+        type: integer
+      subject_type:
+        example: user
+        type: string
+      target_id:
+        type: integer
+      target_type:
+        example: folder
+        type: string
+    type: object
+  vault.AuditResponse:
+    properties:
+      cursor:
+        description: Cursor is the id to pass as before= for the next page; zero when
+          the log is exhausted.
+        example: 91
+        type: integer
+      events:
+        items:
+          $ref: '#/definitions/vault.AuditEventResponse'
+        type: array
+    type: object
   vault.ContentResponse:
     properties:
       content_seq:
@@ -989,6 +1032,77 @@ definitions:
           type: integer
         type: array
     type: object
+  vault.RekeyPlanResponse:
+    properties:
+      covers_vault:
+        example: false
+        type: boolean
+      creates_scope:
+        example: true
+        type: boolean
+      expires_at:
+        type: string
+      files:
+        items:
+          type: integer
+        type: array
+      folders:
+        items:
+          type: integer
+        type: array
+      from_version:
+        example: 0
+        type: integer
+      id:
+        example: 3
+        type: integer
+      scope_client_id:
+        type: string
+      scope_ref_id:
+        example: 12
+        type: integer
+      scope_type:
+        example: folder
+        type: string
+      subjects:
+        items:
+          $ref: '#/definitions/vault.RekeySubjectResponse'
+        type: array
+      to_version:
+        example: 1
+        type: integer
+    type: object
+  vault.RekeyResultResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      scope_client_id:
+        type: string
+      scope_id:
+        example: 4
+        type: integer
+    type: object
+  vault.RekeySubjectResponse:
+    properties:
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      login:
+        example: marta@acme.dev
+        type: string
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      user_id:
+        example: 7
+        type: integer
+    type: object
   vault.ScopeResponse:
     properties:
       client_id:
@@ -1151,6 +1265,17 @@ definitions:
     required:
     - ids
     type: object
+  vault.commitRekeyRequest:
+    properties:
+      key_grants:
+        items:
+          $ref: '#/definitions/vault.rekeyGrantRequest'
+        maxItems: 256
+        minItems: 1
+        type: array
+    required:
+    - key_grants
+    type: object
   vault.createFileRequest:
     properties:
       client_id:
@@ -1304,6 +1429,115 @@ definitions:
       position:
         minimum: 0
         type: integer
+    type: object
+  vault.rekeyGrantRequest:
+    properties:
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      subject_id:
+        minimum: 1
+        type: integer
+      subject_type:
+        enum:
+        - user
+        - group
+        type: string
+      wrap_algorithm:
+        maxLength: 64
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 2048
+        minItems: 32
+        type: array
+    required:
+    - nonce
+    - subject_id
+    - subject_type
+    - wrapped_key
+    type: object
+  vault.rekeyItemRequest:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      entity_id:
+        minimum: 1
+        type: integer
+      entity_type:
+        enum:
+        - vault
+        - folder
+        - file
+        type: string
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+    required:
+    - entity_id
+    - entity_type
+    - meta
+    - meta_nonce
+    type: object
+  vault.stageRekeyRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/vault.rekeyItemRequest'
+        maxItems: 200
+        minItems: 1
+        type: array
+    required:
+    - items
+    type: object
+  vault.startRekeyRequest:
+    properties:
+      new_scope_client_id:
+        description: |-
+          NewScopeClientID names the scope the new key belongs to. It is required when the job
+          creates a scope, because the sealed keys have to name it before the row exists.
+        type: string
+      scope_ref_id:
+        minimum: 1
+        type: integer
+      scope_type:
+        enum:
+        - vault
+        - folder
+        - file
+        type: string
+    required:
+    - scope_ref_id
+    - scope_type
     type: object
   vault.updateContentRequest:
     properties:
@@ -2058,6 +2292,82 @@ paths:
       summary: List my invites
       tags:
       - access
+  /api/v1/rekeys/{id}:
+    delete:
+      parameters:
+      - description: rekey id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Abort a re-key
+      tags:
+      - keys
+  /api/v1/rekeys/{id}/commit:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: rekey id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the new key sealed to everyone who keeps access
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.commitRekeyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.RekeyResultResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Commit a re-key
+      tags:
+      - keys
+  /api/v1/rekeys/{id}/items:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: rekey id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: re-encrypted rows
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.stageRekeyRequest'
+      responses:
+        "204":
+          description: No Content
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Stage re-encrypted rows
+      tags:
+      - keys
   /api/v1/users/lookup:
     get:
       parameters:
@@ -2192,6 +2502,38 @@ paths:
       security:
       - BearerAuth: []
       summary: Update vault metadata
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/audit:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: id of the oldest entry already seen
+        in: query
+        name: before
+        type: integer
+      - description: page size
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.AuditResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the audit log
       tags:
       - vaults
   /api/v1/vaults/{id}/files:
@@ -2545,6 +2887,38 @@ paths:
       summary: Change a member's role
       tags:
       - access
+  /api/v1/vaults/{id}/rekeys:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the node to re-key
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.startRekeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.RekeyPlanResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Start a re-key
+      tags:
+      - keys
   /api/v1/vaults/{id}/scopes:
     get:
       parameters:

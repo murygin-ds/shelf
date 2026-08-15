@@ -124,6 +124,8 @@ export interface Tree {
 
 export interface Scope {
   id: number;
+  /** Names the scope inside the additional data and inside every sealed key for it. */
+  clientId: string;
   version: number;
 }
 
@@ -132,13 +134,23 @@ export const LOCKED_NAME = '••••••';
 
 const WRAP_ALGORITHM = 'ecdh-p256-hkdf-a256gcm';
 
+/** The scope a node in the tree is sealed under. */
+function scopeOfNode(node: Node): Scope {
+  return { id: node.keyScopeId, clientId: node.keyScopeClientId, version: node.keyVersion };
+}
+
+/** The scope a stored row is sealed under, as the row itself reports it. */
+function scopeOf(dto: { key_scope_id: number; key_scope_client_id: string; key_version: number }): Scope {
+  return { id: dto.key_scope_id, clientId: dto.key_scope_client_id, version: dto.key_version };
+}
+
 function ref(
   vaultId: number,
   entity: EntityType,
   clientId: string,
   scope: Scope,
 ): EntityRef {
-  return { vaultId, entity, entityId: clientId, scopeId: scope.id, keyVersion: scope.version };
+  return { vaultId, entity, entityId: clientId, scopeClientId: scope.clientId, keyVersion: scope.version };
 }
 
 /**
@@ -157,7 +169,7 @@ export async function createVault(
   const scopeClientId = crypto.randomUUID();
   const key = await generateKey();
 
-  const sealedMeta = await encryptMeta(key, meta(name, emoji), vaultRef(clientId));
+  const sealedMeta = await encryptMeta(key, meta(name, emoji), vaultRef(clientId, scopeClientId, 1));
 
   const box = await seal(
     splitPublicBlob(identity.publicBlob).seal,
@@ -176,11 +188,15 @@ export async function createVault(
   });
 }
 
-// The serial vault id does not exist when the name is sealed, so the additional data
-// names the vault by its client id alone. That is enough to pin the slot: the id is
-// unique and the key that opens it belongs to this vault only.
-function vaultRef(clientId: string): EntityRef {
-  return { vaultId: 0, entity: 'vault', entityId: clientId, scopeId: 0, keyVersion: 1 };
+// The serial vault id does not exist when the name is sealed, so the additional data names
+// the vault by its client id. That is enough to pin the slot: the id is unique and the key
+// that opens it belongs to this vault only.
+//
+// The version has to be passed in rather than assumed: a rotation re-seals the name under
+// the new one, and reading it back at v1 forever would show the vault as locked the moment
+// its key was rotated.
+function vaultRef(clientId: string, scopeClientId: string, keyVersion: number): EntityRef {
+  return { vaultId: 0, entity: 'vault', entityId: clientId, scopeClientId, keyVersion };
 }
 
 export async function listVaults(identity: Identity): Promise<Vault[]> {
@@ -196,7 +212,7 @@ async function openVault(summary: VaultSummaryDto, identity: Identity): Promise<
   const opened = await decryptMeta(
     key,
     { ciphertext: b64ToBytes(summary.meta), nonce: b64ToBytes(summary.meta_nonce) },
-    vaultRef(summary.client_id),
+    vaultRef(summary.client_id, summary.key_scope_client_id, summary.key_version),
   );
 
   const locked = isLocked(opened);
@@ -258,7 +274,7 @@ async function openNote(dto: FileDto, keyring: ScopeKeyring): Promise<NoteNode> 
 }
 
 async function openNode(dto: NodeDto, entity: EntityType, keyring: ScopeKeyring): Promise<Node> {
-  const scope = { id: dto.key_scope_id, version: dto.key_version };
+  const scope = scopeOf(dto);
 
   const opened = await decryptMeta(
     keyring.get(scope.id, scope.version),
@@ -345,7 +361,7 @@ export async function renameNode(
   icon: string | undefined,
   keyring: ScopeKeyring,
 ): Promise<void> {
-  const scope = { id: node.keyScopeId, version: node.keyVersion };
+  const scope = scopeOfNode(node);
   const key = requireKey(keyring, scope);
 
   const sealed = await encryptMeta(
@@ -368,7 +384,7 @@ export interface NoteBody {
 
 export async function readNote(noteId: number, keyring: ScopeKeyring): Promise<NoteBody> {
   const dto = await api.get<FileDto>(`/files/${noteId}`);
-  const scope = { id: dto.key_scope_id, version: dto.key_version };
+  const scope = scopeOf(dto);
 
   const opened = await decryptContent(
     keyring.get(scope.id, scope.version),
@@ -391,7 +407,7 @@ export async function writeNote(
   contentSeq: number,
   keyring: ScopeKeyring,
 ): Promise<number> {
-  const scope = { id: note.keyScopeId, version: note.keyVersion };
+  const scope = scopeOfNode(note);
   const key = requireKey(keyring, scope);
 
   const sealed = await encryptContent(key, body, ref(note.vaultId, 'file', note.clientId, scope));
@@ -443,12 +459,18 @@ export function fetchBodies(vaultId: number, ids: number[]): Promise<{ files: Fi
 
 /** Decrypts one cached body. Returns null when the viewer holds no key for it. */
 export async function openBody(
-  dto: { vault_id: number; client_id: string; key_scope_id: number; key_version: number },
+  dto: {
+    vault_id: number;
+    client_id: string;
+    key_scope_id: number;
+    key_scope_client_id: string;
+    key_version: number;
+  },
   content: B64,
   contentNonce: B64,
   keyring: ScopeKeyring,
 ): Promise<string | null> {
-  const scope = { id: dto.key_scope_id, version: dto.key_version };
+  const scope = scopeOf(dto);
 
   const opened = await decryptContent(
     keyring.get(scope.id, scope.version),

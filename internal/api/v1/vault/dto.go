@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/json"
 	"time"
 
 	"shelf/internal/vault"
@@ -410,4 +411,185 @@ func filesResponse(files []vault.File) FilesResponse {
 
 func blob(ciphertext, nonce []byte) vault.Blob {
 	return vault.Blob{Ciphertext: ciphertext, Nonce: nonce}
+}
+
+type startRekeyRequest struct {
+	ScopeType  string `binding:"required,oneof=vault folder file" json:"scope_type"`
+	ScopeRefID int64  `binding:"required,min=1"                   json:"scope_ref_id"`
+	// NewScopeClientID names the scope the new key belongs to. It is required when the job
+	// creates a scope, because the sealed keys have to name it before the row exists.
+	NewScopeClientID string `binding:"omitempty,uuid" json:"new_scope_client_id,omitempty"`
+}
+
+type rekeyItemRequest struct {
+	EntityType   string `binding:"required,oneof=vault folder file" json:"entity_type"`
+	EntityID     int64  `binding:"required,min=1"                json:"entity_id"`
+	Meta         []byte `binding:"required,min=16,max=8192"      json:"meta"          format:"byte"`
+	MetaNonce    []byte `binding:"required,min=12,max=32"        json:"meta_nonce"    format:"byte"`
+	Content      []byte `binding:"omitempty,min=16,max=4194304"  json:"content,omitempty"       format:"byte"`
+	ContentNonce []byte `binding:"omitempty,min=12,max=32"       json:"content_nonce,omitempty" format:"byte"`
+}
+
+type stageRekeyRequest struct {
+	Items []rekeyItemRequest `binding:"required,min=1,max=200,dive" json:"items"`
+}
+
+type rekeyGrantRequest struct {
+	SubjectType string `binding:"required,oneof=user group"  json:"subject_type"`
+	SubjectID   int64  `binding:"required,min=1"             json:"subject_id"`
+	WrappedKey  []byte `binding:"required,min=32,max=2048"   json:"wrapped_key" format:"byte"`
+	Nonce       []byte `binding:"required,min=12,max=32"     json:"nonce"       format:"byte"`
+	Algorithm   string `binding:"omitempty,max=64"           json:"wrap_algorithm,omitempty"`
+}
+
+type commitRekeyRequest struct {
+	Keys []rekeyGrantRequest `binding:"required,min=1,max=256,dive" json:"key_grants"`
+}
+
+// RekeySubjectResponse is somebody the new key has to be sealed to, with the fingerprint
+// to check the public key really is theirs.
+type RekeySubjectResponse struct {
+	UserID      int64  `json:"user_id"      example:"7"`
+	Login       string `json:"login"        example:"marta@acme.dev"`
+	DisplayName string `json:"display_name" example:"Marta Chen"`
+	PublicKey   []byte `json:"public_key"   format:"byte"`
+	Fingerprint string `json:"fingerprint"  example:"A1B2 C3D4 E5F6 G7H8"`
+}
+
+// RekeyPlanResponse is everything a client needs to carry out a re-key: the rows to
+// re-encrypt and whose keys the new one must reach.
+type RekeyPlanResponse struct {
+	ID            int64                  `json:"id"                example:"3"`
+	ScopeType     string                 `json:"scope_type"        example:"folder"`
+	ScopeRefID    int64                  `json:"scope_ref_id"      example:"12"`
+	ScopeClientID string                 `json:"scope_client_id"`
+	CreatesScope  bool                   `json:"creates_scope"     example:"true"`
+	CoversVault   bool                   `json:"covers_vault"      example:"false"`
+	FromVersion   int32                  `json:"from_version"      example:"0"`
+	ToVersion     int32                  `json:"to_version"        example:"1"`
+	Folders       []int64                `json:"folders"`
+	Files         []int64                `json:"files"`
+	Subjects      []RekeySubjectResponse `json:"subjects"`
+	ExpiresAt     time.Time              `json:"expires_at"`
+}
+
+// RekeyResultResponse is the scope as it stands after the commit.
+type RekeyResultResponse struct {
+	ScopeID       int64  `json:"scope_id"        example:"4"`
+	ScopeClientID string `json:"scope_client_id"`
+	KeyVersion    int32  `json:"key_version"     example:"1"`
+}
+
+func rekeyPlan(plan *vault.RekeyPlan, fingerprint func([]byte) string) RekeyPlanResponse {
+	subjects := make([]RekeySubjectResponse, 0, len(plan.Subjects))
+
+	for _, subject := range plan.Subjects {
+		subjects = append(subjects, RekeySubjectResponse{
+			UserID:      subject.UserID,
+			Login:       subject.Login,
+			DisplayName: subject.DisplayName,
+			PublicKey:   subject.PublicKey,
+			Fingerprint: fingerprint(subject.PublicKey),
+		})
+	}
+
+	return RekeyPlanResponse{
+		ID:            plan.ID,
+		ScopeType:     string(plan.ScopeType),
+		ScopeRefID:    plan.ScopeRefID,
+		ScopeClientID: plan.ScopeClientID,
+		CreatesScope:  plan.Creates,
+		CoversVault:   plan.Vault,
+		FromVersion:   plan.FromVersion,
+		ToVersion:     plan.ToVersion,
+		Folders:       ids(plan.Folders),
+		Files:         ids(plan.Files),
+		Subjects:      subjects,
+		ExpiresAt:     plan.ExpiresAt,
+	}
+}
+
+func rekeyItems(in []rekeyItemRequest) []vault.RekeyItem {
+	out := make([]vault.RekeyItem, 0, len(in))
+
+	for _, item := range in {
+		converted := vault.RekeyItem{
+			EntityType: vault.ScopeType(item.EntityType),
+			EntityID:   item.EntityID,
+			Meta:       blob(item.Meta, item.MetaNonce),
+		}
+
+		if len(item.Content) > 0 {
+			body := blob(item.Content, item.ContentNonce)
+			converted.Content = &body
+		}
+
+		out = append(out, converted)
+	}
+
+	return out
+}
+
+func rekeyGrants(in []rekeyGrantRequest) []vault.RekeyGrant {
+	out := make([]vault.RekeyGrant, 0, len(in))
+
+	for _, grant := range in {
+		out = append(out, vault.RekeyGrant{
+			Subject:    vault.Subject{Type: vault.SubjectType(grant.SubjectType), ID: grant.SubjectID},
+			WrappedKey: grant.WrappedKey,
+			Nonce:      grant.Nonce,
+			Algorithm:  grant.Algorithm,
+		})
+	}
+
+	return out
+}
+
+// AuditEventResponse is one entry of the access history. It names nodes and people by id:
+// the reader renders them from their own decrypted tree, and an entry about a node they
+// cannot see stays an id, which is the truthful thing to show.
+type AuditEventResponse struct {
+	ID          int64           `json:"id"                     example:"91"`
+	ActorID     *int64          `json:"actor_id,omitempty"`
+	ActorLogin  string          `json:"actor_login,omitempty"  example:"marta@acme.dev"`
+	ActorName   string          `json:"actor_name,omitempty"   example:"Marta Chen"`
+	Action      string          `json:"action"                 example:"key.rotated"`
+	TargetType  string          `json:"target_type,omitempty"  example:"folder"`
+	TargetID    *int64          `json:"target_id,omitempty"`
+	SubjectType string          `json:"subject_type,omitempty" example:"user"`
+	SubjectID   *int64          `json:"subject_id,omitempty"`
+	Detail      json.RawMessage `json:"detail"                 swaggertype:"object"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+type AuditResponse struct {
+	Events []AuditEventResponse `json:"events"`
+	// Cursor is the id to pass as before= for the next page; zero when the log is exhausted.
+	Cursor int64 `json:"cursor" example:"91"`
+}
+
+func auditResponse(events []vault.AuditEvent) AuditResponse {
+	out := AuditResponse{Events: make([]AuditEventResponse, 0, len(events))}
+
+	for _, e := range events {
+		out.Events = append(out.Events, AuditEventResponse{
+			ID:          e.ID,
+			ActorID:     e.ActorID,
+			ActorLogin:  e.ActorLogin,
+			ActorName:   e.ActorName,
+			Action:      string(e.Action),
+			TargetType:  e.TargetType,
+			TargetID:    e.TargetID,
+			SubjectType: e.SubjectType,
+			SubjectID:   e.SubjectID,
+			Detail:      e.Detail,
+			CreatedAt:   e.CreatedAt,
+		})
+	}
+
+	if n := len(events); n > 0 {
+		out.Cursor = events[n-1].ID
+	}
+
+	return out
 }

@@ -116,7 +116,7 @@ export function listGrants(
  */
 export async function putGrant(
   vaultId: number,
-  target: { scopeType: 'folder' | 'file'; scopeRefId: number; scope: Scope; scopeClientId: string },
+  target: { scopeType: 'folder' | 'file'; scopeRefId: number; scope: Scope },
   subjectId: number,
   permission: Permission,
   recipientPublicKey: B64 | null,
@@ -131,7 +131,7 @@ export async function putGrant(
     const box = await seal(
       splitPublicBlob(b64ToBytes(recipientPublicKey)).seal,
       await exportKey(scopeKey),
-      sealInfo(target.scopeClientId, target.scope.version),
+      sealInfo(target.scope.clientId, target.scope.version),
     );
 
     keys.push({
@@ -179,7 +179,7 @@ export async function createCodeInvite(
   vaultId: number,
   role: Role,
   preview: InvitePreview,
-  scopes: Array<{ scope: Scope; scopeClientId: string }>,
+  scopes: Scope[],
   keyring: ScopeKeyring,
 ): Promise<CreatedInvite> {
   const code = generateInviteCode();
@@ -187,20 +187,15 @@ export async function createCodeInvite(
 
   const keys = [];
 
-  for (const target of scopes) {
-    const scopeKey = keyring.get(target.scope.id, target.scope.version);
+  for (const scope of scopes) {
+    const scopeKey = keyring.get(scope.id, scope.version);
     if (!scopeKey) continue;
 
-    const wrapped = await wrapScopeKey(
-      key,
-      await exportKey(scopeKey),
-      target.scopeClientId,
-      target.scope.version,
-    );
+    const wrapped = await wrapScopeKey(key, await exportKey(scopeKey), scope.clientId, scope.version);
 
     keys.push({
-      scope_id: target.scope.id,
-      key_version: target.scope.version,
+      scope_id: scope.id,
+      key_version: scope.version,
       wrapped_key: bytesToB64(wrapped.ciphertext),
       nonce: bytesToB64(wrapped.nonce),
       wrap_algorithm: INVITE_WRAP_ALGORITHM,

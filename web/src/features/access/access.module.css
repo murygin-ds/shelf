@@ -326,3 +326,42 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.noteAction {
+  margin-top: 9px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-body);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.noteAction:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.noteAction:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.noteBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* A vault-sized re-key runs for a while; a bare spinner would look like a hang. */
+.progress {
+  margin-top: 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
