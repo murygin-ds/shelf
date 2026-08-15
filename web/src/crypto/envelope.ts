@@ -3,11 +3,17 @@ import { fromUtf8, pad, unpad, utf8 } from './bytes';
 
 export type EntityType = 'vault' | 'folder' | 'file' | 'group' | 'revision';
 
-/** Identifies the exact slot a ciphertext belongs to. */
+/**
+ * Identifies the exact slot a ciphertext belongs to.
+ *
+ * The entity is named by the client id rather than the serial one: the client picks it
+ * before the row exists, which is what lets metadata be sealed with its final additional
+ * data in a single round trip.
+ */
 export interface EntityRef {
   vaultId: number;
   entity: EntityType;
-  entityId: number;
+  entityId: string;
   scopeId: number;
   keyVersion: number;
 }
@@ -24,8 +30,8 @@ export function aad(ref: EntityRef): Uint8Array {
 }
 
 /** The info string that binds a sealed scope key to the scope and version it unlocks. */
-export function sealInfo(scopeId: number, keyVersion: number): string {
-  return `shelf/seal/v1|${scopeId}|${keyVersion}`;
+export function sealInfo(scopeClientId: string, keyVersion: number): string {
+  return `shelf/seal/v1|${scopeClientId}|${keyVersion}`;
 }
 
 /**

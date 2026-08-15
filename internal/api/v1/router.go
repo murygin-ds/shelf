@@ -2,11 +2,14 @@
 package v1
 
 import (
+	"shelf/internal/api/middleware"
 	authapi "shelf/internal/api/v1/auth"
+	vaultapi "shelf/internal/api/v1/vault"
 	"shelf/internal/auth"
 	"shelf/internal/config"
 	"shelf/internal/ratelimit"
 	"shelf/internal/storage/postgres"
+	"shelf/internal/vault"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,8 +27,22 @@ type Deps struct {
 func Register(rg *gin.RouterGroup, deps Deps) {
 	group := rg.Group("/v1")
 
+	// The auth service doubles as the token parser for every protected group, so it is
+	// built once and shared rather than reconstructed per feature.
 	authService := auth.NewService(postgres.NewAuthRepository(deps.Pool), deps.Auth, deps.Logger)
 	authapi.NewHandler(authService, authLimits(deps.Auth.RateLimit), deps.Logger).RegisterRoutes(group)
+
+	workspace := postgres.NewVaultRepository(deps.Pool)
+	vaultService := vault.NewService(vault.Deps{
+		Vaults:  workspace,
+		Folders: workspace,
+		Files:   workspace,
+		Tree:    workspace,
+		Logger:  deps.Logger,
+	})
+
+	protected := group.Group("", middleware.Auth(authService))
+	vaultapi.NewHandler(vaultService, deps.Logger).RegisterRoutes(protected)
 }
 
 // authLimits builds the rate limiters. Disabled limits stay zero:

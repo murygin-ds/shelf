@@ -533,6 +533,942 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/files/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Read a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Trash a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Update note metadata",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted note metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateMetaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/content": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Write a note body",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "content sequence the client last saw",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted body",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateContentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ContentResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "428": {
+                        "description": "Precondition Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/move": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Move a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "destination folder",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.moveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/purge": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Purge a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Restore a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Trash a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Update folder metadata",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted folder metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateMetaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FolderResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}/move": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Move a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "destination",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.moveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FolderResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}/purge": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Purge a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Restore a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List vaults",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.VaultsResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Create a vault",
+                "parameters": [
+                    {
+                        "description": "vault metadata and the content key sealed to the creator",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createVaultRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.VaultResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.VaultResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Delete a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Update vault metadata",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateMetaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/files": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Create a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted note",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createFileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/files/bulk": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Read notes in bulk",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "note ids, at most 200",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.bulkFilesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FilesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/folders": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Create a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted folder metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createFolderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FolderResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/keys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List the caller's key grants",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.KeyGrantsResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/scopes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List key scopes",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ScopesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/trash": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the trash",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.TreeResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/tree": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the vault tree",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.TreeResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns 200 while the process is alive. Does not check external dependencies.",
@@ -1193,6 +2129,665 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "$ref": "#/definitions/response.Error"
+                }
+            }
+        },
+        "vault.ContentResponse": {
+            "type": "object",
+            "properties": {
+                "content_seq": {
+                    "type": "integer",
+                    "example": 15
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_seq": {
+                    "type": "integer",
+                    "example": 43
+                }
+            }
+        },
+        "vault.FileResponse": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_seq": {
+                    "type": "integer",
+                    "example": 14
+                },
+                "content_size": {
+                    "type": "integer",
+                    "example": 8192
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "folder_id": {
+                    "type": "integer"
+                },
+                "grant_count": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "inherit_access": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "own_scope": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "edit"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "integer"
+                },
+                "updated_seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "vault.FilesResponse": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                }
+            }
+        },
+        "vault.FolderResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "depth": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "grant_count": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 12
+                },
+                "inherit_access": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "own_scope": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "own"
+                },
+                "position": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "integer"
+                },
+                "updated_seq": {
+                    "type": "integer",
+                    "example": 41
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "vault.KeyGrantResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "subject_type": {
+                    "type": "string",
+                    "example": "user"
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "example": "ecdh-p256-hkdf-a256gcm"
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.KeyGrantsResponse": {
+            "type": "object",
+            "properties": {
+                "grants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.KeyGrantResponse"
+                    }
+                }
+            }
+        },
+        "vault.ScopeResponse": {
+            "type": "object",
+            "properties": {
+                "grant_count": {
+                    "type": "integer",
+                    "example": 6
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "ref_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "rotated_at": {
+                    "type": "string"
+                },
+                "scope_type": {
+                    "type": "string",
+                    "example": "vault"
+                }
+            }
+        },
+        "vault.ScopesResponse": {
+            "type": "object",
+            "properties": {
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.ScopeResponse"
+                    }
+                }
+            }
+        },
+        "vault.TreeResponse": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FolderResponse"
+                    }
+                }
+            }
+        },
+        "vault.VaultResponse": {
+            "type": "object",
+            "properties": {
+                "change_seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "owner_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "vault.VaultSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "change_seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_state": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "member_count": {
+                    "type": "integer",
+                    "example": 6
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "note_count": {
+                    "type": "integer",
+                    "example": 213
+                },
+                "owner_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "role": {
+                    "type": "string",
+                    "example": "owner"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "vault.VaultsResponse": {
+            "type": "object",
+            "properties": {
+                "vaults": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.VaultSummaryResponse"
+                    }
+                }
+            }
+        },
+        "vault.bulkFilesRequest": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "vault.createFileRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "content_nonce",
+                "key_scope_id",
+                "key_version",
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "folder_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.createFolderRequest": {
+            "type": "object",
+            "required": [
+                "key_scope_id",
+                "key_version",
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "key_scope_id": {
+                    "description": "KeyScopeID and KeyVersion declare which key the blobs were sealed under. The server\nrefuses them when they do not match the destination, because the row would be\nunreadable to everyone who can see it.",
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "parent_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "position": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "vault.createVaultRequest": {
+            "type": "object",
+            "required": [
+                "key_nonce",
+                "meta",
+                "meta_nonce",
+                "wrapped_key"
+            ],
+            "properties": {
+                "key_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrap_algorithm": {
+                    "description": "Algorithm names the sealed-box format, so a later format can be told apart.",
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "description": "WrappedKey is the vault content key sealed to the creator's own public key.",
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.moveRequest": {
+            "type": "object",
+            "properties": {
+                "parent_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "position": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "vault.updateContentRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "content_nonce"
+            ],
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.updateMetaRequest": {
+            "type": "object",
+            "required": [
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "position": {
+                    "type": "integer",
+                    "minimum": 0
                 }
             }
         }

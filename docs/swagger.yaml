@@ -450,6 +450,487 @@ definitions:
       error:
         $ref: '#/definitions/response.Error'
     type: object
+  vault.ContentResponse:
+    properties:
+      content_seq:
+        example: 15
+        type: integer
+      updated_at:
+        type: string
+      updated_seq:
+        example: 43
+        type: integer
+    type: object
+  vault.FileResponse:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_seq:
+        example: 14
+        type: integer
+      content_size:
+        example: 8192
+        type: integer
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      folder_id:
+        type: integer
+      grant_count:
+        example: 1
+        type: integer
+      id:
+        example: 88
+        type: integer
+      inherit_access:
+        example: true
+        type: boolean
+      key_scope_id:
+        example: 1
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      own_scope:
+        example: false
+        type: boolean
+      permission:
+        example: edit
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: integer
+      updated_seq:
+        example: 42
+        type: integer
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  vault.FilesResponse:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+    type: object
+  vault.FolderResponse:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      depth:
+        example: 0
+        type: integer
+      grant_count:
+        example: 1
+        type: integer
+      id:
+        example: 12
+        type: integer
+      inherit_access:
+        example: true
+        type: boolean
+      key_scope_id:
+        example: 1
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      own_scope:
+        example: false
+        type: boolean
+      parent_id:
+        type: integer
+      permission:
+        example: own
+        type: string
+      position:
+        example: 0
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: integer
+      updated_seq:
+        example: 41
+        type: integer
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  vault.KeyGrantResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      scope_id:
+        example: 1
+        type: integer
+      subject_id:
+        example: 1
+        type: integer
+      subject_type:
+        example: user
+        type: string
+      wrap_algorithm:
+        example: ecdh-p256-hkdf-a256gcm
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  vault.KeyGrantsResponse:
+    properties:
+      grants:
+        items:
+          $ref: '#/definitions/vault.KeyGrantResponse'
+        type: array
+    type: object
+  vault.ScopeResponse:
+    properties:
+      grant_count:
+        example: 6
+        type: integer
+      id:
+        example: 1
+        type: integer
+      key_version:
+        example: 4
+        type: integer
+      ref_id:
+        example: 1
+        type: integer
+      rotated_at:
+        type: string
+      scope_type:
+        example: vault
+        type: string
+    type: object
+  vault.ScopesResponse:
+    properties:
+      scopes:
+        items:
+          $ref: '#/definitions/vault.ScopeResponse'
+        type: array
+    type: object
+  vault.TreeResponse:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+      folders:
+        items:
+          $ref: '#/definitions/vault.FolderResponse'
+        type: array
+    type: object
+  vault.VaultResponse:
+    properties:
+      change_seq:
+        example: 42
+        type: integer
+      created_at:
+        type: string
+      id:
+        example: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      owner_id:
+        example: 1
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  vault.VaultSummaryResponse:
+    properties:
+      change_seq:
+        example: 42
+        type: integer
+      created_at:
+        type: string
+      id:
+        example: 1
+        type: integer
+      key_scope_id:
+        example: 1
+        type: integer
+      key_state:
+        example: ok
+        type: string
+      key_version:
+        example: 1
+        type: integer
+      member_count:
+        example: 6
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      note_count:
+        example: 213
+        type: integer
+      owner_id:
+        example: 1
+        type: integer
+      role:
+        example: owner
+        type: string
+      updated_at:
+        type: string
+    type: object
+  vault.VaultsResponse:
+    properties:
+      vaults:
+        items:
+          $ref: '#/definitions/vault.VaultSummaryResponse'
+        type: array
+    type: object
+  vault.bulkFilesRequest:
+    properties:
+      ids:
+        items:
+          type: integer
+        maxItems: 200
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
+  vault.createFileRequest:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      folder_id:
+        minimum: 1
+        type: integer
+      key_scope_id:
+        minimum: 1
+        type: integer
+      key_version:
+        minimum: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+    required:
+    - content
+    - content_nonce
+    - key_scope_id
+    - key_version
+    - meta
+    - meta_nonce
+    type: object
+  vault.createFolderRequest:
+    properties:
+      key_scope_id:
+        description: |-
+          KeyScopeID and KeyVersion declare which key the blobs were sealed under. The server
+          refuses them when they do not match the destination, because the row would be
+          unreadable to everyone who can see it.
+        minimum: 1
+        type: integer
+      key_version:
+        minimum: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      parent_id:
+        minimum: 1
+        type: integer
+      position:
+        minimum: 0
+        type: integer
+    required:
+    - key_scope_id
+    - key_version
+    - meta
+    - meta_nonce
+    type: object
+  vault.createVaultRequest:
+    properties:
+      key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      wrap_algorithm:
+        description: Algorithm names the sealed-box format, so a later format can
+          be told apart.
+        maxLength: 64
+        type: string
+      wrapped_key:
+        description: WrappedKey is the vault content key sealed to the creator's own
+          public key.
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - key_nonce
+    - meta
+    - meta_nonce
+    - wrapped_key
+    type: object
+  vault.moveRequest:
+    properties:
+      parent_id:
+        minimum: 1
+        type: integer
+      position:
+        minimum: 0
+        type: integer
+    type: object
+  vault.updateContentRequest:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+    required:
+    - content
+    - content_nonce
+    type: object
+  vault.updateMetaRequest:
+    properties:
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      position:
+        minimum: 0
+        type: integer
+    required:
+    - meta
+    - meta_nonce
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -796,6 +1277,584 @@ paths:
       summary: Session revocation
       tags:
       - auth
+  /api/v1/files/{id}:
+    delete:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Trash a note
+      tags:
+      - files
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a note
+      tags:
+      - files
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted note metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateMetaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+      security:
+      - BearerAuth: []
+      summary: Update note metadata
+      tags:
+      - files
+  /api/v1/files/{id}/content:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: content sequence the client last saw
+        in: header
+        name: If-Match
+        required: true
+        type: integer
+      - description: encrypted body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateContentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.ContentResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "428":
+          description: Precondition Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Write a note body
+      tags:
+      - files
+  /api/v1/files/{id}/move:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: destination folder
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.moveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Move a note
+      tags:
+      - files
+  /api/v1/files/{id}/purge:
+    delete:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Purge a note
+      tags:
+      - files
+  /api/v1/files/{id}/restore:
+    post:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Restore a note
+      tags:
+      - files
+  /api/v1/folders/{id}:
+    delete:
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Trash a folder
+      tags:
+      - folders
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted folder metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateMetaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FolderResponse'
+      security:
+      - BearerAuth: []
+      summary: Update folder metadata
+      tags:
+      - folders
+  /api/v1/folders/{id}/move:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: destination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.moveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FolderResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Move a folder
+      tags:
+      - folders
+  /api/v1/folders/{id}/purge:
+    delete:
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Purge a folder
+      tags:
+      - folders
+  /api/v1/folders/{id}/restore:
+    post:
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Restore a folder
+      tags:
+      - folders
+  /api/v1/vaults:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.VaultsResponse'
+      security:
+      - BearerAuth: []
+      summary: List vaults
+      tags:
+      - vaults
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault metadata and the content key sealed to the creator
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createVaultRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.VaultResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a vault
+      tags:
+      - vaults
+  /api/v1/vaults/{id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a vault
+      tags:
+      - vaults
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.VaultResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a vault
+      tags:
+      - vaults
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateMetaRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update vault metadata
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/files:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted note
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createFileRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a note
+      tags:
+      - files
+  /api/v1/vaults/{id}/files/bulk:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: note ids, at most 200
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.bulkFilesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FilesResponse'
+      security:
+      - BearerAuth: []
+      summary: Read notes in bulk
+      tags:
+      - files
+  /api/v1/vaults/{id}/folders:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted folder metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createFolderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.FolderResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a folder
+      tags:
+      - folders
+  /api/v1/vaults/{id}/keys:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.KeyGrantsResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List the caller's key grants
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/scopes:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.ScopesResponse'
+      security:
+      - BearerAuth: []
+      summary: List key scopes
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/trash:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.TreeResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the trash
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/tree:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.TreeResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the vault tree
+      tags:
+      - vaults
   /health:
     get:
       description: Returns 200 while the process is alive. Does not check external

@@ -32,7 +32,16 @@ const KDF_TIMEOUT = 30_000;
 // Cheap parameters for the tests that only care about wiring, not about work factor.
 const FAST_KDF = { algorithm: 'argon2id', memory: 19456, iterations: 2, parallelism: 1 } as const;
 
-const REF: EntityRef = { vaultId: 1, entity: 'file', entityId: 42, scopeId: 7, keyVersion: 2 };
+const SCOPE = 'b1f0d5c2-9a3e-4f7b-8c1d-2e3f4a5b6c7d';
+const OTHER_SCOPE = 'c2e1f6d3-0b4f-5a8c-9d2e-3f4a5b6c7d8e';
+
+const REF: EntityRef = {
+  vaultId: 1,
+  entity: 'file',
+  entityId: '8f14e45f-ceea-467a-9f6b-1d2c3b4a5e60',
+  scopeId: 7,
+  keyVersion: 2,
+};
 
 describe('bytes', () => {
   it('round-trips base64 in the padded alphabet Go emits', () => {
@@ -91,7 +100,9 @@ describe('aead', () => {
     const sealed = await encrypt(key, utf8('secret'), aad(REF));
 
     // Same scope, same key, different note: exactly the swap a hostile server would try.
-    await expect(decrypt(key, sealed, aad({ ...REF, entityId: 43 }))).rejects.toThrow();
+    await expect(
+      decrypt(key, sealed, aad({ ...REF, entityId: '00000000-0000-4000-8000-000000000001' })),
+    ).rejects.toThrow();
     await expect(decrypt(key, sealed, aad({ ...REF, keyVersion: 3 }))).rejects.toThrow();
   });
 
@@ -235,7 +246,7 @@ describe('sealed box', () => {
     const stranger = await generateIdentity(await generateMasterKey());
 
     const scopeKey = await exportKey(await generateKey());
-    const info = sealInfo(7, 2);
+    const info = sealInfo(SCOPE, 2);
 
     const box = await seal(splitPublicBlob(recipient.publicBlob).seal, scopeKey, info);
 
@@ -247,16 +258,16 @@ describe('sealed box', () => {
     const recipient = await generateIdentity(await generateMasterKey());
     const scopeKey = await exportKey(await generateKey());
 
-    const box = await seal(splitPublicBlob(recipient.publicBlob).seal, scopeKey, sealInfo(7, 2));
+    const box = await seal(splitPublicBlob(recipient.publicBlob).seal, scopeKey, sealInfo(SCOPE, 2));
 
     // A grant replayed against another scope or an older version must not open.
-    await expect(open(recipient.identity.sealPrivate, box, sealInfo(8, 2))).rejects.toThrow();
-    await expect(open(recipient.identity.sealPrivate, box, sealInfo(7, 1))).rejects.toThrow();
+    await expect(open(recipient.identity.sealPrivate, box, sealInfo(OTHER_SCOPE, 2))).rejects.toThrow();
+    await expect(open(recipient.identity.sealPrivate, box, sealInfo(SCOPE, 1))).rejects.toThrow();
   });
 
   it('rejects a truncated or reformatted box', async () => {
     const recipient = await generateIdentity(await generateMasterKey());
-    const info = sealInfo(7, 2);
+    const info = sealInfo(SCOPE, 2);
     const box = await seal(splitPublicBlob(recipient.publicBlob).seal, new Uint8Array(32), info);
 
     await expect(
@@ -295,7 +306,9 @@ describe('envelope', () => {
 
     // A key that does not fit, and a key that fits the wrong slot.
     expect(isLocked(await decryptMeta(await generateKey(), meta, REF))).toBe(true);
-    expect(isLocked(await decryptMeta(key, meta, { ...REF, entityId: 43 }))).toBe(true);
+    expect(
+      isLocked(await decryptMeta(key, meta, { ...REF, entityId: '00000000-0000-4000-8000-000000000001' })),
+    ).toBe(true);
   });
 
   it('keeps the body size out of the ciphertext length', async () => {

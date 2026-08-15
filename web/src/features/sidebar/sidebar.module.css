@@ -1,0 +1,353 @@
+.sidebar {
+  width: var(--sidebar-w);
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+
+.search {
+  padding: 10px 10px 4px;
+}
+
+.searchButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-quiet);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.searchButton:hover {
+  border-color: #33333a;
+  color: var(--text-muted);
+}
+
+.searchLabel {
+  flex: 1;
+  text-align: left;
+}
+
+.shortcut {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-ghost);
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px 16px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.navItem:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.navItemActive {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.navLabel {
+  flex: 1;
+}
+
+.navCount {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-ghost);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  margin: 18px 0 6px;
+}
+
+.sectionTitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sectionActions {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.sectionButton {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-label);
+  cursor: pointer;
+}
+
+.sectionButton:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+}
+
+/* Tree */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.rowFolder {
+  color: var(--text-secondary);
+}
+
+.rowActive {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.rowLocked {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.indent {
+  flex: none;
+}
+
+.chevron {
+  flex: none;
+  color: var(--text-label);
+  transition: transform 0.12s;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.chevronHidden {
+  visibility: hidden;
+}
+
+.rowIcon {
+  flex: none;
+  color: var(--text-quiet);
+  background: none;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.rowIconFolder {
+  color: var(--text-faint);
+}
+
+.rowIconActive {
+  color: var(--accent);
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-label);
+  flex: none;
+}
+
+.rowActions {
+  display: none;
+  gap: 2px;
+  flex: none;
+}
+
+.row:hover .rowActions {
+  display: flex;
+}
+
+.rowAction {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-label);
+  cursor: pointer;
+}
+
+.rowAction:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.emptyHint {
+  padding: 10px 10px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-quiet);
+}
+
+/* Footer */
+
+.footer {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.footerAvatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #2f3a44;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #c6d2da;
+  flex: none;
+}
+
+.footerName {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footerState {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+}
+
+/* Icon picker */
+
+.picker {
+  position: fixed;
+  width: 254px;
+  z-index: 91;
+  padding: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+}
+
+.pickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1px 4px 9px;
+}
+
+.pickerReset {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.pickerReset:hover {
+  color: var(--text);
+}
+
+.pickerGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.pickerCell {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.pickerCell:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pickerCellOn {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
