@@ -14,6 +14,7 @@ type Deps struct {
 	Folders FolderRepository
 	Files   FileRepository
 	Tree    TreeRepository
+	Sync    SyncRepository
 	Logger  *zap.Logger
 }
 
@@ -24,6 +25,7 @@ type Service struct {
 	folders FolderRepository
 	files   FileRepository
 	tree    TreeRepository
+	sync    SyncRepository
 	log     *zap.Logger
 }
 
@@ -33,6 +35,7 @@ func NewService(deps Deps) *Service {
 		folders: deps.Folders,
 		files:   deps.Files,
 		tree:    deps.Tree,
+		sync:    deps.Sync,
 		log:     deps.Logger,
 	}
 }

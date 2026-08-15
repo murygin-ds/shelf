@@ -25,6 +25,7 @@ type Service interface {
 	Keys(ctx context.Context, userID, vaultID int64) ([]vault.KeyGrant, error)
 	Scopes(ctx context.Context, userID, vaultID int64) ([]vault.ScopeStatus, error)
 	Tree(ctx context.Context, userID, vaultID int64) ([]vault.Folder, []vault.File, error)
+	Sync(ctx context.Context, userID, vaultID, cursor int64, limit int) (*vault.Delta, error)
 	Trash(ctx context.Context, userID, vaultID int64) ([]vault.Folder, []vault.File, error)
 
 	CreateFolder(ctx context.Context, userID int64, in vault.NewFolder) (*vault.Folder, error)
@@ -65,6 +66,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	vaults.GET("/:id/keys", h.Keys)
 	vaults.GET("/:id/scopes", h.Scopes)
 	vaults.GET("/:id/tree", h.Tree)
+	vaults.GET("/:id/sync", h.Sync)
 	vaults.GET("/:id/trash", h.Trash)
 	vaults.POST("/:id/folders", h.CreateFolder)
 	vaults.POST("/:id/files", h.CreateFile)
@@ -315,6 +317,42 @@ func (h *Handler) readTree(
 	}
 
 	response.OK(c, treeResponse(folders, files))
+}
+
+// Sync returns the changes a member has not seen yet.
+//
+//	@Summary	Read the change feed
+//	@Tags		vaults
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id		path		int	true	"vault id"
+//	@Param		cursor	query		int	false	"change sequence the client last stored"
+//	@Param		limit	query		int	false	"soft page size"
+//	@Success	200		{object}	SyncResponse
+//	@Router		/api/v1/vaults/{id}/sync [get]
+func (h *Handler) Sync(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	cursor, ok := request.Query(c, "cursor", 0)
+	if !ok {
+		return
+	}
+
+	limit, ok := request.Query(c, "limit", vault.DefaultSyncLimit)
+	if !ok {
+		return
+	}
+
+	delta, err := h.service.Sync(c.Request.Context(), userID, vaultID, cursor, int(limit))
+	if err != nil {
+		h.fail(c, "read changes", err)
+		return
+	}
+
+	response.OK(c, syncResponse(delta))
 }
 
 // CreateFolder adds a folder to the tree.

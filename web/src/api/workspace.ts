@@ -412,3 +412,49 @@ function requireKey(keyring: ScopeKeyring, scope: Scope): CryptoKey {
 
   return key;
 }
+
+export interface DeltaDto {
+  cursor: number;
+  has_more: boolean;
+  full_resync_required: boolean;
+  folders: FolderDto[];
+  files: FileDto[];
+  purged: { folders: number[]; files: number[] };
+}
+
+export function fetchDelta(vaultId: number, cursor: number, limit = 500): Promise<DeltaDto> {
+  return api.get<DeltaDto>(`/vaults/${vaultId}/sync?cursor=${cursor}&limit=${limit}`);
+}
+
+/** Hydration for the local index: bodies in bulk, bounded by what the server accepts. */
+export const BULK_LIMIT = 200;
+
+export function fetchBodies(vaultId: number, ids: number[]): Promise<{ files: FileDto[] }> {
+  return api.post<{ files: FileDto[] }>(`/vaults/${vaultId}/files/bulk`, { ids });
+}
+
+/** Decrypts one cached body. Returns null when the viewer holds no key for it. */
+export async function openBody(
+  dto: { vault_id: number; client_id: string; key_scope_id: number; key_version: number },
+  content: B64,
+  contentNonce: B64,
+  keyring: ScopeKeyring,
+): Promise<string | null> {
+  const scope = { id: dto.key_scope_id, version: dto.key_version };
+
+  const opened = await decryptContent(
+    keyring.get(scope.id, scope.version),
+    { ciphertext: b64ToBytes(content), nonce: b64ToBytes(contentNonce) },
+    ref(dto.vault_id, 'file', dto.client_id, scope),
+  );
+
+  return isLocked(opened) ? null : opened;
+}
+
+export async function openFolderDto(dto: FolderDto, keyring: ScopeKeyring): Promise<FolderNode> {
+  return openFolder(dto, keyring);
+}
+
+export async function openNoteDto(dto: FileDto, keyring: ScopeKeyring): Promise<NoteNode> {
+  return openNote(dto, keyring);
+}

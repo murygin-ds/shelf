@@ -1403,6 +1403,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/vaults/{id}/sync": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the change feed",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "change sequence the client last stored",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "soft page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.SyncResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/vaults/{id}/trash": {
             "get": {
                 "security": [
@@ -2151,6 +2196,9 @@ const docTemplate = `{
         "vault.FileResponse": {
             "type": "object",
             "properties": {
+                "client_id": {
+                    "type": "string"
+                },
                 "content": {
                     "type": "array",
                     "items": {
@@ -2254,6 +2302,9 @@ const docTemplate = `{
         "vault.FolderResponse": {
             "type": "object",
             "properties": {
+                "client_id": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -2343,6 +2394,9 @@ const docTemplate = `{
                         "format": "byte"
                     }
                 },
+                "scope_client_id": {
+                    "type": "string"
+                },
                 "scope_id": {
                     "type": "integer",
                     "example": 1
@@ -2379,9 +2433,29 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.PurgedResponse": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "vault.ScopeResponse": {
             "type": "object",
             "properties": {
+                "client_id": {
+                    "type": "string"
+                },
                 "grant_count": {
                     "type": "integer",
                     "example": 6
@@ -2418,6 +2492,39 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.SyncResponse": {
+            "type": "object",
+            "properties": {
+                "cursor": {
+                    "type": "integer",
+                    "example": 4821
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FolderResponse"
+                    }
+                },
+                "full_resync_required": {
+                    "description": "FullResync tells the client to drop its cached copy of this vault. It is the only\nway it learns to forget plaintext it cached before losing access to it.",
+                    "type": "boolean",
+                    "example": false
+                },
+                "has_more": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "purged": {
+                    "$ref": "#/definitions/vault.PurgedResponse"
+                }
+            }
+        },
         "vault.TreeResponse": {
             "type": "object",
             "properties": {
@@ -2441,6 +2548,9 @@ const docTemplate = `{
                 "change_seq": {
                     "type": "integer",
                     "example": 42
+                },
+                "client_id": {
+                    "type": "string"
                 },
                 "created_at": {
                     "type": "string"
@@ -2478,6 +2588,9 @@ const docTemplate = `{
                 "change_seq": {
                     "type": "integer",
                     "example": 42
+                },
+                "client_id": {
+                    "type": "string"
                 },
                 "created_at": {
                     "type": "string"
@@ -2563,6 +2676,7 @@ const docTemplate = `{
         "vault.createFileRequest": {
             "type": "object",
             "required": [
+                "client_id",
                 "content",
                 "content_nonce",
                 "key_scope_id",
@@ -2571,6 +2685,9 @@ const docTemplate = `{
                 "meta_nonce"
             ],
             "properties": {
+                "client_id": {
+                    "type": "string"
+                },
                 "content": {
                     "type": "array",
                     "maxItems": 4194304,
@@ -2624,12 +2741,16 @@ const docTemplate = `{
         "vault.createFolderRequest": {
             "type": "object",
             "required": [
+                "client_id",
                 "key_scope_id",
                 "key_version",
                 "meta",
                 "meta_nonce"
             ],
             "properties": {
+                "client_id": {
+                    "type": "string"
+                },
                 "key_scope_id": {
                     "description": "KeyScopeID and KeyVersion declare which key the blobs were sealed under. The server\nrefuses them when they do not match the destination, because the row would be\nunreadable to everyone who can see it.",
                     "type": "integer",
@@ -2670,12 +2791,18 @@ const docTemplate = `{
         "vault.createVaultRequest": {
             "type": "object",
             "required": [
+                "client_id",
                 "key_nonce",
                 "meta",
                 "meta_nonce",
+                "scope_client_id",
                 "wrapped_key"
             ],
             "properties": {
+                "client_id": {
+                    "description": "ClientID is chosen before the row exists, so the metadata can be sealed against a\nstable identity in one round trip.",
+                    "type": "string"
+                },
                 "key_nonce": {
                     "type": "array",
                     "maxItems": 32,
@@ -2702,6 +2829,10 @@ const docTemplate = `{
                         "type": "integer",
                         "format": "byte"
                     }
+                },
+                "scope_client_id": {
+                    "description": "ScopeClientID names the vault's own key scope, which the key below is sealed against.",
+                    "type": "string"
                 },
                 "wrap_algorithm": {
                     "description": "Algorithm names the sealed-box format, so a later format can be told apart.",

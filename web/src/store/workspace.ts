@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 
-import { ApiError } from '@/api/client';
+import { ApiError, OfflineError } from '@/api/client';
 import { ErrorCode } from '@/api/types';
 import * as ws from '@/api/workspace';
-import type { ScopeKeyring } from '@/crypto/keyring';
 import type { Identity } from '@/crypto/identity';
+import type { ScopeKeyring } from '@/crypto/keyring';
+import * as cache from '@/db/cache';
+import type { IndexedNote } from '@/lib/search';
+import * as sync from '@/sync/engine';
 
 export interface OpenNote {
   note: ws.NoteNode;
@@ -16,6 +19,8 @@ export interface OpenNote {
   conflict: boolean;
 }
 
+export type View = 'editor' | 'search';
+
 interface WorkspaceState {
   vaults: ws.Vault[];
   vaultId: number | null;
@@ -23,14 +28,22 @@ interface WorkspaceState {
   tree: ws.Tree;
   expanded: Set<number>;
   open: OpenNote | null;
+  view: View;
+  query: string;
+  /** Decrypted, in memory only. Persisting it would put plaintext on disk. */
+  index: IndexedNote[];
+  coverage: { covered: number; total: number };
   loading: boolean;
   saving: boolean;
+  syncing: boolean;
+  offline: boolean;
   error: string | null;
 
   load: (identity: Identity) => Promise<void>;
   selectVault: (vaultId: number, identity: Identity) => Promise<void>;
   createVault: (name: string, identity: Identity) => Promise<void>;
-  refreshTree: () => Promise<void>;
+  syncNow: () => Promise<void>;
+  startPolling: () => () => void;
   toggleFolder: (folderId: number) => void;
   addFolder: (parentId: number | null, name: string) => Promise<void>;
   addNote: (folderId: number | null, title: string) => Promise<void>;
@@ -38,9 +51,15 @@ interface WorkspaceState {
   editBody: (body: string) => void;
   saveNote: () => Promise<void>;
   rename: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file', name: string) => Promise<void>;
-  setIcon: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file', icon: string | undefined) => Promise<void>;
+  setIcon: (
+    node: ws.FolderNode | ws.NoteNode,
+    kind: 'folder' | 'file',
+    icon: string | undefined,
+  ) => Promise<void>;
   trash: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file') => Promise<void>;
-  reset: () => void;
+  setView: (view: View) => void;
+  setQuery: (query: string) => void;
+  reset: () => Promise<void>;
 }
 
 const emptyTree: ws.Tree = { folders: [], notes: [] };
@@ -52,8 +71,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   tree: emptyTree,
   expanded: new Set(),
   open: null,
+  view: 'editor',
+  query: '',
+  index: [],
+  coverage: { covered: 0, total: 0 },
   loading: false,
   saving: false,
+  syncing: false,
+  offline: false,
   error: null,
 
   load: async (identity) => {
@@ -64,30 +89,31 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ vaults });
 
       const first = vaults[0];
-      if (first && get().vaultId === null) {
-        await get().selectVault(first.id, identity);
-      }
+      if (first && get().vaultId === null) await get().selectVault(first.id, identity);
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
     } finally {
       set({ loading: false });
     }
   },
 
   selectVault: async (vaultId, identity) => {
-    set({ loading: true, vaultId, open: null, tree: emptyTree, error: null });
+    set({ loading: true, vaultId, open: null, tree: emptyTree, index: [], error: null });
 
     try {
       const keyring = await ws.loadKeyring(vaultId, identity);
-      const tree = await ws.loadTree(vaultId, keyring);
+      set({ keyring });
 
-      // Everything with children starts open: the design shows an expanded tree, and a
-      // vault whose contents are hidden on arrival reads as an empty one.
-      const expanded = new Set(tree.folders.map((folder) => folder.id));
+      // Paint from the cache first: it holds ciphertext this device can already open, so
+      // the tree appears without waiting for the network.
+      const cached = await sync.fromCache(vaultId, keyring);
+      if (cached.folders.length || cached.notes.length) {
+        set({ tree: { folders: cached.folders, notes: cached.notes }, expanded: allOpen(cached.folders) });
+      }
 
-      set({ keyring, tree, expanded });
+      await get().syncNow();
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
     } finally {
       set({ loading: false });
     }
@@ -98,31 +124,84 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     try {
       const created = await ws.createVault(name, undefined, identity);
-      const vaults = await ws.listVaults(identity);
-
-      set({ vaults });
+      set({ vaults: await ws.listVaults(identity) });
       await get().selectVault(created.id, identity);
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
     } finally {
       set({ loading: false });
     }
   },
 
-  refreshTree: async () => {
-    const { vaultId, keyring } = get();
-    if (vaultId === null || !keyring) return;
+  syncNow: async () => {
+    const { vaultId, keyring, syncing } = get();
+    if (vaultId === null || !keyring || syncing) return;
+
+    set({ syncing: true });
 
     try {
-      set({ tree: await ws.loadTree(vaultId, keyring) });
+      const cursor = await cache.readCursor(vaultId);
+      const pulled = await sync.pull(vaultId, keyring, cursor);
+
+      const tree = { folders: pulled.folders, notes: pulled.notes };
+      set({
+        tree,
+        offline: false,
+        expanded: pulled.resynced || get().expanded.size === 0 ? allOpen(pulled.folders) : get().expanded,
+      });
+
+      // A note open in the editor may have been purged or trashed elsewhere.
+      const open = get().open;
+      if (open && !tree.notes.some((note) => note.id === open.note.id)) set({ open: null });
+
+      const hydrated = await sync.hydrate(
+        vaultId,
+        keyring,
+        pulled.notes,
+        sync.pathBuilder(pulled.folders),
+      );
+
+      set({ index: hydrated.index, coverage: { covered: hydrated.covered, total: hydrated.total } });
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
+    } finally {
+      set({ syncing: false });
     }
+  },
+
+  /**
+   * Polls while the tab is focused and backs off hard when it is not. Returns the
+   * unsubscribe the caller has to run, so a remounted shell does not stack timers.
+   */
+  startPolling: () => {
+    let timer: number | undefined;
+
+    const tick = () => {
+      const delay = document.hidden ? sync.POLL_HIDDEN_MS : sync.POLL_ACTIVE_MS;
+
+      timer = window.setTimeout(() => {
+        if (navigator.onLine) void get().syncNow();
+        tick();
+      }, delay);
+    };
+
+    const onVisible = () => {
+      if (!document.hidden) void get().syncNow();
+    };
+
+    tick();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onVisible);
+
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onVisible);
+    };
   },
 
   toggleFolder: (folderId) => {
     const expanded = new Set(get().expanded);
-
     if (!expanded.delete(folderId)) expanded.add(folderId);
 
     set({ expanded });
@@ -134,7 +213,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     try {
       await ws.createFolder(vaultId, parentId, name, scopeOf(get(), parentId), keyring);
-      await get().refreshTree();
+      await get().syncNow();
 
       if (parentId !== null) {
         const expanded = new Set(get().expanded);
@@ -142,7 +221,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         set({ expanded });
       }
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
     }
   },
 
@@ -152,21 +231,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     try {
       const note = await ws.createNote(vaultId, folderId, title, scopeOf(get(), folderId), keyring);
-      await get().refreshTree();
+      await get().syncNow();
       await get().openNote(note);
+      set({ view: 'editor' });
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
     }
   },
 
   openNote: async (note) => {
-    const { keyring } = get();
+    const keyring = get().keyring;
     if (!keyring) return;
 
     try {
       const body = await ws.readNote(note.id, keyring);
 
       set({
+        view: 'editor',
         open: {
           note,
           body: body.body,
@@ -177,7 +258,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         },
       });
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
     }
   },
 
@@ -196,15 +277,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     try {
       const contentSeq = await ws.writeNote(open.note, open.body, open.contentSeq, keyring);
+      const current = get().open;
+      if (current) set({ open: { ...current, contentSeq, dirty: false, conflict: false } });
 
-      set({ open: { ...get().open!, contentSeq, dirty: false, conflict: false } });
+      await get().syncNow();
     } catch (cause) {
       // A conflict is not an error to shrug off: the body on the server is a version the
       // user has never seen, and nobody but a client can merge the two.
-      if (cause instanceof ApiError && cause.is(ErrorCode.Conflict)) {
-        set({ open: { ...get().open!, conflict: true } });
+      const current = get().open;
+
+      if (cause instanceof ApiError && cause.is(ErrorCode.Conflict) && current) {
+        set({ open: { ...current, conflict: true } });
       } else {
-        set({ error: describe(cause) });
+        report(set, cause);
       }
     } finally {
       set({ saving: false });
@@ -212,37 +297,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   rename: async (node, kind, name) => {
-    const keyring = get().keyring;
-    if (!keyring) return;
-
-    try {
+    await withKeyring(get, set, async (keyring) => {
       await ws.renameNode(node, kind, name, node.icon, keyring);
-      await get().refreshTree();
+      await get().syncNow();
 
       const open = get().open;
       if (open && kind === 'file' && open.note.id === node.id) {
         set({ open: { ...open, note: { ...open.note, name } } });
       }
-    } catch (cause) {
-      set({ error: describe(cause) });
-    }
+    });
   },
 
   setIcon: async (node, kind, icon) => {
-    const keyring = get().keyring;
-    if (!keyring) return;
-
-    try {
+    await withKeyring(get, set, async (keyring) => {
       await ws.renameNode(node, kind, node.name, icon, keyring);
-      await get().refreshTree();
+      await get().syncNow();
 
       const open = get().open;
       if (open && kind === 'file' && open.note.id === node.id) {
         set({ open: { ...open, note: { ...open.note, icon } } });
       }
-    } catch (cause) {
-      set({ error: describe(cause) });
-    }
+    });
   },
 
   trash: async (node, kind) => {
@@ -252,13 +327,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const open = get().open;
       if (open && kind === 'file' && open.note.id === node.id) set({ open: null });
 
-      await get().refreshTree();
+      await get().syncNow();
     } catch (cause) {
-      set({ error: describe(cause) });
+      report(set, cause);
     }
   },
 
-  reset: () =>
+  setView: (view) => set({ view }),
+  setQuery: (query) => set({ query, view: query ? 'search' : get().view }),
+
+  reset: async () => {
+    await cache.dropAll();
+
     set({
       vaults: [],
       vaultId: null,
@@ -266,9 +346,35 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       tree: emptyTree,
       expanded: new Set(),
       open: null,
+      index: [],
+      coverage: { covered: 0, total: 0 },
+      query: '',
+      view: 'editor',
       error: null,
-    }),
+    });
+  },
 }));
+
+type Setter = (partial: Partial<WorkspaceState>) => void;
+
+async function withKeyring(
+  get: () => WorkspaceState,
+  set: Setter,
+  action: (keyring: ScopeKeyring) => Promise<void>,
+): Promise<void> {
+  const keyring = get().keyring;
+  if (!keyring) return;
+
+  try {
+    await action(keyring);
+  } catch (cause) {
+    report(set, cause);
+  }
+}
+
+function allOpen(folders: ws.FolderNode[]): Set<number> {
+  return new Set(folders.map((folder) => folder.id));
+}
 
 /**
  * The key scope a new node inherits: its parent folder's, or the vault's own at the root.
@@ -284,6 +390,17 @@ function scopeOf(state: WorkspaceState, parentId: number | null): ws.Scope {
   if (!vault) throw new Error('no active vault');
 
   return { id: vault.keyScopeId, version: vault.keyVersion };
+}
+
+function report(set: Setter, cause: unknown): void {
+  // Losing the network is a state, not a failure: the cache still answers reads and the
+  // next poll picks up where this one stopped.
+  if (cause instanceof OfflineError) {
+    set({ offline: true });
+    return;
+  }
+
+  set({ error: describe(cause) });
 }
 
 function describe(cause: unknown): string {

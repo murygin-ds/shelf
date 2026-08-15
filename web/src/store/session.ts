@@ -4,6 +4,7 @@ import * as authApi from '@/api/auth';
 import { ApiError, clearSession, hasAccessToken, readSession, setSessionLostHandler } from '@/api/client';
 import { ErrorCode, type User } from '@/api/types';
 import type { Identity } from '@/crypto/identity';
+import { dropAll as dropCache } from '@/db/cache';
 
 /**
  * anonymous — no session at all.
@@ -101,6 +102,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   signOut: async () => {
     await authApi.signOut().catch(() => undefined);
+    await dropCache().catch(() => undefined);
 
     set({
       status: 'anonymous',

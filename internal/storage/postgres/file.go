@@ -194,17 +194,40 @@ func (r *VaultRepository) SetFileDeleted(ctx context.Context, fileID int64, dele
 	return err
 }
 
+// PurgeFile destroys a note for good, leaving a tombstone so a client that was offline at
+// the time still learns the note is gone rather than keeping it forever.
 func (r *VaultRepository) PurgeFile(ctx context.Context, fileID int64) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM files WHERE id = $1`, fileID)
-	if err != nil {
-		return fmt.Errorf("purge file: %w", err)
-	}
+	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+		vaultID, err := fileVaultTx(ctx, tx, fileID)
+		if err != nil {
+			return err
+		}
 
-	if tag.RowsAffected() == 0 {
-		return vault.ErrNotFound
-	}
+		seq, err := nextSeq(ctx, tx, vaultID)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		const tombstone = `
+			INSERT INTO purged_entities (vault_id, entity_type, entity_id, purged_seq)
+			VALUES ($1, 'file', $2, $3)
+			ON CONFLICT (entity_type, entity_id) DO UPDATE SET purged_seq = EXCLUDED.purged_seq`
+
+		if _, err := tx.Exec(ctx, tombstone, vaultID, fileID, seq); err != nil {
+			return fmt.Errorf("record purged file: %w", err)
+		}
+
+		tag, err := tx.Exec(ctx, `DELETE FROM files WHERE id = $1`, fileID)
+		if err != nil {
+			return fmt.Errorf("purge file: %w", err)
+		}
+
+		if tag.RowsAffected() == 0 {
+			return vault.ErrNotFound
+		}
+
+		return nil
+	})
 }
 
 // FileRef resolves a note for a write without pulling its body along.

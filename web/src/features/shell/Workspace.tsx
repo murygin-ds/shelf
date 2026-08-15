@@ -1,23 +1,46 @@
 import { useEffect, useState } from 'react';
 
 import { Editor } from '@/features/editor/Editor';
+import { SearchView } from '@/features/search/SearchView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
 
+import { CommandPalette } from './CommandPalette';
 import styles from './shell.module.css';
 
 export function Workspace() {
   const { user, identity, signOut, lock } = useSession();
   const workspace = useWorkspace();
-  const { vaults, vaultId, open, loading, error, load } = workspace;
+  const { vaults, vaultId, open, view, loading, error, offline, syncing, coverage, load } = workspace;
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     if (identity) void load(identity);
   }, [identity, load]);
+
+  // One poller for the whole shell, torn down on unmount so a remount cannot stack timers.
+  useEffect(() => {
+    if (vaultId === null) return;
+
+    return workspace.startPolling();
+  }, [vaultId, workspace.startPolling]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setPaletteOpen((value) => !value);
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const vault = vaults.find((v) => v.id === vaultId);
 
@@ -126,10 +149,12 @@ export function Workspace() {
       ) : null}
 
       <div className={styles.body}>
-        <Sidebar />
+        <Sidebar onOpenPalette={() => setPaletteOpen(true)} />
 
         <div className={styles.canvas}>
-          {open ? (
+          {view === 'search' ? (
+            <SearchView />
+          ) : open ? (
             <Editor />
           ) : (
             <div className={styles.empty}>
@@ -161,6 +186,11 @@ export function Workspace() {
             : 'NO VAULT'}
         </span>
         <span className={styles.statusSpacer} />
+        {coverage.total > 0 && coverage.covered < coverage.total ? (
+          <span>
+            INDEX {coverage.covered}/{coverage.total}
+          </span>
+        ) : null}
         <span>MARKDOWN</span>
         <span className={styles.statusOk}>
           <Icon name="lock" size={11} />
@@ -168,10 +198,13 @@ export function Workspace() {
         </span>
         <span>{window.location.host.toUpperCase()}</span>
         <span className={styles.statusOk}>
-          <span className={styles.statusDot} />
-          {user?.login.toUpperCase()}
+          <span className={styles.statusDot} style={offline ? { background: 'var(--warn)' } : undefined} />
+          {offline ? 'OFFLINE · CACHED' : syncing ? 'SYNCING' : 'SYNCED'}
         </span>
+        <span>{user?.login.toUpperCase()}</span>
       </div>
+
+      {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
     </div>
   );
 }

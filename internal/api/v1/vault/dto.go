@@ -190,6 +190,61 @@ type FilesResponse struct {
 	Files []FileResponse `json:"files"`
 }
 
+// PurgedResponse lists the nodes that were destroyed outright. A trashed node needs no
+// entry: it travels as an ordinary update carrying a deletion timestamp.
+type PurgedResponse struct {
+	Folders []int64 `json:"folders"`
+	Files   []int64 `json:"files"`
+}
+
+// SyncResponse is one page of changes. The cursor is a change sequence, not a timestamp:
+// two rows written in one transaction share a clock reading, and a reader that interleaved
+// between them would drop one of them for good.
+type SyncResponse struct {
+	Cursor  int64 `json:"cursor"   example:"4821"`
+	HasMore bool  `json:"has_more" example:"false"`
+	// FullResync tells the client to drop its cached copy of this vault. It is the only
+	// way it learns to forget plaintext it cached before losing access to it.
+	FullResync bool             `json:"full_resync_required" example:"false"`
+	Folders    []FolderResponse `json:"folders"`
+	Files      []FileResponse   `json:"files"`
+	Purged     PurgedResponse   `json:"purged"`
+}
+
+func syncResponse(delta *vault.Delta) SyncResponse {
+	folders := make([]FolderResponse, 0, len(delta.Folders))
+	for i := range delta.Folders {
+		folders = append(folders, folderResponse(&delta.Folders[i]))
+	}
+
+	files := make([]FileResponse, 0, len(delta.Files))
+	for i := range delta.Files {
+		files = append(files, fileResponse(&delta.Files[i], false))
+	}
+
+	return SyncResponse{
+		Cursor:     delta.Cursor,
+		HasMore:    delta.HasMore,
+		FullResync: delta.FullResync,
+		Folders:    folders,
+		Files:      files,
+		// Empty rather than null: the client iterates these on every poll, and a null
+		// would make an ordinary quiet page look like a malformed one.
+		Purged: PurgedResponse{
+			Folders: ids(delta.Purged.Folders),
+			Files:   ids(delta.Purged.Files),
+		},
+	}
+}
+
+func ids(values []int64) []int64 {
+	if values == nil {
+		return []int64{}
+	}
+
+	return values
+}
+
 // ContentResponse acknowledges a body write with the token the next one must carry.
 type ContentResponse struct {
 	ContentSeq int64     `json:"content_seq" example:"15"`

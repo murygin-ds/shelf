@@ -35,6 +35,8 @@ type stubService struct {
 	lastMove   vault.Move
 	lastUpdate vault.ContentUpdate
 	lastNew    vault.NewFolder
+	lastCursor int64
+	lastLimit  int
 }
 
 func (s *stubService) CreateVault(context.Context, int64, string, string, vault.Blob, vault.SealedKey) (*vault.Vault, error) {
@@ -59,6 +61,15 @@ func (s *stubService) Tree(context.Context, int64, int64) ([]vault.Folder, []vau
 }
 func (s *stubService) Trash(context.Context, int64, int64) ([]vault.Folder, []vault.File, error) {
 	return s.folders, s.files, s.err
+}
+func (s *stubService) Sync(_ context.Context, _, _, cursor int64, limit int) (*vault.Delta, error) {
+	s.lastCursor, s.lastLimit = cursor, limit
+
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return &vault.Delta{Cursor: cursor + 1, Folders: s.folders, Files: s.files}, nil
 }
 func (s *stubService) CreateFolder(_ context.Context, _ int64, in vault.NewFolder) (*vault.Folder, error) {
 	s.lastNew = in
@@ -412,6 +423,89 @@ func TestTreeOmitsBodies(t *testing.T) {
 
 	if body.Files[0].Meta == nil {
 		t.Fatal("tree dropped the metadata it exists to deliver")
+	}
+}
+
+func TestSyncCursorAndLimit(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults when absent", func(t *testing.T) {
+		t.Parallel()
+
+		service := &stubService{}
+		rec := doJSON(t, newTestRouter(t, service), http.MethodGet, "/api/v1/vaults/1/sync", nil, nil)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body)
+		}
+
+		if service.lastCursor != 0 || service.lastLimit != vault.DefaultSyncLimit {
+			t.Fatalf("cursor/limit = %d/%d, want 0/%d", service.lastCursor, service.lastLimit, vault.DefaultSyncLimit)
+		}
+	})
+
+	t.Run("passed through", func(t *testing.T) {
+		t.Parallel()
+
+		service := &stubService{}
+		rec := doJSON(t, newTestRouter(t, service), http.MethodGet,
+			"/api/v1/vaults/1/sync?cursor=4821&limit=50", nil, nil)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		if service.lastCursor != 4821 || service.lastLimit != 50 {
+			t.Fatalf("cursor/limit = %d/%d, want 4821/50", service.lastCursor, service.lastLimit)
+		}
+	})
+
+	// A cursor the server cannot parse must not silently become "from the beginning":
+	// the client would take a full vault for a delta and never notice.
+	for name, query := range map[string]string{
+		"not a number": "?cursor=abc",
+		"negative":     "?cursor=-1",
+		"bad limit":    "?limit=zero",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := doJSON(t, newTestRouter(t, &stubService{}), http.MethodGet,
+				"/api/v1/vaults/1/sync"+query, nil, nil)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusBadRequest, rec.Body)
+			}
+		})
+	}
+}
+
+func TestSyncOmitsBodies(t *testing.T) {
+	t.Parallel()
+
+	service := &stubService{
+		files: []vault.File{{
+			ID:      2,
+			Meta:    vault.Blob{Ciphertext: []byte("meta"), Nonce: []byte("nonce")},
+			Content: vault.Blob{Ciphertext: []byte("body"), Nonce: []byte("nonce")},
+		}},
+	}
+
+	rec := doJSON(t, newTestRouter(t, service), http.MethodGet, "/api/v1/vaults/1/sync", nil, nil)
+
+	var body handler.SyncResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	// The delta is the cheap tier: bodies are fetched in bulk afterwards, so a first sync
+	// of a large vault is not one enormous response.
+	if len(body.Files) != 1 || body.Files[0].Content != nil {
+		t.Fatalf("delta carried a note body: %s", rec.Body)
+	}
+
+	if body.Purged.Folders == nil || body.Purged.Files == nil {
+		t.Fatalf("purged lists must be present, got %s", rec.Body)
 	}
 }
 

@@ -303,18 +303,47 @@ func (r *VaultRepository) SetFolderDeleted(
 }
 
 // PurgeFolder destroys the subtree for good. The ON DELETE CASCADE on parent_id and
-// folder_id takes the descendants and their notes with it.
+// folder_id takes the descendants and their notes with it, so the tombstones have to be
+// written first: after the delete there is nothing left to enumerate.
 func (r *VaultRepository) PurgeFolder(ctx context.Context, folderID int64) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM folders WHERE id = $1`, folderID)
-	if err != nil {
-		return fmt.Errorf("purge folder: %w", err)
-	}
+	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+		vaultID, err := folderVaultTx(ctx, tx, folderID)
+		if err != nil {
+			return err
+		}
 
-	if tag.RowsAffected() == 0 {
-		return vault.ErrNotFound
-	}
+		seq, err := nextSeq(ctx, tx, vaultID)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		const tombstones = `
+			WITH RECURSIVE subtree AS (
+			    SELECT id FROM folders WHERE id = $1
+			    UNION ALL
+			    SELECT c.id FROM folders c JOIN subtree s ON c.parent_id = s.id
+			)
+			INSERT INTO purged_entities (vault_id, entity_type, entity_id, purged_seq)
+			SELECT $2, 'folder', id, $3 FROM subtree
+			UNION ALL
+			SELECT $2, 'file', id, $3 FROM files WHERE folder_id IN (SELECT id FROM subtree)
+			ON CONFLICT (entity_type, entity_id) DO UPDATE SET purged_seq = EXCLUDED.purged_seq`
+
+		if _, err := tx.Exec(ctx, tombstones, folderID, vaultID, seq); err != nil {
+			return fmt.Errorf("record purged subtree: %w", err)
+		}
+
+		tag, err := tx.Exec(ctx, `DELETE FROM folders WHERE id = $1`, folderID)
+		if err != nil {
+			return fmt.Errorf("purge folder: %w", err)
+		}
+
+		if tag.RowsAffected() == 0 {
+			return vault.ErrNotFound
+		}
+
+		return nil
+	})
 }
 
 func (r *VaultRepository) folderVault(ctx context.Context, folderID int64) (int64, error) {

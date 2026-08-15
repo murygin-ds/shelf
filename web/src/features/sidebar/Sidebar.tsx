@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import type { FolderNode, NoteNode } from '@/api/workspace';
+import { allTags } from '@/lib/search';
 import { useSession } from '@/store/session';
 import { treeRows, useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
@@ -10,14 +11,18 @@ import styles from './sidebar.module.css';
 
 const INDENT = 13;
 
-export function Sidebar() {
+export function Sidebar({ onOpenPalette }: { onOpenPalette: () => void }) {
   const { user } = useSession();
   const {
     vaults,
     vaultId,
     tree,
+    index,
+    view,
     expanded,
     open,
+    setView,
+    setQuery,
     toggleFolder,
     addFolder,
     addNote,
@@ -31,6 +36,7 @@ export function Sidebar() {
 
   const vault = vaults.find((v) => v.id === vaultId);
   const rows = treeRows(tree, expanded);
+  const tags = useMemo(() => allTags(index).slice(0, 8), [index]);
   const initials = (user?.display_name ?? '?')
     .split(/\s+/)
     .slice(0, 2)
@@ -46,7 +52,7 @@ export function Sidebar() {
   return (
     <div className={styles.sidebar}>
       <div className={styles.search}>
-        <button type="button" className={styles.searchButton} disabled title="Local search lands with the sync engine">
+        <button type="button" className={styles.searchButton} onClick={onOpenPalette}>
           <Icon name="search" />
           <span className={styles.searchLabel}>Quick find</span>
           <span className={styles.shortcut}>⌘K</span>
@@ -54,10 +60,24 @@ export function Sidebar() {
       </div>
 
       <div className={styles.scroll}>
-        <button type="button" className={`${styles.navItem} ${styles.navItemActive}`}>
+        <button
+          type="button"
+          className={`${styles.navItem} ${view === 'editor' ? styles.navItemActive : ''}`}
+          onClick={() => setView('editor')}
+        >
           <Icon name="doc" style={{ flex: 'none', opacity: 0.8 }} />
           <span className={styles.navLabel}>Notes</span>
           <span className={styles.navCount}>{tree.notes.length}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`${styles.navItem} ${view === 'search' ? styles.navItemActive : ''}`}
+          onClick={() => setView('search')}
+        >
+          <Icon name="search" style={{ flex: 'none', opacity: 0.8 }} />
+          <span className={styles.navLabel}>Search</span>
+          <span className={styles.navCount}>{index.length}</span>
         </button>
 
         <div className={styles.sectionHead}>
@@ -208,6 +228,26 @@ export function Sidebar() {
             </div>
           );
         })}
+
+        {tags.length ? (
+          <>
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionTitle}>TAGS</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '0 6px' }}>
+              {tags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  className={styles.facet}
+                  onClick={() => setQuery(`#${tag}`)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
 
       <div className={styles.footer}>

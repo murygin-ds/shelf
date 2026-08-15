@@ -463,6 +463,8 @@ definitions:
     type: object
   vault.FileResponse:
     properties:
+      client_id:
+        type: string
       content:
         items:
           format: byte
@@ -536,6 +538,8 @@ definitions:
     type: object
   vault.FolderResponse:
     properties:
+      client_id:
+        type: string
       created_at:
         type: string
       deleted_at:
@@ -600,6 +604,8 @@ definitions:
           format: byte
           type: integer
         type: array
+      scope_client_id:
+        type: string
       scope_id:
         example: 1
         type: integer
@@ -625,8 +631,21 @@ definitions:
           $ref: '#/definitions/vault.KeyGrantResponse'
         type: array
     type: object
+  vault.PurgedResponse:
+    properties:
+      files:
+        items:
+          type: integer
+        type: array
+      folders:
+        items:
+          type: integer
+        type: array
+    type: object
   vault.ScopeResponse:
     properties:
+      client_id:
+        type: string
       grant_count:
         example: 6
         type: integer
@@ -652,6 +671,31 @@ definitions:
           $ref: '#/definitions/vault.ScopeResponse'
         type: array
     type: object
+  vault.SyncResponse:
+    properties:
+      cursor:
+        example: 4821
+        type: integer
+      files:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+      folders:
+        items:
+          $ref: '#/definitions/vault.FolderResponse'
+        type: array
+      full_resync_required:
+        description: |-
+          FullResync tells the client to drop its cached copy of this vault. It is the only
+          way it learns to forget plaintext it cached before losing access to it.
+        example: false
+        type: boolean
+      has_more:
+        example: false
+        type: boolean
+      purged:
+        $ref: '#/definitions/vault.PurgedResponse'
+    type: object
   vault.TreeResponse:
     properties:
       files:
@@ -668,6 +712,8 @@ definitions:
       change_seq:
         example: 42
         type: integer
+      client_id:
+        type: string
       created_at:
         type: string
       id:
@@ -694,6 +740,8 @@ definitions:
       change_seq:
         example: 42
         type: integer
+      client_id:
+        type: string
       created_at:
         type: string
       id:
@@ -753,6 +801,8 @@ definitions:
     type: object
   vault.createFileRequest:
     properties:
+      client_id:
+        type: string
       content:
         items:
           format: byte
@@ -791,6 +841,7 @@ definitions:
         minItems: 12
         type: array
     required:
+    - client_id
     - content
     - content_nonce
     - key_scope_id
@@ -800,6 +851,8 @@ definitions:
     type: object
   vault.createFolderRequest:
     properties:
+      client_id:
+        type: string
       key_scope_id:
         description: |-
           KeyScopeID and KeyVersion declare which key the blobs were sealed under. The server
@@ -831,6 +884,7 @@ definitions:
         minimum: 0
         type: integer
     required:
+    - client_id
     - key_scope_id
     - key_version
     - meta
@@ -838,6 +892,11 @@ definitions:
     type: object
   vault.createVaultRequest:
     properties:
+      client_id:
+        description: |-
+          ClientID is chosen before the row exists, so the metadata can be sealed against a
+          stable identity in one round trip.
+        type: string
       key_nonce:
         items:
           format: byte
@@ -859,6 +918,10 @@ definitions:
         maxItems: 32
         minItems: 12
         type: array
+      scope_client_id:
+        description: ScopeClientID names the vault's own key scope, which the key
+          below is sealed against.
+        type: string
       wrap_algorithm:
         description: Algorithm names the sealed-box format, so a later format can
           be told apart.
@@ -874,9 +937,11 @@ definitions:
         minItems: 32
         type: array
     required:
+    - client_id
     - key_nonce
     - meta
     - meta_nonce
+    - scope_client_id
     - wrapped_key
     type: object
   vault.moveRequest:
@@ -1813,6 +1878,34 @@ paths:
       security:
       - BearerAuth: []
       summary: List key scopes
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/sync:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: change sequence the client last stored
+        in: query
+        name: cursor
+        type: integer
+      - description: soft page size
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.SyncResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the change feed
       tags:
       - vaults
   /api/v1/vaults/{id}/trash:
