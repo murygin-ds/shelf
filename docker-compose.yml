@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: shelf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SHELF_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${SHELF_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${SHELF_POSTGRES_DATABASE:-shelf}
+    ports:
+      - "${SHELF_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${SHELF_POSTGRES_USER:-postgres} -d ${SHELF_POSTGRES_DATABASE:-shelf}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    profiles: [ "app" ]
+    build:
+      context: .
+    container_name: shelf-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SHELF_POSTGRES_HOST: postgres
+      SHELF_POSTGRES_PORT: 5432
+      SHELF_POSTGRES_USER: ${SHELF_POSTGRES_USER:-postgres}
+      SHELF_POSTGRES_PASSWORD: ${SHELF_POSTGRES_PASSWORD:-postgres}
+      SHELF_POSTGRES_DATABASE: ${SHELF_POSTGRES_DATABASE:-shelf}
+      SHELF_APP_ENV: ${SHELF_APP_ENV:-local}
+      SHELF_LOG_FORMAT: json
+    ports:
+      - "${SHELF_HTTP_PORT:-8080}:8080"
+
+volumes:
+  postgres-data:

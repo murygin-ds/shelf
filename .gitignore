@@ -1,0 +1,20 @@
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Build
+/bin/
+*.exe
+*.test
+
+# Profile
+coverage.out
+coverage.html
+*.prof
+
+# IDE
+.idea/
+.vscode/
+.DS_Store

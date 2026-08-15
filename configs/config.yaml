@@ -1,0 +1,57 @@
+# Base service configuration.
+# Any value is overridden by an environment variable: http.read_timeout -> SHELF_HTTP_READ_TIMEOUT.
+# Secrets do not belong here — keep them in .env / environment variables.
+
+app:
+  name: shelf-backend
+  env: local # local | dev | stage | prod
+
+http:
+  host: 0.0.0.0
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+  allowed_origins:
+    - "*"
+  trusted_proxies: [ ] # for example: ["10.0.0.0/8"] behind nginx/ingress
+  swagger_enabled: true
+
+postgres:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: "" # SHELF_POSTGRES_PASSWORD
+  database: shelf
+  ssl_mode: disable
+  max_conns: 10
+  min_conns: 2
+  max_conn_lifetime: 30m
+  max_conn_idle_time: 5m
+  connect_timeout: 5s
+
+auth:
+  secret: "" # SHELF_AUTH_SECRET, at least 32 characters; required everywhere except local
+  issuer: shelf
+  access_ttl: 15m
+  refresh_ttl: 720h
+  recovery_ttl: 10m # window between the recovery code check and the password change
+  # server-side Argon2id on top of the auth_hash sent by the client
+  argon2:
+    memory: 65536 # KiB
+    iterations: 3
+    parallelism: 2
+    salt_length: 16
+    key_length: 32
+  # limits password and recovery code guessing; a successful request does not spend an attempt
+  rate_limit:
+    enabled: true
+    login_ip: { limit: 10, window: 5m }
+    login_account: { limit: 20, window: 15m }
+    recovery_ip: { limit: 5, window: 15m }
+    recovery_account: { limit: 10, window: 1h }
+
+log:
+  level: debug # debug | info | warn | error
+  format: console # console | json
