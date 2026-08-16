@@ -398,3 +398,29 @@ func groupMembers(in []sealedGroupKeyRequest) []access.SealedGroupKey {
 
 	return out
 }
+
+// GroupScopeResponse is one key a group holds. A rotation has to re-seal every one of them,
+// including the versions only history is still encrypted under.
+type GroupScopeResponse struct {
+	ScopeID       int64  `json:"scope_id"        example:"3"`
+	ScopeClientID string `json:"scope_client_id"`
+	KeyVersion    int32  `json:"key_version"     example:"1"`
+}
+
+type GroupScopesResponse struct {
+	Scopes []GroupScopeResponse `json:"scopes"`
+}
+
+func groupScopesResponse(scopes []access.GroupScope) GroupScopesResponse {
+	out := GroupScopesResponse{Scopes: make([]GroupScopeResponse, 0, len(scopes))}
+
+	for _, scope := range scopes {
+		out.Scopes = append(out.Scopes, GroupScopeResponse{
+			ScopeID:       scope.ScopeID,
+			ScopeClientID: scope.ScopeClientID,
+			KeyVersion:    scope.KeyVersion,
+		})
+	}
+
+	return out
+}

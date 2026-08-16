@@ -130,11 +130,17 @@ func (r *AccessRepository) RemoveMember(ctx context.Context, vaultID, userID, ac
 	var scopes []int64
 
 	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+		// Both paths to a scope count. A member who read a folder only through a group still
+		// holds that group's private key, and reporting nothing to rotate would make the
+		// removal look complete when it is not.
 		const held = `
 			SELECT DISTINCT kg.scope_id
 			  FROM key_grants kg
 			  JOIN key_scopes ks ON ks.id = kg.scope_id
-			 WHERE ks.vault_id = $1 AND kg.subject_type = 'user' AND kg.subject_id = $2`
+			 WHERE ks.vault_id = $1
+			   AND ((kg.subject_type = 'user' AND kg.subject_id = $2)
+			     OR (kg.subject_type = 'group'
+			         AND kg.subject_id IN (SELECT group_id FROM group_members WHERE user_id = $2)))`
 
 		rows, err := tx.Query(ctx, held, vaultID, userID)
 		if err != nil {
@@ -165,6 +171,17 @@ func (r *AccessRepository) RemoveMember(ctx context.Context, vaultID, userID, ac
 
 		if _, err := tx.Exec(ctx, dropKeys, vaultID, userID); err != nil {
 			return fmt.Errorf("delete key grants: %w", err)
+		}
+
+		// Their copy of every group key goes too. Leaving the row would keep handing them a
+		// working group key on the next /group-keys read, membership or no membership.
+		const dropGroups = `
+			DELETE FROM group_members gm
+			 USING groups g
+			 WHERE g.id = gm.group_id AND g.vault_id = $1 AND gm.user_id = $2`
+
+		if _, err := tx.Exec(ctx, dropGroups, vaultID, userID); err != nil {
+			return fmt.Errorf("delete group memberships: %w", err)
 		}
 
 		const dropGrants = `

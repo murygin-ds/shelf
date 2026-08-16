@@ -217,6 +217,17 @@ func rekeySubjects(
 		 WHERE ks.id = $1 AND kg.subject_type = 'user'
 		 ORDER BY u.id`
 
+	// Groups holding the current key keep it: the scope key is sealed to the group once, and
+	// dropping it would leave every member reaching the node through that group looking at a
+	// row they cannot open.
+	const groupHolders = `
+		SELECT g.id, g.client_id::TEXT, g.public_key
+		  FROM key_grants kg
+		  JOIN key_scopes ks ON ks.id = kg.scope_id AND kg.key_version = ks.key_version
+		  JOIN groups g ON g.id = kg.subject_id
+		 WHERE ks.id = $1 AND kg.subject_type = 'group'
+		 ORDER BY g.id`
+
 	// Everyone whose effective permission on this node still allows reading it. A denial
 	// set beforehand is therefore honoured here, which is exactly what turns a
 	// server-enforced denial into a cryptographic one.
@@ -260,6 +271,29 @@ func rekeySubjects(
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate rekey subjects: %w", err)
+	}
+
+	// Only a rotation can have group holders: a scope being created has none yet.
+	if !creates {
+		groups, err := tx.Query(ctx, groupHolders, existingScope)
+		if err != nil {
+			return nil, fmt.Errorf("select rekey groups: %w", err)
+		}
+		defer groups.Close()
+
+		for groups.Next() {
+			var s vault.RekeySubject
+
+			if err := groups.Scan(&s.GroupID, &s.GroupClientID, &s.PublicKey); err != nil {
+				return nil, fmt.Errorf("scan rekey group: %w", err)
+			}
+
+			subjects = append(subjects, s)
+		}
+
+		if err := groups.Err(); err != nil {
+			return nil, fmt.Errorf("iterate rekey groups: %w", err)
+		}
 	}
 
 	return subjects, nil

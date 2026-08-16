@@ -101,6 +101,23 @@ export function groupKeys(vaultId: number): Promise<{ keys: GroupKeyDto[] }> {
   return api.get<{ keys: GroupKeyDto[] }>(`/vaults/${vaultId}/group-keys`);
 }
 
+export interface GroupScopeDto {
+  scope_id: number;
+  scope_client_id: string;
+  key_version: number;
+}
+
+/**
+ * Every key the group holds, version by version.
+ *
+ * A rotation replaces all of them, and only the server knows the full set: a scope that has
+ * itself been re-keyed leaves the group holding the old version as well as the new, because
+ * revisions and trashed rows are still sealed under the old one.
+ */
+export function groupScopes(groupId: number): Promise<{ scopes: GroupScopeDto[] }> {
+  return api.get<{ scopes: GroupScopeDto[] }>(`/groups/${groupId}/scopes`);
+}
+
 /**
  * Opens a group.
  *
@@ -147,7 +164,6 @@ export async function setGroupMembers(
   members: MemberDto[],
   identity: Identity,
   keyring: ScopeKeyring,
-  scopes: Array<{ id: number; clientId: string; version: number }>,
 ): Promise<GroupDto> {
   const removing = group.members.some(
     (existing) => !members.some((member) => member.user_id === existing.user_id),
@@ -164,23 +180,31 @@ export async function setGroupMembers(
   const version = group.keyVersion + 1;
   const replacement = await generateGroupKeypair();
 
-  // Every scope the group could read is sealed again to the new key. Anything missed here
-  // becomes a folder the group can see in the tree and cannot open.
+  // The list comes from the server, not from what this reader can see: a manager denied one
+  // folder would otherwise miss it, and a scope that has been re-keyed is held at more than
+  // one version. Anything missed is refused rather than silently dropped.
+  const { scopes } = await groupScopes(group.id);
   const keyGrants = [];
 
   for (const scope of scopes) {
-    const scopeKey = keyring.get(scope.id, scope.version);
-    if (!scopeKey) continue;
+    const scopeKey = keyring.get(scope.scope_id, scope.key_version);
+
+    if (!scopeKey) {
+      throw new Error(
+        'You hold no key for something this group can read, so its key cannot be replaced. ' +
+          'Ask somebody with access to that folder to remove the member.',
+      );
+    }
 
     const box = await seal(
       replacement.publicRaw,
       await exportKey(scopeKey),
-      sealInfo(scope.clientId, scope.version),
+      sealInfo(scope.scope_client_id, scope.key_version),
     );
 
     keyGrants.push({
-      scope_id: scope.id,
-      key_version: scope.version,
+      scope_id: scope.scope_id,
+      key_version: scope.key_version,
       wrapped_key: bytesToB64(box.blob),
       nonce: bytesToB64(box.nonce),
     });

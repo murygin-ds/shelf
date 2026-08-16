@@ -89,6 +89,9 @@ func (s *stubService) SetGroupMembers(_ context.Context, _ int64, in domain.Grou
 func (s *stubService) GroupKeys(context.Context, int64, int64) ([]domain.GroupKey, error) {
 	return s.groupKeys, s.err
 }
+func (s *stubService) GroupScopes(context.Context, int64, int64) ([]domain.GroupScope, error) {
+	return nil, s.err
+}
 func (s *stubService) Challenge(context.Context, []byte) (*domain.Challenge, error) {
 	return s.challenge, s.err
 }

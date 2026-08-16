@@ -19,11 +19,13 @@ import { fetchBodies, type FolderNode, type NoteNode, type Vault } from './works
 const BATCH = 200;
 
 export interface RekeySubjectDto {
-  user_id: number;
-  login: string;
-  display_name: string;
+  user_id?: number;
+  login?: string;
+  display_name?: string;
+  group_id?: number;
+  group_client_id?: string;
   public_key: B64;
-  fingerprint: string;
+  fingerprint?: string;
 }
 
 export interface RekeyPlanDto {
@@ -118,17 +120,20 @@ export async function runRekey(
   const keyGrants = [];
 
   for (const subject of plan.subjects) {
+    // A person's public key travels in the two-part identity blob; a group's is the raw
+    // point on its own, because a group has no signing half to carry.
+    const isGroup = Boolean(subject.group_id);
+    const recipient = isGroup
+      ? b64ToBytes(subject.public_key)
+      : splitPublicBlob(b64ToBytes(subject.public_key)).seal;
+
     // The scope is named inside the seal, so a key meant for one scope cannot be replayed
     // into another.
-    const box = await seal(
-      splitPublicBlob(b64ToBytes(subject.public_key)).seal,
-      raw,
-      sealInfo(plan.scope_client_id, plan.to_version),
-    );
+    const box = await seal(recipient, raw, sealInfo(plan.scope_client_id, plan.to_version));
 
     keyGrants.push({
-      subject_type: 'user',
-      subject_id: subject.user_id,
+      subject_type: isGroup ? 'group' : 'user',
+      subject_id: isGroup ? subject.group_id : subject.user_id,
       wrapped_key: bytesToB64(box.blob),
       nonce: bytesToB64(box.nonce),
     });

@@ -1380,6 +1380,39 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/groups/{id}/scopes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Read the keys a group holds",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupScopesResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/invites/lookup": {
             "post": {
                 "consumes": [
@@ -3156,6 +3189,33 @@ const docTemplate = `{
                 }
             }
         },
+        "access.GroupScopeResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 3
+                }
+            }
+        },
+        "access.GroupScopesResponse": {
+            "type": "object",
+            "properties": {
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupScopeResponse"
+                    }
+                }
+            }
+        },
         "access.GroupsResponse": {
             "type": "object",
             "properties": {
@@ -4852,6 +4912,13 @@ const docTemplate = `{
                 "fingerprint": {
                     "type": "string",
                     "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "group_client_id": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer",
+                    "example": 3
                 },
                 "login": {
                     "type": "string",

@@ -75,8 +75,8 @@ let db: Promise<IDBPDatabase<Schema>> | null = null;
 const OPEN_TIMEOUT_MS = 3000;
 
 class CacheUnavailable extends Error {
-  constructor() {
-    super('the local cache is not available in this browser');
+  constructor(message = 'the local cache is not available in this browser') {
+    super(message);
     this.name = 'CacheUnavailable';
   }
 }
@@ -84,6 +84,17 @@ class CacheUnavailable extends Error {
 function open(): Promise<IDBPDatabase<Schema>> {
   db ??= Promise.race([
     openDB<Schema>(NAME, VERSION, {
+      blocked() {
+        // Another tab holds the old schema open. The upgrade cannot start until it closes,
+        // and waiting silently would look like the app had simply stopped.
+        throw new CacheUnavailable('another tab is holding an older version of this app open');
+      },
+      blocking(_current, _blocked, event) {
+        // This tab is the one in the way. Closing frees the newer one rather than leaving
+        // both stuck; this tab will reopen on its next read.
+        (event.target as IDBPDatabase<Schema>).close();
+        db = null;
+      },
       upgrade(database, from) {
         if (from < 1) {
           for (const store of ['folders', 'notes', 'bodies'] as const) {
@@ -186,9 +197,11 @@ export async function readBodies(vaultId: number): Promise<CachedBody[]> {
  */
 export async function dropVault(vaultId: number): Promise<void> {
   const database = await open();
-  const tx = database.transaction(['folders', 'notes', 'bodies', 'cursors'], 'readwrite');
+  // The outbox goes with the rest: a full resync means this device's view was wrong, and
+  // replaying a write sealed against that view would put the wrong body back.
+  const tx = database.transaction(['folders', 'notes', 'bodies', 'cursors', 'outbox'], 'readwrite');
 
-  for (const store of ['folders', 'notes', 'bodies'] as const) {
+  for (const store of ['folders', 'notes', 'bodies', 'outbox'] as const) {
     const keys = await tx.objectStore(store).index('vault').getAllKeys(vaultId);
     for (const key of keys) await tx.objectStore(store).delete(key);
   }
@@ -200,13 +213,17 @@ export async function dropVault(vaultId: number): Promise<void> {
 /** Wipes the whole cache, on sign-out or when the session is refused. */
 export async function dropAll(): Promise<void> {
   const database = await open();
-  const tx = database.transaction(['folders', 'notes', 'bodies', 'cursors'], 'readwrite');
+  // Signing out leaves nothing behind, the outbox included: it holds ciphertext, but it is
+  // ciphertext this account wrote and the next person at this browser has no business
+  // finding it.
+  const tx = database.transaction(['folders', 'notes', 'bodies', 'cursors', 'outbox'], 'readwrite');
 
   await Promise.all([
     tx.objectStore('folders').clear(),
     tx.objectStore('notes').clear(),
     tx.objectStore('bodies').clear(),
     tx.objectStore('cursors').clear(),
+    tx.objectStore('outbox').clear(),
   ]);
 
   await tx.done;

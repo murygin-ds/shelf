@@ -164,15 +164,19 @@ func TestTheMapIsBounded(t *testing.T) {
 		}
 	}
 
-	// At the cap a new key is refused rather than admitted by forgetting an old one:
-	// resetting would hand an attacker a way to clear everybody's counters.
-	if ok, retryAfter := limiter.Allow("one-too-many"); ok || retryAfter == 0 {
-		t.Fatalf("a key past the cap was allowed (retryAfter %v)", retryAfter)
+	// Past the cap a new key is still served: refusing would deny every address not already
+	// in the map, which is a lockout of the whole service for the price of one spray.
+	if ok, _ := limiter.Allow("one-too-many"); !ok {
+		t.Fatal("a key past the cap was refused — that is a free lockout")
 	}
 
-	// A key already known still works, so an attack on new keys does not lock out the
-	// people already using the service.
-	if ok, _ := limiter.Allow("key-0"); !ok {
-		t.Fatal("a known key was refused because the map was full")
+	// And the map stayed bounded rather than growing to hold it.
+	if size := limiter.size(); size > 16 {
+		t.Fatalf("map holds %d buckets, want at most the cap", size)
+	}
+
+	// A key already known still works.
+	if ok, _ := limiter.Allow("key-1"); !ok {
+		t.Fatal("a known key was refused")
 	}
 }

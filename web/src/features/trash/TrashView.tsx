@@ -13,13 +13,24 @@ import styles from './trash.module.css';
  * deleted note on every reconnect.
  */
 export function TrashView() {
-  const { trashed, loadTrash, restore, purge } = useWorkspace();
+  const { vaultId, trashed, loadTrash, restore, purge } = useWorkspace();
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // An armed row that outlives the list it was armed in could destroy whatever took its
+  // place, so the arming expires on its own.
   useEffect(() => {
+    if (!confirming) return;
+
+    const timer = window.setTimeout(() => setConfirming(null), 10_000);
+
+    return () => window.clearTimeout(timer);
+  }, [confirming]);
+
+  useEffect(() => {
+    setConfirming(null);
     void loadTrash();
-  }, [loadTrash]);
+  }, [vaultId, loadTrash]);
 
   const rows = [
     ...trashed.folders.map((folder) => ({ kind: 'folder' as const, node: folder })),

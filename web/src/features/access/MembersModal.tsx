@@ -347,7 +347,7 @@ function describe(cause: unknown): string {
  * scope sealed to it. The version number is how that shows up.
  */
 function Groups({ members }: { members: collab.MemberDto[] }) {
-  const { vaultId, vaults, keyring, tree } = useWorkspace();
+  const { vaultId, vaults, keyring } = useWorkspace();
   const identity = useSession((state) => state.identity);
 
   const [groups, setGroups] = useState<groupsApi.Group[]>([]);
@@ -372,29 +372,6 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultId, keyring]);
-
-  // Every scope the caller holds a key for, which is what a group rotation has to re-seal.
-  const scopes = () => {
-    const seen = new Map<number, { id: number; clientId: string; version: number }>();
-
-    if (vault) {
-      seen.set(vault.keyScopeId, {
-        id: vault.keyScopeId,
-        clientId: vault.keyScopeClientId,
-        version: vault.keyVersion,
-      });
-    }
-
-    for (const node of [...tree.folders, ...tree.notes]) {
-      seen.set(node.keyScopeId, {
-        id: node.keyScopeId,
-        clientId: node.keyScopeClientId,
-        version: node.keyVersion,
-      });
-    }
-
-    return [...seen.values()];
-  };
 
   const create = async () => {
     if (vaultId === null || !keyring || !scope) return;
@@ -432,7 +409,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
     setError(null);
 
     try {
-      await groupsApi.setGroupMembers(group, next, identity, keyring, scopes());
+      await groupsApi.setGroupMembers(group, next, identity, keyring);
       await reload();
     } catch (cause) {
       setError(describe(cause));

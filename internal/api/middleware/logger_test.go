@@ -14,7 +14,12 @@ func TestSecretsAreKeptOutOfTheLog(t *testing.T) {
 		"cursor=42&limit=500":    "cursor=42&limit=500",
 		"login=a&cursor=9":       "cursor=9&login=[redacted]",
 		"":                       "",
-		"%zz":                    "?",
+		// A bad escape marks the line rather than erasing it: gin serves the request from
+		// whatever it could parse, so the log has to describe that request.
+		"%zz":         "[malformed]",
+		"login=a&%zz": "[malformed]&login=[redacted]",
+		// Re-encoded on the way out, or a decoded value could forge parameters in the log.
+		"cursor=a%26login%3Dbob": "cursor=a%26login%3Dbob",
 		"Login=marta":            "Login=[redacted]",
 	}
 

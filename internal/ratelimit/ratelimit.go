@@ -3,6 +3,7 @@ package ratelimit
 
 import (
 	"math"
+	"slices"
 	"sync"
 	"time"
 )
@@ -27,13 +28,21 @@ type Limiter struct {
 // MaxKeys bounds the map.
 //
 // Several of these limiters are keyed by something the caller chooses — a login, an invite
-// code — so a spray of distinct values would otherwise allocate a bucket apiece and grow
-// the map without limit. At the cap the limiter refuses new keys rather than forgetting old
-// ones: resetting would hand an attacker a way to clear everybody's counters, and this is a
-// security control, so it fails closed.
+// code, and behind a trusted proxy the client address itself — so a spray of distinct values
+// would otherwise allocate a bucket apiece and grow without limit.
+//
+// At the cap the oldest buckets are evicted rather than new keys refused. Refusing is the
+// tempting choice for a security control, but here it fails the wrong way: filling the map
+// would deny every address and every account not already in it, which is a lockout of the
+// whole service for the price of one spray. Eviction costs an attacker a full sweep of the
+// map to clear one counter and never grants access to anything.
 //
 // A hundred thousand keys is far past any real deployment and costs a few megabytes.
 const MaxKeys = 100_000
+
+// evictBatch is how much room one eviction makes. Dropping a slice at a time keeps the
+// O(n) sweep rare instead of running it on every request once the map is full.
+const evictBatch = MaxKeys / 10
 
 type bucket struct {
 	tokens float64
@@ -66,14 +75,7 @@ func (l *Limiter) Allow(key string) (bool, time.Duration) {
 	l.cleanup(now)
 
 	if _, known := l.buckets[key]; !known && len(l.buckets) >= l.maxKeys {
-		// One more sweep before giving up: the gate above only lets cleanup run once per
-		// window, and being at the cap is reason enough to run it again.
-		l.lastCleanup = time.Time{}
-		l.cleanup(now)
-
-		if len(l.buckets) >= l.maxKeys {
-			return false, l.idleTTL
-		}
+		l.evict(now)
 	}
 
 	b := l.bucket(key, now)
@@ -84,6 +86,14 @@ func (l *Limiter) Allow(key string) (bool, time.Duration) {
 	b.tokens--
 
 	return true, 0
+}
+
+// size reports how many buckets are held. It exists for tests.
+func (l *Limiter) size() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return len(l.buckets)
 }
 
 // SetMaxKeys lowers the cap. It exists for tests: filling a hundred thousand buckets to
@@ -138,6 +148,40 @@ func (l *Limiter) cleanup(now time.Time) {
 
 	for key, b := range l.buckets {
 		if b.tokens+now.Sub(b.seen).Seconds()*l.refillRate >= l.burst {
+			delete(l.buckets, key)
+		}
+	}
+}
+
+// evict makes room by dropping the least recently seen buckets.
+//
+// It runs one sweep and takes a batch, so the cost is amortised rather than paid on every
+// request once the map is full. The buckets it drops are the ones whose owners have not
+// been seen for longest, which are also the ones closest to having refilled anyway.
+func (l *Limiter) evict(now time.Time) {
+	// A cheap first pass: anything already fully refilled is indistinguishable from a new
+	// bucket, so dropping it costs nothing at all.
+	l.lastCleanup = time.Time{}
+	l.cleanup(now)
+
+	room := l.maxKeys - len(l.buckets)
+	if room > 0 {
+		return
+	}
+
+	// Otherwise take the oldest. One pass finds the cutoff, a second applies it: sorting
+	// a hundred thousand keys on a request path would cost more than the memory it saves.
+	oldest := make([]time.Time, 0, len(l.buckets))
+	for _, b := range l.buckets {
+		oldest = append(oldest, b.seen)
+	}
+
+	slices.SortFunc(oldest, func(a, b time.Time) int { return a.Compare(b) })
+
+	cutoff := oldest[min(evictBatch, len(oldest)-1)]
+
+	for key, b := range l.buckets {
+		if !b.seen.After(cutoff) {
 			delete(l.buckets, key)
 		}
 	}

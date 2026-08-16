@@ -47,6 +47,13 @@ type GroupMember struct {
 	Nonce      []byte
 }
 
+// GroupScope is one key a group holds: which scope, and at which version.
+type GroupScope struct {
+	ScopeID       int64
+	ScopeClientID string
+	KeyVersion    int32
+}
+
 // GroupKey is what a member needs to open anything sealed to a group they belong to.
 type GroupKey struct {
 	GroupID       int64
@@ -105,6 +112,9 @@ type GroupRepository interface {
 	SetGroupMembers(ctx context.Context, in GroupMembership, actorID int64) (*Group, error)
 	// GroupKeys returns the caller's copy of the private key of every group they belong to.
 	GroupKeys(ctx context.Context, vaultID, userID int64) ([]GroupKey, error)
+	// GroupScopes lists every scope key the group holds, version by version. A rotation has
+	// to re-seal all of them, and only the server knows the full set.
+	GroupScopes(ctx context.Context, groupID int64) ([]GroupScope, error)
 }
 
 func (s *Service) Groups(ctx context.Context, actorID, vaultID int64) ([]Group, error) {
@@ -208,6 +218,20 @@ func (s *Service) SetGroupMembers(ctx context.Context, actorID int64, in GroupMe
 
 // GroupKeys hands the caller their copy of the private key of every group they are in.
 // Without it the group-sealed scope keys in their keyring are bytes they cannot open.
+// GroupScopes tells a client what a rotation of this group will have to re-seal.
+func (s *Service) GroupScopes(ctx context.Context, actorID, groupID int64) ([]GroupScope, error) {
+	if _, err := s.groupFor(ctx, actorID, groupID); err != nil {
+		return nil, err
+	}
+
+	scopes, err := s.groups.GroupScopes(ctx, groupID)
+	if err != nil {
+		return nil, translate(err, "read group scopes")
+	}
+
+	return scopes, nil
+}
+
 func (s *Service) GroupKeys(ctx context.Context, actorID, vaultID int64) ([]GroupKey, error) {
 	if _, err := s.member(ctx, vaultID, actorID); err != nil {
 		return nil, err

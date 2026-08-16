@@ -158,6 +158,24 @@ definitions:
         example: 12
         type: integer
     type: object
+  access.GroupScopeResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      scope_client_id:
+        type: string
+      scope_id:
+        example: 3
+        type: integer
+    type: object
+  access.GroupScopesResponse:
+    properties:
+      scopes:
+        items:
+          $ref: '#/definitions/access.GroupScopeResponse'
+        type: array
+    type: object
   access.GroupsResponse:
     properties:
       groups:
@@ -1404,6 +1422,11 @@ definitions:
       fingerprint:
         example: A1B2 C3D4 E5F6 G7H8
         type: string
+      group_client_id:
+        type: string
+      group_id:
+        example: 3
+        type: integer
       login:
         example: marta@acme.dev
         type: string
@@ -2976,6 +2999,26 @@ paths:
       security:
       - BearerAuth: []
       summary: Replace a group's members
+      tags:
+      - access
+  /api/v1/groups/{id}/scopes:
+    get:
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupScopesResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the keys a group holds
       tags:
       - access
   /api/v1/invites/lookup:

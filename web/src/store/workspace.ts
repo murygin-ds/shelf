@@ -136,7 +136,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   selectVault: async (vaultId, identity) => {
-    set({ loading: true, vaultId, open: null, tree: emptyTree, index: [], error: null });
+    // Everything vault-shaped is cleared together. A trash list left over from the previous
+    // vault would offer Restore and Delete buttons wired to ids in a vault the reader has
+    // just left.
+    set({
+      loading: true,
+      vaultId,
+      open: null,
+      tabs: [],
+      tree: emptyTree,
+      trashed: emptyTree,
+      index: [],
+      error: null,
+    });
 
     try {
       const keyring = await ws.loadKeyring(vaultId, identity);
@@ -192,11 +204,26 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         expanded: pulled.resynced || get().expanded.size === 0 ? allOpen(pulled.folders) : get().expanded,
       });
 
-      // A note open in the editor may have been purged or trashed elsewhere.
+      // Every node the client is holding on to is re-projected from the delta rather than
+      // filtered by id. A note that was renamed, moved or re-keyed elsewhere leaves a
+      // snapshot here that names the wrong key scope — and a write sealed against it is
+      // refused by the server, so the note becomes unsavable with nothing on screen to say
+      // why.
       const open = get().open;
-      if (open && !tree.notes.some((note) => note.id === open.note.id)) set({ open: null });
 
-      set({ tabs: get().tabs.filter((tab) => tree.notes.some((note) => note.id === tab.id)) });
+      if (open) {
+        const fresh = tree.notes.find((note) => note.id === open.note.id);
+
+        // Purged or trashed elsewhere.
+        if (!fresh) set({ open: null });
+        else if (fresh !== open.note) set({ open: { ...open, note: fresh } });
+      }
+
+      set({
+        tabs: get()
+          .tabs.map((tab) => tree.notes.find((note) => note.id === tab.id))
+          .filter((tab): tab is ws.NoteNode => tab !== undefined),
+      });
 
       const hydrated = await sync.hydrate(
         vaultId,
@@ -370,13 +397,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // user has never seen, and nobody but a client can merge the two.
       const current = get().open;
 
-      if (cause instanceof ApiError && cause.is(ErrorCode.Conflict) && current) {
+      if (
+        cause instanceof ApiError &&
+        cause.is(ErrorCode.Conflict) &&
+        current &&
+        current.note.id === open.note.id
+      ) {
         set({ open: { ...current, conflict: true } });
       } else if (cause instanceof OfflineError && open.note.vaultId) {
         // The text is already sealed by the time the network fails, so what goes into the
         // outbox is ciphertext. Losing it here is what "offline" used to mean, and the
         // whole point of the queue is that it no longer does.
-        await queue(get, set, open, identity);
+        await queue(get, set, open.note.id, identity);
       } else {
         report(set, cause);
       }
@@ -466,10 +498,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   flushOutbox: async () => {
-    const { vaultId, queued } = get();
-    if (vaultId === null || queued === 0 || !navigator.onLine) return;
+    const { vaultId } = get();
+    if (vaultId === null || !navigator.onLine) return;
 
-    for (const write of await cache.outbox(vaultId)) {
+    // The queue is read rather than the counter: two tabs share one IndexedDB, and a write
+    // parked by the other one is just as much this vault's work.
+    const pending = await cache.outbox(vaultId);
+    if (pending.length === 0) return;
+
+    for (const write of pending) {
       try {
         const contentSeq = await ws.sendNote(write.id, write.payload, write.contentSeq);
 
@@ -481,13 +518,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }
       } catch (cause) {
         // A conflict means somebody wrote while this device was away, and nobody but a
-        // client can merge two ciphertexts. The queued copy is dropped rather than kept
-        // forever: it would be replayed on every reconnect and refused every time.
+        // client can merge two ciphertexts. Dropping the queued copy would lose work the
+        // user did offline and never see again, so it is kept — as a note of its own.
         if (cause instanceof ApiError && cause.is(ErrorCode.Conflict)) {
+          await rescue(get, set, write);
           await cache.dequeue(write.id);
 
           const open = get().open;
           if (open && open.note.id === write.id) set({ open: { ...open, conflict: true } });
+
+          continue;
+        }
+
+        // A note that was purged or that this account no longer reaches will refuse this
+        // write forever. Retrying it on every reconnect would be a queue that never drains.
+        if (cause instanceof ApiError && (cause.status === 404 || cause.status === 403)) {
+          await rescue(get, set, write);
+          await cache.dequeue(write.id);
 
           continue;
         }
@@ -554,7 +601,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (vaultId === null || !keyring) return;
 
     try {
-      set({ trashed: await ws.loadTree(vaultId, keyring, true) });
+      const trashed = await ws.loadTree(vaultId, keyring, true);
+
+      // The read took a round trip; if the reader changed vaults during it, this list
+      // belongs to the one they left.
+      if (get().vaultId === vaultId) set({ trashed });
     } catch (cause) {
       report(set, cause);
     }
@@ -642,14 +693,77 @@ function scopeOf(state: WorkspaceState, parentId: number | null): ws.Scope {
 
 // queue parks a body the network refused to take. It is sealed first, so the outbox holds
 // ciphertext like every other store here.
+/**
+ * Keeps a queued body the server will not take, as a note of its own.
+ *
+ * It is the only place that work can go: the server holds a version this device never saw,
+ * merging two ciphertexts is nobody's job, and silently dropping it would lose whatever was
+ * written offline with no trace that it existed.
+ */
+async function rescue(get: () => WorkspaceState, set: Setter, write: cache.Queued): Promise<void> {
+  const { keyring, vaultId, tree } = get();
+  if (!keyring || vaultId === null) return;
+
+  const note = tree.notes.find((candidate) => candidate.id === write.id);
+
+  // Without the note the additional data cannot be rebuilt, so the ciphertext cannot be
+  // opened. Say so rather than pretend the write landed.
+  if (!note) {
+    set({ error: 'A note written offline could not be restored: it no longer exists.' });
+    return;
+  }
+
+  try {
+    const body = await ws.openBody(
+      {
+        vault_id: note.vaultId,
+        client_id: note.clientId,
+        key_scope_id: write.payload.key_scope_id,
+        key_scope_client_id: note.keyScopeClientId,
+        key_version: write.payload.key_version,
+      },
+      write.payload.content,
+      write.payload.content_nonce,
+      keyring,
+    );
+
+    if (body === null) {
+      set({ error: 'A note written offline could not be restored: its key is gone.' });
+      return;
+    }
+
+    const copy = await ws.createNote(
+      vaultId,
+      note.folderId,
+      `${note.name} (offline copy)`,
+      scopeOf(get(), note.folderId),
+      keyring,
+    );
+
+    await ws.writeNote(copy, body, copy.contentSeq, keyring);
+
+    set({ error: `“${note.name}” changed while you were offline; your version was kept as a copy.` });
+  } catch (cause) {
+    report(set, cause);
+  }
+}
+
 async function queue(
   get: () => WorkspaceState,
   set: Setter,
-  open: OpenNote,
+  noteId: number,
   identity: Identity | undefined,
 ): Promise<void> {
-  const { keyring, vaultId } = get();
+  const { keyring, vaultId, open } = get();
   if (!keyring || vaultId === null) return;
+
+  // The state is read here rather than passed in: sealing and sending both awaited, and
+  // whatever the user typed meanwhile is the version worth keeping. Queueing the snapshot
+  // would put the older text in the outbox and revert the editor to match it.
+  if (!open || open.note.id !== noteId) {
+    set({ offline: true });
+    return;
+  }
 
   try {
     await cache.enqueue({
@@ -660,10 +774,14 @@ async function queue(
       queuedAt: Date.now(),
     });
 
+    const current = get().open;
+
     set({
       offline: true,
       queued: await cache.outboxSize(vaultId),
-      open: { ...open, dirty: false, queued: true },
+      ...(current && current.note.id === noteId
+        ? { open: { ...current, dirty: current.body !== open.body, queued: true } }
+        : {}),
     });
   } catch (cause) {
     // The cache is the only place a queued write can live. If it will not take it, saying

@@ -33,6 +33,10 @@ var (
 	// ErrGroupRotation means somebody was dropped without a new keypair. The copy they hold
 	// opens every scope the group reaches, and no deletion on the server takes that back.
 	ErrGroupRotation = errors.New("removing a member requires a new group key")
+	// ErrGroupScopes means a rotation arrived without a key for every scope the group
+	// already holds. Applying it would leave the group with permissions on folders whose
+	// keys it no longer has — visible rows nobody in it can open.
+	ErrGroupScopes = errors.New("a group rotation must re-seal every scope the group holds")
 )
 
 // Member is a row of the design's member table.

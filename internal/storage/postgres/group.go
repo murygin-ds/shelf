@@ -261,6 +261,15 @@ func (r *AccessRepository) SetGroupMembers(
 		}
 
 		if in.Rotates() {
+			// A rotation replaces every key the group holds, so the caller has to bring one
+			// for each. They cannot be trusted to know the full set: their own tree shows
+			// only what they can see, and a manager explicitly denied one folder would
+			// silently drop the group's key for it — leaving the group with a permission on
+			// a folder nobody in it can open.
+			if err := allScopesResealed(ctx, tx, in); err != nil {
+				return err
+			}
+
 			const rotate = `
 				UPDATE groups SET public_key = $2, key_version = $3, updated_at = now()
 				 WHERE id = $1`
@@ -360,6 +369,40 @@ func (r *AccessRepository) GroupKeys(ctx context.Context, vaultID, userID int64)
 	return keys, nil
 }
 
+// GroupScopes lists every key the group holds, so a client can re-seal all of them.
+func (r *AccessRepository) GroupScopes(ctx context.Context, groupID int64) ([]access.GroupScope, error) {
+	const query = `
+		SELECT kg.scope_id, ks.client_id, kg.key_version
+		  FROM key_grants kg
+		  JOIN key_scopes ks ON ks.id = kg.scope_id
+		 WHERE kg.subject_type = 'group' AND kg.subject_id = $1
+		 ORDER BY kg.scope_id, kg.key_version`
+
+	rows, err := r.pool.Query(ctx, query, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("select group scopes: %w", err)
+	}
+	defer rows.Close()
+
+	scopes := make([]access.GroupScope, 0)
+
+	for rows.Next() {
+		var scope access.GroupScope
+
+		if err := rows.Scan(&scope.ScopeID, &scope.ScopeClientID, &scope.KeyVersion); err != nil {
+			return nil, fmt.Errorf("scan group scope: %w", err)
+		}
+
+		scopes = append(scopes, scope)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate group scopes: %w", err)
+	}
+
+	return scopes, nil
+}
+
 func insertGroupMembers(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -397,4 +440,53 @@ func scanGroup(row pgx.Row) (*access.Group, error) {
 	}
 
 	return &group, nil
+}
+
+// scopeVersion is one key the group holds: a scope at a particular version.
+type scopeVersion struct {
+	scopeID int64
+	version int32
+}
+
+// allScopesResealed refuses a rotation that would drop a key the group already holds.
+//
+// The comparison is per version, not per scope. A scope that has itself been re-keyed
+// leaves the group holding both the old version and the new one on purpose — revisions and
+// trashed rows are still sealed under the old — and the rotation deletes every version, so
+// matching on the scope alone would let a payload carrying only the current one through and
+// take the history with it.
+func allScopesResealed(ctx context.Context, tx pgx.Tx, in access.GroupMembership) error {
+	const held = `
+		SELECT kg.scope_id, kg.key_version
+		  FROM key_grants kg
+		 WHERE kg.subject_type = 'group' AND kg.subject_id = $1`
+
+	rows, err := tx.Query(ctx, held, in.GroupID)
+	if err != nil {
+		return fmt.Errorf("select group scopes: %w", err)
+	}
+	defer rows.Close()
+
+	supplied := make(map[scopeVersion]bool, len(in.Keys))
+	for _, key := range in.Keys {
+		supplied[scopeVersion{scopeID: key.ScopeID, version: key.KeyVersion}] = true
+	}
+
+	for rows.Next() {
+		var have scopeVersion
+
+		if err := rows.Scan(&have.scopeID, &have.version); err != nil {
+			return fmt.Errorf("scan group scope: %w", err)
+		}
+
+		if !supplied[have] {
+			return access.ErrGroupScopes
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate group scopes: %w", err)
+	}
+
+	return nil
 }

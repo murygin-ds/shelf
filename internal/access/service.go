@@ -376,7 +376,8 @@ func translate(err error, op string) error {
 		errors.Is(err, ErrSelfTarget),
 		errors.Is(err, ErrGroupMembers),
 		errors.Is(err, ErrGroupKeyless),
-		errors.Is(err, ErrGroupRotation):
+		errors.Is(err, ErrGroupRotation),
+		errors.Is(err, ErrGroupScopes):
 		return err
 	default:
 		return fmt.Errorf("%s: %w", op, err)

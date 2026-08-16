@@ -547,7 +547,18 @@ func (h *Handler) RevokeSession(c *gin.Context) {
 // bind parses and validates the request body, replying to the client itself on error.
 func bind(c *gin.Context, req any) bool {
 	if err := c.ShouldBindJSON(req); err != nil {
+		// A body that ran into the size cap is not a malformed one, and telling the caller
+		// it is would send them looking in the wrong place.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeBadRequest,
+				"the request body is too large")
+
+			return false
+		}
+
 		response.FailValidation(c, err)
+
 		return false
 	}
 

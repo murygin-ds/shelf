@@ -60,12 +60,22 @@ type RekeyPlan struct {
 }
 
 // RekeySubject is somebody who keeps access after the job commits.
+//
+// It is a person or a group. A group holds its own agreement key and the scope key is
+// sealed to it once, so leaving groups out of the plan would silently drop every member who
+// reaches the node only through one.
 type RekeySubject struct {
 	UserID      int64
 	Login       string
 	DisplayName string
-	PublicKey   []byte
+	// GroupID and GroupClientID are set instead of UserID when the subject is a group.
+	GroupID       int64
+	GroupClientID string
+	PublicKey     []byte
 }
+
+// IsGroup reports whether the key must be sealed to a group rather than to a person.
+func (s RekeySubject) IsGroup() bool { return s.GroupID != 0 }
 
 // RekeyItem is one re-encrypted row waiting for the commit.
 type RekeyItem struct {

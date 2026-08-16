@@ -38,6 +38,7 @@ type Service interface {
 	DeleteGroup(ctx context.Context, actorID, groupID int64) error
 	SetGroupMembers(ctx context.Context, actorID int64, in access.GroupMembership) (*access.Group, error)
 	GroupKeys(ctx context.Context, actorID, vaultID int64) ([]access.GroupKey, error)
+	GroupScopes(ctx context.Context, actorID, groupID int64) ([]access.GroupScope, error)
 	Challenge(ctx context.Context, tokenHash []byte) (*access.Challenge, error)
 	Redeem(ctx context.Context, userID int64, in access.Redemption) (*access.Invite, error)
 }
@@ -76,6 +77,7 @@ func (h *Handler) RegisterRoutes(public, protected *gin.RouterGroup) {
 	groups.PATCH("", h.UpdateGroup)
 	groups.DELETE("", h.DeleteGroup)
 	groups.PUT("/members", h.SetGroupMembers)
+	groups.GET("/scopes", h.GroupScopes)
 
 	protected.GET("/users/lookup", h.LookupUser)
 	protected.GET("/me/invites", h.MyInvites)
@@ -580,6 +582,9 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 	case errors.Is(err, access.ErrGroupKeyless):
 		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
 			"whoever writes a group's membership must be in it")
+	case errors.Is(err, access.ErrGroupScopes):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"a group rotation must re-seal every scope the group holds")
 	case errors.Is(err, access.ErrGroupRotation):
 		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
 			"removing a member requires a new group key and its scopes sealed again")
@@ -765,4 +770,28 @@ func (h *Handler) GroupKeys(c *gin.Context) {
 	}
 
 	response.OK(c, groupKeysResponse(keys))
+}
+
+// GroupScopes lists every key the group holds, so a rotation can re-seal all of them.
+//
+//	@Summary	Read the keys a group holds
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"group id"
+//	@Success	200	{object}	GroupScopesResponse
+//	@Router		/api/v1/groups/{id}/scopes [get]
+func (h *Handler) GroupScopes(c *gin.Context) {
+	userID, groupID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	scopes, err := h.service.GroupScopes(c.Request.Context(), userID, groupID)
+	if err != nil {
+		h.fail(c, "read group scopes", err)
+		return
+	}
+
+	response.OK(c, groupScopesResponse(scopes))
 }

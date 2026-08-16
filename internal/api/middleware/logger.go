@@ -48,6 +48,12 @@ func Logger(log *zap.Logger, skipPaths ...string) gin.HandlerFunc {
 			zap.Duration("latency", time.Since(start)),
 		}
 
+		// Without this a redacted lookup line says neither who asked nor what for, which
+		// makes it useless in exactly the incident it was redacted for.
+		if userID, ok := UserIDFrom(c); ok {
+			fields = append(fields, zap.Int64("user_id", userID))
+		}
+
 		if len(c.Errors) > 0 {
 			fields = append(fields, zap.String("errors", c.Errors.ByType(gin.ErrorTypePrivate).String()))
 		}
@@ -94,21 +100,24 @@ func redactQuery(raw string) string {
 		return ""
 	}
 
+	// ParseQuery returns what it could parse alongside the error, and gin serves the request
+	// from exactly that. Dropping the whole field would let one bad escape erase the log
+	// line for a request the server went on to answer.
 	values, err := url.ParseQuery(raw)
-	if err != nil {
-		// Unparseable is not a reason to log it verbatim: whatever is in there, nobody
-		// asked for it to be kept.
-		return "?"
-	}
+	malformed := err != nil
 
 	var out strings.Builder
+
+	if malformed {
+		out.WriteString("[malformed]")
+	}
 
 	for _, key := range slices.Sorted(maps.Keys(values)) {
 		if out.Len() > 0 {
 			out.WriteByte('&')
 		}
 
-		out.WriteString(key)
+		out.WriteString(url.QueryEscape(key))
 		out.WriteByte('=')
 
 		if secretParams[strings.ToLower(key)] {
@@ -116,7 +125,9 @@ func redactQuery(raw string) string {
 			continue
 		}
 
-		out.WriteString(strings.Join(values[key], ","))
+		// Re-encoded: a decoded value containing & or = would otherwise be written as if it
+		// were more parameters, and an unredacted login= could be forged inside one.
+		out.WriteString(url.QueryEscape(strings.Join(values[key], ",")))
 	}
 
 	return out.String()

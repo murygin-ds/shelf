@@ -458,12 +458,16 @@ type commitRekeyRequest struct {
 
 // RekeySubjectResponse is somebody the new key has to be sealed to, with the fingerprint
 // to check the public key really is theirs.
+// RekeySubjectResponse is a person or a group that keeps the key. A group is sealed to
+// once, whatever its membership, which is the whole reason groups have keys of their own.
 type RekeySubjectResponse struct {
-	UserID      int64  `json:"user_id"      example:"7"`
-	Login       string `json:"login"        example:"marta@acme.dev"`
-	DisplayName string `json:"display_name" example:"Marta Chen"`
-	PublicKey   []byte `json:"public_key"   format:"byte"`
-	Fingerprint string `json:"fingerprint"  example:"A1B2 C3D4 E5F6 G7H8"`
+	UserID        int64  `json:"user_id,omitempty"      example:"7"`
+	Login         string `json:"login,omitempty"        example:"marta@acme.dev"`
+	DisplayName   string `json:"display_name,omitempty" example:"Marta Chen"`
+	GroupID       int64  `json:"group_id,omitempty"     example:"3"`
+	GroupClientID string `json:"group_client_id,omitempty"`
+	PublicKey     []byte `json:"public_key"             format:"byte"`
+	Fingerprint   string `json:"fingerprint,omitempty"  example:"A1B2 C3D4 E5F6 G7H8"`
 }
 
 // RekeyPlanResponse is everything a client needs to carry out a re-key: the rows to
@@ -494,13 +498,22 @@ func rekeyPlan(plan *vault.RekeyPlan, fingerprint func([]byte) string) RekeyPlan
 	subjects := make([]RekeySubjectResponse, 0, len(plan.Subjects))
 
 	for _, subject := range plan.Subjects {
-		subjects = append(subjects, RekeySubjectResponse{
-			UserID:      subject.UserID,
-			Login:       subject.Login,
-			DisplayName: subject.DisplayName,
-			PublicKey:   subject.PublicKey,
-			Fingerprint: fingerprint(subject.PublicKey),
-		})
+		converted := RekeySubjectResponse{
+			UserID:        subject.UserID,
+			Login:         subject.Login,
+			DisplayName:   subject.DisplayName,
+			GroupID:       subject.GroupID,
+			GroupClientID: subject.GroupClientID,
+			PublicKey:     subject.PublicKey,
+		}
+
+		// A group has no fingerprint to compare out of band: nobody holds its key alone,
+		// so there is no second party to compare it with.
+		if !subject.IsGroup() {
+			converted.Fingerprint = fingerprint(subject.PublicKey)
+		}
+
+		subjects = append(subjects, converted)
 	}
 
 	return RekeyPlanResponse{
