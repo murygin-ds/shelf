@@ -8,6 +8,7 @@ import { useWorkspace } from '@/store/workspace';
 import { type ConfirmRequest, useConfirm } from '@/ui/Confirm';
 import { type MenuItem, useContextMenu } from '@/ui/ContextMenu';
 import { Icon, type IconName } from '@/ui/Icon';
+import { useNamePrompt } from '@/ui/NamePrompt';
 
 import styles from './vaultswitcher.module.css';
 
@@ -24,13 +25,15 @@ import styles from './vaultswitcher.module.css';
  */
 export function VaultSwitcher({ onNewVault }: { onNewVault: () => void }) {
   const { identity } = useSession();
-  const { vaults, vaultId, loading, selectVault, setVaultIcon, removeVault } = useWorkspace();
+  const { vaults, vaultId, loading, selectVault, setVaultIcon, setVaultLabel, removeVault } =
+    useWorkspace();
 
   const [open, setOpen] = useState(false);
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const navigate = useNavigate();
   const { ask, dialog } = useConfirm();
+  const { ask: askText, dialog: textDialog } = useNamePrompt();
   const { open: openRowMenu, menu: rowMenu } = useContextMenu();
 
   const vault = vaults.find((item) => item.id === vaultId);
@@ -78,6 +81,22 @@ export function VaultSwitcher({ onNewVault }: { onNewVault: () => void }) {
     if (identity && item.id !== vaultId) void selectVault(item.id, identity);
   };
 
+  /**
+   * A note of one's own on a vault somebody else named. Nobody but this account ever sees
+   * it, so it is asked for plainly and written straight away.
+   */
+  const label = (item: Vault) => {
+    setOpen(false);
+
+    void askText(
+      'Your label for this vault',
+      item.label ?? '',
+      'Only you ever see it: it is sealed to your own key, not the vault’s, so neither the other members nor the server can read it. Clear it with “Remove label”.',
+    ).then((text) => {
+      if (text !== null && identity) void setVaultLabel(item.id, text, identity);
+    });
+  };
+
   /** Deleting one's own vault, or walking out of somebody else's. Neither is undoable. */
   const part = (item: Vault) => {
     setOpen(false);
@@ -96,11 +115,32 @@ export function VaultSwitcher({ onNewVault }: { onNewVault: () => void }) {
     ...(item.id === vaultId && !item.locked
       ? [{ label: 'Change icon', icon: 'star' as const, onSelect: changeIcon }]
       : []),
+    // Only on vaults somebody else named. Your own you can simply rename.
+    ...(item.role === 'owner'
+      ? []
+      : [
+          {
+            label: item.label ? 'Edit label' : 'Add label',
+            icon: 'tag' as const,
+            onSelect: () => label(item),
+          },
+          ...(item.label
+            ? [
+                {
+                  label: 'Remove label',
+                  icon: 'x' as const,
+                  onSelect: () => {
+                    if (identity) void setVaultLabel(item.id, '', identity);
+                  },
+                },
+              ]
+            : []),
+        ]),
     {
       // An owner cannot walk out — the vault is theirs — and nobody else can destroy it.
       ...(item.role === 'owner'
         ? { label: 'Delete vault', icon: 'trash' as const }
-        : { label: 'Leave vault', icon: 'x' as const }),
+        : { label: 'Leave vault', icon: 'user' as const }),
       danger: true,
       separated: true,
       onSelect: () => part(item),
@@ -130,6 +170,7 @@ export function VaultSwitcher({ onNewVault }: { onNewVault: () => void }) {
   return (
     <div className={styles.switcher}>
       {dialog}
+      {textDialog}
       {rowMenu}
 
       <button
@@ -148,6 +189,7 @@ export function VaultSwitcher({ onNewVault }: { onNewVault: () => void }) {
         <span className={styles.triggerName}>
           {vault?.name ?? (loading ? 'Loading…' : 'No vault')}
         </span>
+        {vault?.label ? <span className={styles.triggerLabel}>{vault.label}</span> : null}
         {vault && vault.role !== 'owner' ? (
           <span className={styles.pill}>{vault.role.toUpperCase()}</span>
         ) : null}
@@ -251,7 +293,14 @@ function VaultRow({
 
       <span className={styles.rowText}>
         <span className={styles.rowName}>{vault.name}</span>
-        <span className={styles.rowMeta}>{describe(vault)}</span>
+        {/* The label takes the meta line rather than sitting beside it: somebody who
+            wrote "onboarding docs — ask Rita" wants to read that, not a note count. A
+            vault with no key is the exception — that is the fact worth the line. */}
+        {vault.label && !vault.locked ? (
+          <span className={styles.rowLabel}>{vault.label}</span>
+        ) : (
+          <span className={styles.rowMeta}>{describe(vault)}</span>
+        )}
       </span>
 
       {vault.keyState === 'pending_rotation' ? (

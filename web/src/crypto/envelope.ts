@@ -36,6 +36,14 @@ export function sealInfo(scopeClientId: string, keyVersion: number): string {
 }
 
 /**
+ * Binds a member's private label to the vault it annotates. Without it the server could
+ * move one label onto another vault and the note would open, pointing at the wrong thing.
+ */
+export function labelInfo(vaultClientId: string): string {
+  return `shelf/label/v1|${vaultClientId}`;
+}
+
+/**
  * Stands in for content the viewer holds no key to. Returning it instead of throwing is
  * what lets the tree render a greyed row and the graph a nameless node without a try/catch
  * around every read.

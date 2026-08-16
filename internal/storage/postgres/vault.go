@@ -104,7 +104,8 @@ func (r *VaultRepository) VaultsByMember(ctx context.Context, userID int64) ([]v
 		SELECT v.id, v.client_id, v.owner_id, v.meta, v.meta_nonce, v.change_seq, v.created_at, v.updated_at,
 		       m.role, m.key_state, ks.client_id, ks.id, ks.key_version,
 		       (SELECT count(*) FROM files f WHERE f.vault_id = v.id AND f.deleted_at IS NULL),
-		       (SELECT count(*) FROM vault_members vm WHERE vm.vault_id = v.id)
+		       (SELECT count(*) FROM vault_members vm WHERE vm.vault_id = v.id),
+		       m.label, m.label_nonce
 		  FROM vaults v
 		  JOIN vault_members m ON m.vault_id = v.id AND m.user_id = $1
 		  JOIN key_scopes ks ON ks.vault_id = v.id AND ks.scope_type = 'vault' AND ks.scope_ref_id = v.id
@@ -119,14 +120,23 @@ func (r *VaultRepository) VaultsByMember(ctx context.Context, userID int64) ([]v
 	summaries := make([]vault.Summary, 0)
 
 	for rows.Next() {
-		var s vault.Summary
+		var (
+			s          vault.Summary
+			label      []byte
+			labelNonce []byte
+		)
 
 		err := rows.Scan(
 			&s.ID, &s.ClientID, &s.OwnerID, &s.Meta.Ciphertext, &s.Meta.Nonce, &s.ChangeSeq, &s.CreatedAt, &s.UpdatedAt,
 			&s.Role, &s.KeyState, &s.KeyScopeClientID, &s.KeyScopeID, &s.KeyVersion, &s.NoteCount, &s.MemberCount,
+			&label, &labelNonce,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan vault summary: %w", err)
+		}
+
+		if label != nil {
+			s.Label = &vault.Blob{Ciphertext: label, Nonce: labelNonce}
 		}
 
 		summaries = append(summaries, s)
@@ -145,6 +155,34 @@ func (r *VaultRepository) UpdateVaultMeta(ctx context.Context, vaultID int64, me
 	tag, err := r.pool.Exec(ctx, query, vaultID, meta.Ciphertext, meta.Nonce)
 	if err != nil {
 		return fmt.Errorf("update vault: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return vault.ErrNotFound
+	}
+
+	return nil
+}
+
+// SetMemberLabel writes one member's private note on a vault. A nil label clears it, and
+// the pair goes together — half a sealed box cannot be opened.
+func (r *VaultRepository) SetMemberLabel(
+	ctx context.Context,
+	vaultID, userID int64,
+	label *vault.Blob,
+) error {
+	const query = `
+		UPDATE vault_members SET label = $3, label_nonce = $4
+		 WHERE vault_id = $1 AND user_id = $2`
+
+	var ciphertext, nonce []byte
+	if label != nil {
+		ciphertext, nonce = label.Ciphertext, label.Nonce
+	}
+
+	tag, err := r.pool.Exec(ctx, query, vaultID, userID, ciphertext, nonce)
+	if err != nil {
+		return fmt.Errorf("set member label: %w", err)
 	}
 
 	if tag.RowsAffected() == 0 {

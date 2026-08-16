@@ -21,6 +21,7 @@ type Service interface {
 	Vaults(ctx context.Context, userID int64) ([]vault.Summary, error)
 	Vault(ctx context.Context, userID, vaultID int64) (*vault.Vault, error)
 	UpdateVault(ctx context.Context, userID, vaultID int64, meta vault.Blob) error
+	SetLabel(ctx context.Context, userID, vaultID int64, label *vault.Blob) error
 	DeleteVault(ctx context.Context, userID, vaultID int64) error
 	Keys(ctx context.Context, userID, vaultID int64) ([]vault.KeyGrant, error)
 	Scopes(ctx context.Context, userID, vaultID int64) ([]vault.ScopeStatus, error)
@@ -83,6 +84,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	vaults.GET("", h.Vaults)
 	vaults.GET("/:id", h.Vault)
 	vaults.PATCH("/:id", h.UpdateVault)
+	// Separate from the metadata patch: that one is the shared name and needs manage
+	// rights, this one is the caller's own note and every member may write it.
+	vaults.PUT("/:id/label", h.SetLabel)
 	vaults.DELETE("/:id", h.DeleteVault)
 	vaults.GET("/:id/keys", h.Keys)
 	vaults.GET("/:id/scopes", h.Scopes)
@@ -242,6 +246,51 @@ func (h *Handler) UpdateVault(c *gin.Context) {
 
 	if err := h.service.UpdateVault(c.Request.Context(), userID, vaultID, blob(req.Meta, req.MetaNonce)); err != nil {
 		h.fail(c, "update vault", err)
+		return
+	}
+
+	response.NoContent(c)
+}
+
+// SetLabel writes the caller's own note on a vault.
+//
+//	@Summary	Set the caller's private label on a vault
+//	@Tags		vaults
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path	int					true	"vault id"
+//	@Param		request	body	setLabelRequest		true	"sealed label, empty to clear"
+//	@Success	204
+//	@Failure	403	{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/label [put]
+func (h *Handler) SetLabel(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req setLabelRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	// Half a sealed box is bytes nobody can open, so the pair is written or cleared
+	// together — an empty body is how a label is removed.
+	if (len(req.Label) == 0) != (len(req.LabelNonce) == 0) {
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"a label needs both its ciphertext and its nonce")
+
+		return
+	}
+
+	var label *vault.Blob
+	if len(req.Label) > 0 {
+		label = &vault.Blob{Ciphertext: req.Label, Nonce: req.LabelNonce}
+	}
+
+	if err := h.service.SetLabel(c.Request.Context(), userID, vaultID, label); err != nil {
+		h.fail(c, "set vault label", err)
 		return
 	}
 

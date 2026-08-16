@@ -79,6 +79,12 @@ interface WorkspaceState {
   ) => Promise<void>;
   /** Only the open vault: its scope key is the one the loaded keyring holds. */
   setVaultIcon: (icon: string | undefined) => Promise<void>;
+  /**
+   * Writes this account's private note on a vault, or clears it when the text is empty.
+   * Any vault in the list, open or not: the label rides the identity key rather than the
+   * vault's, so it needs no keyring.
+   */
+  setVaultLabel: (vaultId: number, label: string, identity: Identity) => Promise<void>;
   trash: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file') => Promise<void>;
   /** What is in the trash, loaded on demand rather than kept in sync. */
   trashed: ws.Tree;
@@ -511,6 +517,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ),
       });
     });
+  },
+
+  setVaultLabel: async (vaultId, label, identity) => {
+    const vault = get().vaults.find((candidate) => candidate.id === vaultId);
+    if (!vault) return;
+
+    try {
+      await ws.setVaultLabel(vault, label, identity);
+
+      // Patched in place rather than re-listing: nothing else about the vault moved, and
+      // a full list means decrypting every vault's name again.
+      const text = label.trim().slice(0, ws.MAX_LABEL);
+
+      set({
+        vaults: get().vaults.map((candidate) =>
+          candidate.id === vaultId ? { ...candidate, label: text || undefined } : candidate,
+        ),
+      });
+    } catch (cause) {
+      report(set, cause);
+    }
   },
 
   trash: async (node, kind) => {

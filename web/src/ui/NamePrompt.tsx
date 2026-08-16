@@ -6,6 +6,7 @@ import styles from './nameprompt.module.css';
 interface Request {
   label: string;
   initial: string;
+  hint: string | undefined;
   resolve: (name: string | null) => void;
 }
 
@@ -21,14 +22,14 @@ interface Request {
  * `dialog` is rendered wherever the caller likes.
  */
 export function useNamePrompt(): {
-  ask: (label: string, initial: string) => Promise<string | null>;
+  ask: (label: string, initial: string, hint?: string) => Promise<string | null>;
   dialog: ReactElement | null;
 } {
   const [request, setRequest] = useState<Request | null>(null);
 
   const ask = useCallback(
-    (label: string, initial: string) =>
-      new Promise<string | null>((resolve) => setRequest({ label, initial, resolve })),
+    (label: string, initial: string, hint?: string) =>
+      new Promise<string | null>((resolve) => setRequest({ label, initial, hint, resolve })),
     [],
   );
 
@@ -42,6 +43,7 @@ export function useNamePrompt(): {
       key={request.label}
       label={request.label}
       initial={request.initial}
+      {...(request.hint === undefined ? {} : { hint: request.hint })}
       onSubmit={close}
       onCancel={() => close(null)}
     />

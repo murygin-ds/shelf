@@ -54,6 +54,8 @@ type stubService struct {
 	lastLinks  []int64
 	lastShare  vault.NewShareLink
 	lastToken  []byte
+	lastLabel  *vault.Blob
+	labelSet   bool
 }
 
 func (s *stubService) CreateVault(context.Context, int64, string, string, vault.Blob, vault.SealedKey) (*vault.Vault, error) {
@@ -66,7 +68,13 @@ func (s *stubService) Vault(context.Context, int64, int64) (*vault.Vault, error)
 	return s.vault, s.err
 }
 func (s *stubService) UpdateVault(context.Context, int64, int64, vault.Blob) error { return s.err }
-func (s *stubService) DeleteVault(context.Context, int64, int64) error             { return s.err }
+func (s *stubService) SetLabel(_ context.Context, _, _ int64, label *vault.Blob) error {
+	s.lastLabel = label
+	s.labelSet = true
+
+	return s.err
+}
+func (s *stubService) DeleteVault(context.Context, int64, int64) error { return s.err }
 func (s *stubService) Keys(context.Context, int64, int64) ([]vault.KeyGrant, error) {
 	return s.grants, s.err
 }
@@ -410,6 +418,67 @@ func TestCreateFolderValidation(t *testing.T) {
 			rec := doJSON(t, newTestRouter(t, &stubService{}), http.MethodPost, "/api/v1/vaults/1/folders", body, nil)
 			if rec.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+			}
+		})
+	}
+}
+
+// An empty body is how a label is removed, and half a sealed box is refused: stored
+// without its nonce it would be bytes nobody — including its author — can ever open.
+func TestSetLabelClearsAndRefusesHalfABox(t *testing.T) {
+	t.Parallel()
+
+	sealed := bytes.Repeat([]byte{9}, 96)
+	nonce := bytes.Repeat([]byte{3}, 12)
+
+	t.Run("writes the pair", func(t *testing.T) {
+		t.Parallel()
+
+		service := &stubService{}
+		rec := doJSON(t, newTestRouter(t, service), http.MethodPut, "/api/v1/vaults/1/label",
+			map[string]any{"label": sealed, "label_nonce": nonce}, nil)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusNoContent, rec.Body)
+		}
+
+		if service.lastLabel == nil || !bytes.Equal(service.lastLabel.Ciphertext, sealed) {
+			t.Fatalf("label = %v, want the sealed box through untouched", service.lastLabel)
+		}
+	})
+
+	t.Run("empty clears", func(t *testing.T) {
+		t.Parallel()
+
+		service := &stubService{}
+		rec := doJSON(t, newTestRouter(t, service), http.MethodPut, "/api/v1/vaults/1/label",
+			map[string]any{}, nil)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusNoContent, rec.Body)
+		}
+
+		if !service.labelSet || service.lastLabel != nil {
+			t.Fatalf("label = %v, want a clear", service.lastLabel)
+		}
+	})
+
+	for name, body := range map[string]map[string]any{
+		"no nonce":  {"label": sealed},
+		"no cipher": {"label_nonce": nonce},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &stubService{}
+			rec := doJSON(t, newTestRouter(t, service), http.MethodPut, "/api/v1/vaults/1/label", body, nil)
+
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+			}
+
+			if service.labelSet {
+				t.Fatal("the service was called with half a sealed box")
 			}
 		})
 	}

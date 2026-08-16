@@ -9,7 +9,7 @@
   align-items: center;
   gap: 9px;
   height: 32px;
-  max-width: 300px;
+  max-width: 340px;
   padding: 0 8px 0 4px;
   border: 0;
   border-radius: var(--radius);
@@ -26,7 +26,11 @@
   background: var(--surface-hover);
 }
 
+/* The name keeps a legible stub whatever else is in the row; the label beside it gives way
+   first, because it is the part the reader wrote and can recognise from a fragment. */
 .triggerName {
+  flex: 0 1 auto;
+  min-width: 5em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -176,6 +180,32 @@
   margin-top: 1px;
   font-size: 11.5px;
   color: var(--text-quiet);
+}
+
+/* A label is the reader's own words, so it reads warmer than the counts it replaces. */
+.rowLabel {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: var(--accent-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerLabel {
+  flex: 0 3 auto;
+  min-width: 0;
+  max-width: 150px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  font-size: 11.5px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .check {

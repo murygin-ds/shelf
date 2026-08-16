@@ -1668,6 +1668,19 @@ definitions:
       key_version:
         example: 1
         type: integer
+      label:
+        description: |-
+          Label is the caller's own note on this vault, sealed to their identity key. Absent
+          when they have not written one; no other member ever receives it.
+        items:
+          format: byte
+          type: integer
+        type: array
+      label_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
       member_count:
         example: 6
         type: integer
@@ -2022,6 +2035,21 @@ definitions:
     - entity_type
     - meta
     - meta_nonce
+    type: object
+  vault.setLabelRequest:
+    properties:
+      label:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        type: array
+      label_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        type: array
     type: object
   vault.setLinksRequest:
     properties:
@@ -3751,6 +3779,36 @@ paths:
       security:
       - BearerAuth: []
       summary: List the caller's key grants
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/label:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: sealed label, empty to clear
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.setLabelRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set the caller's private label on a vault
       tags:
       - vaults
   /api/v1/vaults/{id}/leave:

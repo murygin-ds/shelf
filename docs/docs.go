@@ -2591,6 +2591,54 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/vaults/{id}/label": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Set the caller's private label on a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "sealed label, empty to clear",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.setLabelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/vaults/{id}/leave": {
             "post": {
                 "security": [
@@ -5289,6 +5337,21 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 1
                 },
+                "label": {
+                    "description": "Label is the caller's own note on this vault, sealed to their identity key. Absent\nwhen they have not written one; no other member ever receives it.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "label_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
                 "member_count": {
                     "type": "integer",
                     "example": 6
@@ -5738,6 +5801,27 @@ const docTemplate = `{
                     "type": "array",
                     "maxItems": 32,
                     "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.setLabelRequest": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "label_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
                     "items": {
                         "type": "integer",
                         "format": "byte"

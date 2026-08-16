@@ -9,11 +9,12 @@ import {
   type EntityRef,
   type EntityType,
   isLocked,
+  labelInfo,
   sealInfo,
 } from '@/crypto/envelope';
 import { type Identity, splitPublicBlob } from '@/crypto/identity';
 import { type GroupKeyDto, type KeyGrantDto, ScopeKeyring } from '@/crypto/keyring';
-import { seal } from '@/crypto/sealedbox';
+import { open as openSealed, seal } from '@/crypto/sealedbox';
 import { signRevision } from '@/crypto/signature';
 
 import { api } from './client';
@@ -69,6 +70,9 @@ export interface VaultSummaryDto {
   key_version: number;
   note_count: number;
   member_count: number;
+  /** The caller's own note on this vault, sealed to their identity key. */
+  label?: B64;
+  label_nonce?: B64;
 }
 
 /** A node after decryption. `locked` marks one the viewer holds no key for. */
@@ -116,6 +120,12 @@ export interface Vault {
   noteCount: number;
   memberCount: number;
   changeSeq: number;
+  /**
+   * A note this account keeps on the vault, readable by nobody else. Undefined when there
+   * is none, and when the sealed bytes will not open — a label that fails is not a reason
+   * to hide the vault it belongs to.
+   */
+  label: string | undefined;
 }
 
 export interface Tree {
@@ -232,7 +242,69 @@ async function openVault(summary: VaultSummaryDto, identity: Identity): Promise<
     noteCount: summary.note_count,
     memberCount: summary.member_count,
     changeSeq: summary.change_seq,
+    // The label rides the caller's own identity key, not the vault's scope key, so it
+    // opens even on a vault this account holds no content key for.
+    label: await openLabel(summary, identity),
   };
+}
+
+/**
+ * Reads the caller's private label off a vault summary.
+ *
+ * A label that will not open is dropped rather than thrown: it is an annotation, and
+ * losing the vault list over one unreadable note would be the wrong trade.
+ */
+async function openLabel(
+  summary: VaultSummaryDto,
+  identity: Identity,
+): Promise<string | undefined> {
+  if (!summary.label || !summary.label_nonce) return undefined;
+
+  try {
+    const payload = await openSealed(
+      identity.sealPrivate,
+      { blob: b64ToBytes(summary.label), nonce: b64ToBytes(summary.label_nonce) },
+      labelInfo(summary.client_id),
+    );
+
+    return new TextDecoder().decode(payload);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The longest label the server will store, in characters of the note itself. */
+export const MAX_LABEL = 120;
+
+/**
+ * Writes the caller's private note on a vault, or clears it when the text is empty.
+ *
+ * It is sealed to this account's own public key rather than the vault's scope key: every
+ * member holds that one, and a note about the people you share a vault with is not for
+ * them to read.
+ */
+export async function setVaultLabel(
+  vault: Vault,
+  label: string,
+  identity: Identity,
+): Promise<void> {
+  const text = label.trim().slice(0, MAX_LABEL);
+
+  if (!text) {
+    await api.put<void>(`/vaults/${vault.id}/label`, {});
+    return;
+  }
+
+  const box = await seal(
+    splitPublicBlob(identity.publicBlob).seal,
+    new TextEncoder().encode(text),
+    labelInfo(vault.clientId),
+  );
+
+  await api.put<void>(`/vaults/${vault.id}/label`, {
+    label: bytesToB64(box.blob),
+    label_nonce: bytesToB64(box.nonce),
+  });
 }
 
 /**
