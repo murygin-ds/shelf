@@ -190,19 +190,26 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// The per-address limit is already checked by the middleware; this one cuts off
-	// password guessing against a single account from different addresses.
+	// The per-address limit is already checked by the middleware. The per-account one is
+	// applied only to a wrong answer, and deliberately after the credentials are checked:
+	// spending it up front would let anybody who knows a login lock its owner out for the
+	// window by guessing wrong twenty times, over and over.
+	//
+	// The cost of that ordering is that the account counter no longer saves the Argon2id
+	// work — the per-address limit is what bounds that, and a distributed attack was never
+	// bounded by punishing the account it was aimed at.
 	account := accountKey(req.Login)
-
-	if ok, retryAfter := h.limits.LoginAccount.Allow(account); !ok {
-		middleware.TooManyRequests(c, retryAfter)
-		return
-	}
 
 	found, pair, err := h.service.Login(c.Request.Context(), req.Login, req.AuthHash, clientMeta(c))
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			if ok, retryAfter := h.limits.LoginAccount.Allow(account); !ok {
+				middleware.TooManyRequests(c, retryAfter)
+				return
+			}
+
 			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid login or password")
+
 			return
 		}
 
@@ -211,7 +218,6 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	h.limits.LoginAccount.Refund(account)
 	h.limits.LoginIP.Refund(c.ClientIP())
 
 	response.OK(c, SessionResponse{User: user(found), Keys: keys(found.Keys), Tokens: tokens(pair)})

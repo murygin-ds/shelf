@@ -61,6 +61,7 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		middleware.SecurityHeaders(),
 		middleware.CORS(deps.Config.HTTP),
 		middleware.MaxBody(deps.Config.HTTP.MaxBodyBytes),
+		middleware.Deadline(deps.Config.HTTP.HandlerTimeout),
 	)
 
 	spa, err := web.NewSPA(deps.Config.HTTP.StaticCacheMaxAge)

@@ -68,10 +68,13 @@ func (a App) IsProduction() bool { return a.Env == EnvProd }
 
 // HTTP holds the HTTP server parameters
 type HTTP struct {
-	Host            string        `mapstructure:"host"`
-	Port            int           `mapstructure:"port"             validate:"required,min=1,max=65535"`
-	ReadTimeout     time.Duration `mapstructure:"read_timeout"     validate:"required"`
-	WriteTimeout    time.Duration `mapstructure:"write_timeout"    validate:"required"`
+	Host         string        `mapstructure:"host"`
+	Port         int           `mapstructure:"port"             validate:"required,min=1,max=65535"`
+	ReadTimeout  time.Duration `mapstructure:"read_timeout"     validate:"required"`
+	WriteTimeout time.Duration `mapstructure:"write_timeout"    validate:"required"`
+	// HandlerTimeout bounds the work behind a request, not just the socket. Without it a
+	// slow query keeps its pool connection and ten of them answer nothing at all
+	HandlerTimeout  time.Duration `mapstructure:"handler_timeout" validate:"required"`
 	IdleTimeout     time.Duration `mapstructure:"idle_timeout"     validate:"required"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required"`
 	// AllowedOrigins is the list of CORS origins. "*" allows every one of them
@@ -265,6 +268,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.port", 8080)
 	v.SetDefault("http.read_timeout", 10*time.Second)
 	v.SetDefault("http.write_timeout", 10*time.Second)
+	// Comfortably inside write_timeout, so the handler gives up before the socket does and
+	// the client gets an error rather than a truncated response.
+	v.SetDefault("http.handler_timeout", 8*time.Second)
 	v.SetDefault("http.idle_timeout", time.Minute)
 	v.SetDefault("http.shutdown_timeout", 10*time.Second)
 	// Same-origin by construction: the binary serves the app it talks to.

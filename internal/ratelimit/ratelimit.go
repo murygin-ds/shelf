@@ -20,8 +20,20 @@ type Limiter struct {
 	refillRate  float64 // tokens per second
 	idleTTL     time.Duration
 	lastCleanup time.Time
+	maxKeys     int
 	now         func() time.Time
 }
+
+// MaxKeys bounds the map.
+//
+// Several of these limiters are keyed by something the caller chooses — a login, an invite
+// code — so a spray of distinct values would otherwise allocate a bucket apiece and grow
+// the map without limit. At the cap the limiter refuses new keys rather than forgetting old
+// ones: resetting would hand an attacker a way to clear everybody's counters, and this is a
+// security control, so it fails closed.
+//
+// A hundred thousand keys is far past any real deployment and costs a few megabytes.
+const MaxKeys = 100_000
 
 type bucket struct {
 	tokens float64
@@ -38,6 +50,7 @@ func New(limit int, window time.Duration) *Limiter {
 		refillRate:  float64(limit) / window.Seconds(),
 		idleTTL:     window,
 		lastCleanup: now,
+		maxKeys:     MaxKeys,
 		now:         time.Now,
 	}
 }
@@ -52,6 +65,17 @@ func (l *Limiter) Allow(key string) (bool, time.Duration) {
 
 	l.cleanup(now)
 
+	if _, known := l.buckets[key]; !known && len(l.buckets) >= l.maxKeys {
+		// One more sweep before giving up: the gate above only lets cleanup run once per
+		// window, and being at the cap is reason enough to run it again.
+		l.lastCleanup = time.Time{}
+		l.cleanup(now)
+
+		if len(l.buckets) >= l.maxKeys {
+			return false, l.idleTTL
+		}
+	}
+
 	b := l.bucket(key, now)
 	if b.tokens < 1 {
 		return false, time.Duration((1-b.tokens)/l.refillRate*float64(time.Second)) + time.Second
@@ -60,6 +84,15 @@ func (l *Limiter) Allow(key string) (bool, time.Duration) {
 	b.tokens--
 
 	return true, 0
+}
+
+// SetMaxKeys lowers the cap. It exists for tests: filling a hundred thousand buckets to
+// check the boundary would be a slow way to learn nothing extra.
+func (l *Limiter) SetMaxKeys(max int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.maxKeys = max
 }
 
 // Refund gives a spent attempt back: a successful request must not move a

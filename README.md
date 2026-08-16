@@ -334,7 +334,15 @@ A token bucket sits on the endpoints where a secret can be guessed
 | `register_ip`      | client address | 20 per hour       | registration runs Argon2id twice at 64 MiB    |
 
 A successful request gives the spent attempt back, so an ordinary user never hits the limit
-— only failures spend the counter. Neither an invite code nor a link secret is short enough
+— only failures spend the counter. The per-account counter is applied *after* the password
+is checked rather than before: spending it up front would let anybody who knows a login lock
+its owner out for the window by guessing wrong. The cost is that it no longer saves the
+Argon2id work — the per-address limit is what bounds that, and a distributed attack was never
+bounded by punishing the account it was aimed at.
+
+Each limiter holds at most `ratelimit.MaxKeys` buckets. Several of them are keyed by
+something the caller chooses, so at the cap a *new* key is refused rather than an old one
+forgotten: resetting would hand an attacker a way to clear everybody's counters. Neither an invite code nor a link secret is short enough
 to brute force; the limits are there so the endpoints are not free oracles. On rejection a
 `429` with `Retry-After` is returned. The counters live in process memory: with several
 instances the limit applies to each of them separately. `auth.rate_limit.enabled: false`
@@ -381,6 +389,7 @@ Four of them have to be set for any real deployment:
 | `SHELF_AUTH_SECRET`      | without it every restart invalidates every token                           |
 | `SHELF_APP_ENV`          | `local` keeps gin in debug mode and permits an empty auth secret            |
 | `http.trusted_proxies`   | otherwise every per-IP limit sees only the proxy and becomes one shared bucket |
+| `http.handler_timeout`   | bounds the work behind a request; ten slow queries would otherwise take the pool |
 | `postgres.ssl_mode`      | `require` or `verify-full` whenever Postgres is not on this host            |
 
 `make docker-up` is a development convenience: it publishes Postgres on the host with a

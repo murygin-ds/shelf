@@ -11,6 +11,7 @@ http:
   port: 8080
   read_timeout: 10s
   write_timeout: 10s
+  handler_timeout: 8s # bounds the work behind a request, not only the socket
   idle_timeout: 60s
   shutdown_timeout: 10s
   # The binary serves the frontend itself and the dev server proxies /api, so both are

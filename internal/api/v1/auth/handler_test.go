@@ -389,6 +389,36 @@ func TestLoginRateLimitPerAccount(t *testing.T) {
 	}
 }
 
+// TestAnAccountCannotBeLockedOut pins the reason the account counter is applied after the
+// credentials rather than before: otherwise anybody who knows a login could keep its owner
+// out for the window by guessing wrong, over and over.
+func TestAnAccountCannotBeLockedOut(t *testing.T) {
+	t.Parallel()
+
+	service := newStubService(t)
+	service.loginErr = auth.ErrInvalidCredentials
+
+	router := newLimitedRouter(t, service, handler.Limits{
+		LoginIP:      ratelimit.New(100, time.Minute),
+		LoginAccount: ratelimit.New(2, time.Minute),
+	})
+
+	body := map[string]any{"login": "dmitry", "auth_hash": bytes.Repeat([]byte{1}, 32)}
+
+	// An attacker empties the account's bucket.
+	for range 3 {
+		doJSON(t, router, http.MethodPost, "/api/v1/auth/login", body, "")
+	}
+
+	// The owner arrives with the right passphrase and must still get in.
+	service.loginErr = nil
+
+	if rec := doJSON(t, router, http.MethodPost, "/api/v1/auth/login", body, ""); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d — the account was locked out by somebody else's guesses",
+			rec.Code, http.StatusOK)
+	}
+}
+
 func TestSuccessfulLoginDoesNotSpendAttempts(t *testing.T) {
 	t.Parallel()
 
