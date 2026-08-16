@@ -5,6 +5,8 @@ import { MembersModal } from '@/features/access/MembersModal';
 import { PermissionsModal } from '@/features/access/PermissionsModal';
 import { SecurityModal } from '@/features/access/SecurityModal';
 import { Editor } from '@/features/editor/Editor';
+import { GraphView } from '@/features/graph/GraphView';
+import { Inspector } from '@/features/inspector/Inspector';
 import { SearchView } from '@/features/search/SearchView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { useSession } from '@/store/session';
@@ -209,8 +211,13 @@ export function Workspace() {
         <div className={styles.canvas}>
           {view === 'search' ? (
             <SearchView />
+          ) : view === 'graph' ? (
+            <GraphView />
           ) : open ? (
-            <Editor />
+            <>
+              <Editor />
+              <Inspector note={open.note} />
+            </>
           ) : (
             <div className={styles.empty}>
               <Icon name="doc" size={22} style={{ color: 'var(--text-disabled)' }} />

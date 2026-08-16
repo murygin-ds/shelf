@@ -32,6 +32,15 @@ var (
 	// ErrRekeyStale means the job was committed, aborted or left to expire.
 	ErrRekeyStale = errors.New("this re-key is no longer open")
 	ErrRekeyBatch = errors.New("a staging batch must hold between 1 and 200 rows")
+	// ErrLinkBatch means a note claimed more outgoing links than the graph can carry.
+	ErrLinkBatch = errors.New("a note may declare at most 500 outgoing links")
+	// ErrSignatureInvalid means a body arrived with a signature of the wrong shape. The
+	// server cannot check that a signature is *right* — it holds no public key it did not
+	// receive — but it can refuse one that could never verify.
+	ErrSignatureInvalid = errors.New("an author signature must be 64 raw bytes")
+	// ErrShareExpiry means a link was asked to expire in the past, which would publish
+	// nothing and leave the caller holding a URL that never worked.
+	ErrShareExpiry = errors.New("a public link must expire in the future")
 )
 
 // MaxDepth mirrors the CHECK on folders.depth. It bounds the recursive descent.
@@ -254,6 +263,18 @@ type ContentUpdate struct {
 	// ExpectedSeq is the content_seq the client last saw. A mismatch is a conflict, not a
 	// merge: nobody but the client can read either version.
 	ExpectedSeq int64
+	// KeyScopeID and KeyVersion are the key the body was sealed under. They are part of
+	// the optimistic lock: a re-key moves the row to a new key without bumping ExpectedSeq,
+	// so a write that started before it must be refused rather than accepted and relabelled.
+	KeyScopeID int64
+	KeyVersion int32
+	// Signature is the author's ECDSA signature over this exact ciphertext in this exact
+	// slot. It is what makes "written by" a fact rather than a claim: view, comment and
+	// edit are one key, so any reader could otherwise forge a body that decrypts.
+	//
+	// The server cannot check that it is right — that needs the author's public key and a
+	// reason to trust it — but it refuses one that could never verify.
+	Signature []byte
 }
 
 // Move relocates a node within its vault.

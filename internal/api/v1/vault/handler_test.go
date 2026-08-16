@@ -11,6 +11,7 @@ import (
 	"shelf/internal/api/middleware"
 	"shelf/internal/api/response"
 	handler "shelf/internal/api/v1/vault"
+	"shelf/internal/ratelimit"
 	"shelf/internal/vault"
 
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,16 @@ type stubService struct {
 	lastItems  []vault.RekeyItem
 	lastGrants []vault.RekeyGrant
 	events     []vault.AuditEvent
+	backlinks  *vault.Backlinks
+	graph      *vault.Graph
+	revisions  []vault.Revision
+	revision   *vault.Revision
+	share      *vault.ShareLink
+	shares     []vault.ShareLink
+	public     *vault.PublicNote
+	lastLinks  []int64
+	lastShare  vault.NewShareLink
+	lastToken  []byte
 }
 
 func (s *stubService) CreateVault(context.Context, int64, string, string, vault.Blob, vault.SealedKey) (*vault.Vault, error) {
@@ -128,6 +139,35 @@ func (s *stubService) Audit(_ context.Context, _, _, _ int64, limit int) ([]vaul
 	s.lastLimit = limit
 	return s.events, s.err
 }
+func (s *stubService) SetLinks(_ context.Context, _, _ int64, to []int64) error {
+	s.lastLinks = to
+	return s.err
+}
+func (s *stubService) Backlinks(context.Context, int64, int64) (*vault.Backlinks, error) {
+	return s.backlinks, s.err
+}
+func (s *stubService) Graph(context.Context, int64, int64) (*vault.Graph, error) {
+	return s.graph, s.err
+}
+func (s *stubService) Revisions(_ context.Context, _, _ int64, limit int) ([]vault.Revision, error) {
+	s.lastLimit = limit
+	return s.revisions, s.err
+}
+func (s *stubService) Revision(context.Context, int64, int64) (*vault.Revision, error) {
+	return s.revision, s.err
+}
+func (s *stubService) CreateShareLink(_ context.Context, _ int64, in vault.NewShareLink) (*vault.ShareLink, error) {
+	s.lastShare = in
+	return s.share, s.err
+}
+func (s *stubService) ShareLinks(context.Context, int64, int64) ([]vault.ShareLink, error) {
+	return s.shares, s.err
+}
+func (s *stubService) RevokeShareLink(context.Context, int64, int64) error { return s.err }
+func (s *stubService) PublicNote(_ context.Context, tokenHash []byte) (*vault.PublicNote, error) {
+	s.lastToken = tokenHash
+	return s.public, s.err
+}
 
 // newTestRouter mounts the handler behind a middleware that stands in for the real token
 // check, so the routes see an authenticated caller without issuing a JWT.
@@ -142,7 +182,7 @@ func newTestRouter(t *testing.T, service handler.Service) *gin.Engine {
 		c.Next()
 	})
 
-	handler.NewHandler(service, zap.NewNop()).RegisterRoutes(group)
+	handler.NewHandler(service, ratelimit.Nop{}, zap.NewNop()).RegisterRoutes(group)
 
 	return router
 }
@@ -191,7 +231,14 @@ func validFolderBody() map[string]any {
 func validContentBody() map[string]any {
 	blob := func(n int, fill byte) []byte { return bytes.Repeat([]byte{fill}, n) }
 
-	return map[string]any{"content": blob(4112, 3), "content_nonce": blob(12, 4)}
+	// The key is part of the write now: a body sealed under a version the row has moved
+	// past has to be refused rather than relabelled.
+	return map[string]any{
+		"content":       blob(4112, 3),
+		"content_nonce": blob(12, 4),
+		"key_scope_id":  3,
+		"key_version":   1,
+	}
 }
 
 // TestErrorMapping pins every domain error to the status the client branches on. The
@@ -540,7 +587,7 @@ func TestMissingCallerIsUnauthorized(t *testing.T) {
 	// A route mounted outside the auth middleware must say so rather than answer an
 	// empty 200, which would be the hardest possible version of that bug to find.
 	router := gin.New()
-	handler.NewHandler(&stubService{}, zap.NewNop()).RegisterRoutes(router.Group("/api/v1"))
+	handler.NewHandler(&stubService{}, ratelimit.Nop{}, zap.NewNop()).RegisterRoutes(router.Group("/api/v1"))
 
 	rec := doJSON(t, router, http.MethodGet, "/api/v1/vaults", nil, nil)
 	if rec.Code != http.StatusUnauthorized {

@@ -20,6 +20,8 @@ const (
 	AuditInviteGone   AuditAction = "invite.revoked"
 	AuditKeyProtected AuditAction = "key.protected"
 	AuditKeyRotated   AuditAction = "key.rotated"
+	AuditShareOpened  AuditAction = "share.created"
+	AuditShareRevoked AuditAction = "share.revoked"
 )
 
 // AuditEvent is one entry of the log.

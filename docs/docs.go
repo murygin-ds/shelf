@@ -640,6 +640,45 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/files/{id}/backlinks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "List backlinks",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.BacklinksResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/files/{id}/content": {
             "put": {
                 "security": [
@@ -697,6 +736,51 @@ const docTemplate = `{
                     },
                     "428": {
                         "description": "Precondition Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/links": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "Replace a note's outgoing links",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "resolved targets",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.setLinksRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -811,6 +895,179 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/revisions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "revisions"
+                ],
+                "summary": "List revisions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RevisionsResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/revisions/{revision_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "revisions"
+                ],
+                "summary": "Read a revision",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "revision id",
+                        "name": "revision_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RevisionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/share-links": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "List public links",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ShareLinksResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "Open a public link",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the note key wrapped under the link secret",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createShareRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ShareLinkResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1121,6 +1378,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/public/share/lookup": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "Open a shared note",
+                "parameters": [
+                    {
+                        "description": "digest of the link secret",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.lookupShareRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.PublicNoteResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/rekeys/{id}": {
             "delete": {
                 "security": [
@@ -1237,6 +1539,39 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/share-links/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "Revoke a public link",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "share link id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -1789,6 +2124,45 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/graph": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "Read the note graph",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.GraphResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -3464,6 +3838,22 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.BacklinksResponse": {
+            "type": "object",
+            "properties": {
+                "hidden": {
+                    "description": "Hidden counts the notes that point here and that the caller cannot see. A count and\nnever a list: the count is honest about the note's reach, the identities are not the\ncaller's to have.",
+                    "type": "integer",
+                    "example": 2
+                },
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                }
+            }
+        },
         "vault.ContentResponse": {
             "type": "object",
             "properties": {
@@ -3673,6 +4063,97 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.GraphEdgeResponse": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string",
+                    "example": "88"
+                },
+                "to": {
+                    "type": "string",
+                    "example": "locked-1"
+                }
+            }
+        },
+        "vault.GraphNodeResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "degree": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "file_id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "folder_id": {
+                    "type": "integer"
+                },
+                "key_scope_client_id": {
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "type": "integer"
+                },
+                "key_version": {
+                    "type": "integer"
+                },
+                "locked": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "ref": {
+                    "description": "Ref names the node inside this response. A visible node uses its file id; a locked\none uses an opaque counter, because handing out its id would make the graph an\nexistence oracle for notes every other route answers 404 for.",
+                    "type": "string",
+                    "example": "88"
+                }
+            }
+        },
+        "vault.GraphResponse": {
+            "type": "object",
+            "properties": {
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.GraphEdgeResponse"
+                    }
+                },
+                "locked": {
+                    "description": "Locked counts the masked nodes drawn. They exist so the picture is not a lie: a note\nlinked only through something invisible would otherwise appear unconnected.",
+                    "type": "integer",
+                    "example": 2
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.GraphNodeResponse"
+                    }
+                },
+                "reveals_locked": {
+                    "description": "RevealsLocked says whether this vault draws masked nodes at all, so the view can tell\nthe reader whether they are looking at the whole graph or only their part of it.",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
         "vault.KeyGrantResponse": {
             "type": "object",
             "properties": {
@@ -3723,6 +4204,45 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/vault.KeyGrantResponse"
                     }
+                }
+            }
+        },
+        "vault.PublicNoteResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "published_at": {
+                    "type": "string"
                 }
             }
         },
@@ -3844,6 +4364,95 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.RevisionResponse": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "integer"
+                },
+                "author_login": {
+                    "type": "string"
+                },
+                "author_name": {
+                    "type": "string"
+                },
+                "author_public_key": {
+                    "description": "AuthorPublicKey is what the signature verifies against. It travels with the revision\nso checking who wrote it never depends on a second answer from the same server.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_seq": {
+                    "type": "integer",
+                    "example": 14
+                },
+                "content_size": {
+                    "type": "integer",
+                    "example": 4112
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "file_id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 14
+                },
+                "key_scope_client_id": {
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "signature": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "signed": {
+                    "description": "Signed is false for a body written before signatures existed. Unsigned is not the\nsame as forged, but it is not proof of authorship either, and the view says so.",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "vault.RevisionsResponse": {
+            "type": "object",
+            "properties": {
+                "revisions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.RevisionResponse"
+                    }
+                }
+            }
+        },
         "vault.ScopeResponse": {
             "type": "object",
             "properties": {
@@ -3882,6 +4491,65 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/vault.ScopeResponse"
+                    }
+                }
+            }
+        },
+        "vault.ShareLinkResponse": {
+            "type": "object",
+            "properties": {
+                "content_seq": {
+                    "description": "ContentSeq is the version that was published. A link is a snapshot, so a note that\nhas moved on since is something the owner should be able to see.",
+                    "type": "integer",
+                    "example": 14
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "integer"
+                },
+                "creator_name": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "file_id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "last_viewed_at": {
+                    "type": "string"
+                },
+                "live": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "view"
+                },
+                "revoked_at": {
+                    "type": "string"
+                },
+                "view_count": {
+                    "type": "integer",
+                    "example": 12
+                }
+            }
+        },
+        "vault.ShareLinksResponse": {
+            "type": "object",
+            "properties": {
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.ShareLinkResponse"
                     }
                 }
             }
@@ -4202,6 +4870,73 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.createShareRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "content_nonce",
+                "content_seq",
+                "meta",
+                "meta_nonce",
+                "token_hash"
+            ],
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_seq": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "meta": {
+                    "description": "The note re-encrypted under a key derived from that secret. Not the scope key: a\nscope covers a whole folder or vault, and one published note must not be the key to\neverything sealed beside it.",
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "token_hash": {
+                    "description": "TokenHash is the digest of a secret the server never sees, the same shape as a code\ninvite. The secret travels in the link fragment and stays in the visitor's browser.",
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
         "vault.createVaultRequest": {
             "type": "object",
             "required": [
@@ -4257,6 +4992,23 @@ const docTemplate = `{
                     "description": "WrappedKey is the vault content key sealed to the creator's own public key.",
                     "type": "array",
                     "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.lookupShareRequest": {
+            "type": "object",
+            "required": [
+                "token_hash"
+            ],
+            "properties": {
+                "token_hash": {
+                    "type": "array",
+                    "maxItems": 64,
                     "minItems": 32,
                     "items": {
                         "type": "integer",
@@ -4381,6 +5133,19 @@ const docTemplate = `{
                 }
             }
         },
+        "vault.setLinksRequest": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "description": "To are the notes this one points at, already resolved by a reader who holds the keys.\nThe server drops any the caller cannot see rather than trusting the list.",
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "vault.stageRekeyRequest": {
             "type": "object",
             "required": [
@@ -4426,7 +5191,9 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "content",
-                "content_nonce"
+                "content_nonce",
+                "key_scope_id",
+                "key_version"
             ],
             "properties": {
                 "content": {
@@ -4442,6 +5209,23 @@ const docTemplate = `{
                     "type": "array",
                     "maxItems": 32,
                     "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "key_scope_id": {
+                    "description": "The scope and version the body was sealed under. content_seq alone does not cover\nthem: a re-key rewrites the row without touching that sequence, so a write held up\nacross a rotation would otherwise land ciphertext under a key nobody holds and the\nrow would claim the new version.",
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "signature": {
+                    "description": "Signature is the author's raw ECDSA P-256 signature over this exact ciphertext in\nthis exact slot. Optional so an older client still writes, but a body without one is\nstored as unsigned and the history says so rather than implying authorship.",
+                    "type": "array",
                     "items": {
                         "type": "integer",
                         "format": "byte"

@@ -33,6 +33,18 @@ type Service interface {
 	AbortRekey(ctx context.Context, userID, rekeyID int64) error
 
 	Audit(ctx context.Context, userID, vaultID, before int64, limit int) ([]vault.AuditEvent, error)
+
+	SetLinks(ctx context.Context, userID, fileID int64, to []int64) error
+	Backlinks(ctx context.Context, userID, fileID int64) (*vault.Backlinks, error)
+	Graph(ctx context.Context, userID, vaultID int64) (*vault.Graph, error)
+
+	Revisions(ctx context.Context, userID, fileID int64, limit int) ([]vault.Revision, error)
+	Revision(ctx context.Context, userID, revisionID int64) (*vault.Revision, error)
+
+	CreateShareLink(ctx context.Context, userID int64, in vault.NewShareLink) (*vault.ShareLink, error)
+	ShareLinks(ctx context.Context, userID, fileID int64) ([]vault.ShareLink, error)
+	RevokeShareLink(ctx context.Context, userID, linkID int64) error
+	PublicNote(ctx context.Context, tokenHash []byte) (*vault.PublicNote, error)
 	Trash(ctx context.Context, userID, vaultID int64) ([]vault.Folder, []vault.File, error)
 
 	CreateFolder(ctx context.Context, userID int64, in vault.NewFolder) (*vault.Folder, error)
@@ -55,11 +67,13 @@ type Service interface {
 
 type Handler struct {
 	service Service
-	log     *zap.Logger
+	// publicLimit throttles the one route that answers without an account.
+	publicLimit middleware.Limiter
+	log         *zap.Logger
 }
 
-func NewHandler(service Service, log *zap.Logger) *Handler {
-	return &Handler{service: service, log: log}
+func NewHandler(service Service, publicLimit middleware.Limiter, log *zap.Logger) *Handler {
+	return &Handler{service: service, publicLimit: publicLimit, log: log}
 }
 
 // RegisterRoutes attaches the workspace routes to an already authenticated group.
@@ -76,6 +90,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	vaults.GET("/:id/sync", h.Sync)
 	vaults.GET("/:id/trash", h.Trash)
 	vaults.GET("/:id/audit", h.Audit)
+	vaults.GET("/:id/graph", h.Graph)
 	vaults.POST("/:id/folders", h.CreateFolder)
 	vaults.POST("/:id/files", h.CreateFile)
 	vaults.POST("/:id/files/bulk", h.BulkFiles)
@@ -101,6 +116,23 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	files.DELETE("/:id", h.DeleteFile)
 	files.POST("/:id/restore", h.RestoreFile)
 	files.DELETE("/:id/purge", h.PurgeFile)
+	files.PUT("/:id/links", h.SetLinks)
+	files.GET("/:id/backlinks", h.Backlinks)
+	files.GET("/:id/revisions", h.Revisions)
+	files.GET("/:id/revisions/:revision_id", h.Revision)
+	files.GET("/:id/share-links", h.ShareLinks)
+	files.POST("/:id/share-links", h.CreateShareLink)
+
+	rg.DELETE("/share-links/:id", h.RevokeShareLink)
+}
+
+// RegisterPublicRoutes attaches the routes that answer without an account.
+//
+// The link secret travels in the URL fragment and is posted back as a digest, never as a
+// path segment: a token in the path lands in every access log and in this service's own
+// request logger, which would turn the log file into a set of working keys.
+func (h *Handler) RegisterPublicRoutes(rg *gin.RouterGroup) {
+	rg.POST("/public/share/lookup", middleware.RateLimitByIP(h.publicLimit), h.PublicNote)
 }
 
 // CreateVault opens a vault.
@@ -855,6 +887,9 @@ func (h *Handler) UpdateContent(c *gin.Context) {
 	updated, err := h.service.UpdateContent(c.Request.Context(), userID, fileID, vault.ContentUpdate{
 		Content:     blob(req.Content, req.ContentNonce),
 		ExpectedSeq: expected,
+		KeyScopeID:  req.KeyScopeID,
+		KeyVersion:  req.KeyVersion,
+		Signature:   req.Signature,
 	})
 	if err != nil {
 		h.fail(c, "update file content", err)
@@ -986,6 +1021,15 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 	case errors.Is(err, vault.ErrDepthExceeded):
 		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
 			"the folder tree would become too deep")
+	case errors.Is(err, vault.ErrShareExpiry):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"a public link must expire in the future")
+	case errors.Is(err, vault.ErrLinkBatch):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"a note may declare at most 500 outgoing links")
+	case errors.Is(err, vault.ErrSignatureInvalid):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"an author signature must be 64 raw bytes")
 	case errors.Is(err, vault.ErrRekeyStale):
 		response.Fail(c, http.StatusConflict, response.CodeConflict,
 			"this re-key is no longer open")
@@ -999,4 +1043,262 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 		middleware.LoggerFrom(c).Error("vault handler failed", zap.String("op", op), zap.Error(err))
 		response.Internal(c)
 	}
+}
+
+// SetLinks records what a note points at.
+//
+//	@Summary	Replace a note's outgoing links
+//	@Tags		graph
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Param		id		path	int				true	"file id"
+//	@Param		request	body	setLinksRequest	true	"resolved targets"
+//	@Success	204
+//	@Failure	404	{object}	response.ErrorResponse
+//	@Router		/api/v1/files/{id}/links [put]
+func (h *Handler) SetLinks(c *gin.Context) {
+	userID, fileID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req setLinksRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	if err := h.service.SetLinks(c.Request.Context(), userID, fileID, req.To); err != nil {
+		h.fail(c, "set links", err)
+		return
+	}
+
+	response.NoContent(c)
+}
+
+// Backlinks lists what points at a note, and counts what points at it out of sight.
+//
+//	@Summary	List backlinks
+//	@Tags		graph
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"file id"
+//	@Success	200	{object}	BacklinksResponse
+//	@Failure	404	{object}	response.ErrorResponse
+//	@Router		/api/v1/files/{id}/backlinks [get]
+func (h *Handler) Backlinks(c *gin.Context) {
+	userID, fileID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	found, err := h.service.Backlinks(c.Request.Context(), userID, fileID)
+	if err != nil {
+		h.fail(c, "read backlinks", err)
+		return
+	}
+
+	response.OK(c, backlinksResponse(found))
+}
+
+// Graph draws the vault's link structure as this caller sees it.
+//
+//	@Summary	Read the note graph
+//	@Tags		graph
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"vault id"
+//	@Success	200	{object}	GraphResponse
+//	@Failure	404	{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/graph [get]
+func (h *Handler) Graph(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	graph, err := h.service.Graph(c.Request.Context(), userID, vaultID)
+	if err != nil {
+		h.fail(c, "read graph", err)
+		return
+	}
+
+	response.OK(c, graphResponse(graph))
+}
+
+// Revisions lists the history of a note without the bodies.
+//
+//	@Summary	List revisions
+//	@Tags		revisions
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id		path		int	true	"file id"
+//	@Param		limit	query		int	false	"page size"
+//	@Success	200		{object}	RevisionsResponse
+//	@Failure	404		{object}	response.ErrorResponse
+//	@Router		/api/v1/files/{id}/revisions [get]
+func (h *Handler) Revisions(c *gin.Context) {
+	userID, fileID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	limit, ok := request.Query(c, "limit", vault.DefaultRevisionLimit)
+	if !ok {
+		return
+	}
+
+	list, err := h.service.Revisions(c.Request.Context(), userID, fileID, int(limit))
+	if err != nil {
+		h.fail(c, "read revisions", err)
+		return
+	}
+
+	response.OK(c, revisionsResponse(list))
+}
+
+// Revision reads one stored body.
+//
+//	@Summary	Read a revision
+//	@Tags		revisions
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id			path		int	true	"file id"
+//	@Param		revision_id	path		int	true	"revision id"
+//	@Success	200			{object}	RevisionResponse
+//	@Failure	404			{object}	response.ErrorResponse
+//	@Router		/api/v1/files/{id}/revisions/{revision_id} [get]
+func (h *Handler) Revision(c *gin.Context) {
+	userID, ok := h.caller(c)
+	if !ok {
+		return
+	}
+
+	revisionID, ok := request.ID(c, "revision_id")
+	if !ok {
+		return
+	}
+
+	found, err := h.service.Revision(c.Request.Context(), userID, revisionID)
+	if err != nil {
+		h.fail(c, "read revision", err)
+		return
+	}
+
+	response.OK(c, revisionResponse(found, true))
+}
+
+// CreateShareLink publishes a note behind a secret the server never sees.
+//
+//	@Summary	Open a public link
+//	@Tags		sharing
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		int					true	"file id"
+//	@Param		request	body		createShareRequest	true	"the note key wrapped under the link secret"
+//	@Success	201		{object}	ShareLinkResponse
+//	@Failure	409		{object}	response.ErrorResponse
+//	@Router		/api/v1/files/{id}/share-links [post]
+func (h *Handler) CreateShareLink(c *gin.Context) {
+	userID, fileID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req createShareRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	created, err := h.service.CreateShareLink(c.Request.Context(), userID, vault.NewShareLink{
+		FileID:     fileID,
+		TokenHash:  req.TokenHash,
+		Meta:       blob(req.Meta, req.MetaNonce),
+		Content:    blob(req.Content, req.ContentNonce),
+		ContentSeq: req.ContentSeq,
+		ExpiresAt:  req.ExpiresAt,
+	})
+	if err != nil {
+		h.fail(c, "create share link", err)
+		return
+	}
+
+	response.Created(c, shareLinkResponse(created))
+}
+
+// ShareLinks lists the public links on a note.
+//
+//	@Summary	List public links
+//	@Tags		sharing
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"file id"
+//	@Success	200	{object}	ShareLinksResponse
+//	@Router		/api/v1/files/{id}/share-links [get]
+func (h *Handler) ShareLinks(c *gin.Context) {
+	userID, fileID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	links, err := h.service.ShareLinks(c.Request.Context(), userID, fileID)
+	if err != nil {
+		h.fail(c, "list share links", err)
+		return
+	}
+
+	response.OK(c, shareLinksResponse(links))
+}
+
+// RevokeShareLink closes a public link.
+//
+//	@Summary	Revoke a public link
+//	@Tags		sharing
+//	@Security	BearerAuth
+//	@Param		id	path	int	true	"share link id"
+//	@Success	204
+//	@Failure	404	{object}	response.ErrorResponse
+//	@Router		/api/v1/share-links/{id} [delete]
+func (h *Handler) RevokeShareLink(c *gin.Context) {
+	userID, linkID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	if err := h.service.RevokeShareLink(c.Request.Context(), userID, linkID); err != nil {
+		h.fail(c, "revoke share link", err)
+		return
+	}
+
+	response.NoContent(c)
+}
+
+// PublicNote resolves a public link with no account behind it.
+//
+//	@Summary	Open a shared note
+//	@Tags		sharing
+//	@Accept		json
+//	@Produce	json
+//	@Param		request	body		lookupShareRequest	true	"digest of the link secret"
+//	@Success	200		{object}	PublicNoteResponse
+//	@Failure	404		{object}	response.ErrorResponse
+//	@Failure	429		{object}	response.ErrorResponse
+//	@Router		/api/v1/public/share/lookup [post]
+func (h *Handler) PublicNote(c *gin.Context) {
+	var req lookupShareRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	note, err := h.service.PublicNote(c.Request.Context(), req.TokenHash)
+	if err != nil {
+		h.fail(c, "resolve share link", err)
+		return
+	}
+
+	// Only failed guesses spend the counter, the rule the login, recovery and invite
+	// endpoints already follow: somebody holding a working link is not the threat.
+	h.publicLimit.Refund(c.ClientIP())
+
+	response.OK(c, publicNoteResponse(note))
 }

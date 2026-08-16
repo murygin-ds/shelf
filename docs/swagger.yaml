@@ -836,6 +836,20 @@ definitions:
           $ref: '#/definitions/vault.AuditEventResponse'
         type: array
     type: object
+  vault.BacklinksResponse:
+    properties:
+      hidden:
+        description: |-
+          Hidden counts the notes that point here and that the caller cannot see. A count and
+          never a list: the count is honest about the note's reach, the identities are not the
+          caller's to have.
+        example: 2
+        type: integer
+      links:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+    type: object
   vault.ContentResponse:
     properties:
       content_seq:
@@ -984,6 +998,77 @@ definitions:
         example: 1
         type: integer
     type: object
+  vault.GraphEdgeResponse:
+    properties:
+      from:
+        example: "88"
+        type: string
+      to:
+        example: locked-1
+        type: string
+    type: object
+  vault.GraphNodeResponse:
+    properties:
+      client_id:
+        type: string
+      degree:
+        example: 4
+        type: integer
+      file_id:
+        example: 88
+        type: integer
+      folder_id:
+        type: integer
+      key_scope_client_id:
+        type: string
+      key_scope_id:
+        type: integer
+      key_version:
+        type: integer
+      locked:
+        example: false
+        type: boolean
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      ref:
+        description: |-
+          Ref names the node inside this response. A visible node uses its file id; a locked
+          one uses an opaque counter, because handing out its id would make the graph an
+          existence oracle for notes every other route answers 404 for.
+        example: "88"
+        type: string
+    type: object
+  vault.GraphResponse:
+    properties:
+      edges:
+        items:
+          $ref: '#/definitions/vault.GraphEdgeResponse'
+        type: array
+      locked:
+        description: |-
+          Locked counts the masked nodes drawn. They exist so the picture is not a lie: a note
+          linked only through something invisible would otherwise appear unconnected.
+        example: 2
+        type: integer
+      nodes:
+        items:
+          $ref: '#/definitions/vault.GraphNodeResponse'
+        type: array
+      reveals_locked:
+        description: |-
+          RevealsLocked says whether this vault draws masked nodes at all, so the view can tell
+          the reader whether they are looking at the whole graph or only their part of it.
+        example: true
+        type: boolean
+    type: object
   vault.KeyGrantResponse:
     properties:
       key_version:
@@ -1020,6 +1105,33 @@ definitions:
         items:
           $ref: '#/definitions/vault.KeyGrantResponse'
         type: array
+    type: object
+  vault.PublicNoteResponse:
+    properties:
+      client_id:
+        type: string
+      content:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      published_at:
+        type: string
     type: object
   vault.PurgedResponse:
     properties:
@@ -1103,6 +1215,73 @@ definitions:
         example: 7
         type: integer
     type: object
+  vault.RevisionResponse:
+    properties:
+      author_id:
+        type: integer
+      author_login:
+        type: string
+      author_name:
+        type: string
+      author_public_key:
+        description: |-
+          AuthorPublicKey is what the signature verifies against. It travels with the revision
+          so checking who wrote it never depends on a second answer from the same server.
+        items:
+          format: byte
+          type: integer
+        type: array
+      content:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_seq:
+        example: 14
+        type: integer
+      content_size:
+        example: 4112
+        type: integer
+      created_at:
+        type: string
+      file_id:
+        example: 88
+        type: integer
+      id:
+        example: 14
+        type: integer
+      key_scope_client_id:
+        type: string
+      key_scope_id:
+        example: 3
+        type: integer
+      key_version:
+        example: 2
+        type: integer
+      signature:
+        items:
+          format: byte
+          type: integer
+        type: array
+      signed:
+        description: |-
+          Signed is false for a body written before signatures existed. Unsigned is not the
+          same as forged, but it is not proof of authorship either, and the view says so.
+        example: true
+        type: boolean
+    type: object
+  vault.RevisionsResponse:
+    properties:
+      revisions:
+        items:
+          $ref: '#/definitions/vault.RevisionResponse'
+        type: array
+    type: object
   vault.ScopeResponse:
     properties:
       client_id:
@@ -1130,6 +1309,49 @@ definitions:
       scopes:
         items:
           $ref: '#/definitions/vault.ScopeResponse'
+        type: array
+    type: object
+  vault.ShareLinkResponse:
+    properties:
+      content_seq:
+        description: |-
+          ContentSeq is the version that was published. A link is a snapshot, so a note that
+          has moved on since is something the owner should be able to see.
+        example: 14
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: integer
+      creator_name:
+        type: string
+      expires_at:
+        type: string
+      file_id:
+        example: 88
+        type: integer
+      id:
+        example: 5
+        type: integer
+      last_viewed_at:
+        type: string
+      live:
+        example: true
+        type: boolean
+      permission:
+        example: view
+        type: string
+      revoked_at:
+        type: string
+      view_count:
+        example: 12
+        type: integer
+    type: object
+  vault.ShareLinksResponse:
+    properties:
+      links:
+        items:
+          $ref: '#/definitions/vault.ShareLinkResponse'
         type: array
     type: object
   vault.SyncResponse:
@@ -1367,6 +1589,63 @@ definitions:
     - meta
     - meta_nonce
     type: object
+  vault.createShareRequest:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      content_seq:
+        minimum: 1
+        type: integer
+      expires_at:
+        type: string
+      meta:
+        description: |-
+          The note re-encrypted under a key derived from that secret. Not the scope key: a
+          scope covers a whole folder or vault, and one published note must not be the key to
+          everything sealed beside it.
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      token_hash:
+        description: |-
+          TokenHash is the digest of a secret the server never sees, the same shape as a code
+          invite. The secret travels in the link fragment and stays in the visitor's browser.
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 32
+        type: array
+    required:
+    - content
+    - content_nonce
+    - content_seq
+    - meta
+    - meta_nonce
+    - token_hash
+    type: object
   vault.createVaultRequest:
     properties:
       client_id:
@@ -1420,6 +1699,18 @@ definitions:
     - meta_nonce
     - scope_client_id
     - wrapped_key
+    type: object
+  vault.lookupShareRequest:
+    properties:
+      token_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 32
+        type: array
+    required:
+    - token_hash
     type: object
   vault.moveRequest:
     properties:
@@ -1508,6 +1799,17 @@ definitions:
     - meta
     - meta_nonce
     type: object
+  vault.setLinksRequest:
+    properties:
+      to:
+        description: |-
+          To are the notes this one points at, already resolved by a reader who holds the keys.
+          The server drops any the caller cannot see rather than trusting the list.
+        items:
+          type: integer
+        maxItems: 500
+        type: array
+    type: object
   vault.stageRekeyRequest:
     properties:
       items:
@@ -1555,9 +1857,31 @@ definitions:
         maxItems: 32
         minItems: 12
         type: array
+      key_scope_id:
+        description: |-
+          The scope and version the body was sealed under. content_seq alone does not cover
+          them: a re-key rewrites the row without touching that sequence, so a write held up
+          across a rotation would otherwise land ciphertext under a key nobody holds and the
+          row would claim the new version.
+        minimum: 1
+        type: integer
+      key_version:
+        minimum: 1
+        type: integer
+      signature:
+        description: |-
+          Signature is the author's raw ECDSA P-256 signature over this exact ciphertext in
+          this exact slot. Optional so an older client still writes, but a body without one is
+          stored as unsigned and the history says so rather than implying authorship.
+        items:
+          format: byte
+          type: integer
+        type: array
     required:
     - content
     - content_nonce
+    - key_scope_id
+    - key_version
     type: object
   vault.updateMetaRequest:
     properties:
@@ -1994,6 +2318,30 @@ paths:
       summary: Update note metadata
       tags:
       - files
+  /api/v1/files/{id}/backlinks:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.BacklinksResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List backlinks
+      tags:
+      - graph
   /api/v1/files/{id}/content:
     put:
       consumes:
@@ -2035,6 +2383,34 @@ paths:
       summary: Write a note body
       tags:
       - files
+  /api/v1/files/{id}/links:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: resolved targets
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.setLinksRequest'
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a note's outgoing links
+      tags:
+      - graph
   /api/v1/files/{id}/move:
     post:
       consumes:
@@ -2103,6 +2479,114 @@ paths:
       summary: Restore a note
       tags:
       - files
+  /api/v1/files/{id}/revisions:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: page size
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.RevisionsResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List revisions
+      tags:
+      - revisions
+  /api/v1/files/{id}/revisions/{revision_id}:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: revision id
+        in: path
+        name: revision_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.RevisionResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a revision
+      tags:
+      - revisions
+  /api/v1/files/{id}/share-links:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.ShareLinksResponse'
+      security:
+      - BearerAuth: []
+      summary: List public links
+      tags:
+      - sharing
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the note key wrapped under the link secret
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createShareRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.ShareLinkResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Open a public link
+      tags:
+      - sharing
   /api/v1/folders/{id}:
     delete:
       parameters:
@@ -2292,6 +2776,35 @@ paths:
       summary: List my invites
       tags:
       - access
+  /api/v1/public/share/lookup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: digest of the link secret
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.lookupShareRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.PublicNoteResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Open a shared note
+      tags:
+      - sharing
   /api/v1/rekeys/{id}:
     delete:
       parameters:
@@ -2368,6 +2881,26 @@ paths:
       summary: Stage re-encrypted rows
       tags:
       - keys
+  /api/v1/share-links/{id}:
+    delete:
+      parameters:
+      - description: share link id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Revoke a public link
+      tags:
+      - sharing
   /api/v1/users/lookup:
     get:
       parameters:
@@ -2710,6 +3243,30 @@ paths:
       summary: Remove a grant
       tags:
       - access
+  /api/v1/vaults/{id}/graph:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.GraphResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the note graph
+      tags:
+      - graph
   /api/v1/vaults/{id}/invites:
     get:
       parameters:

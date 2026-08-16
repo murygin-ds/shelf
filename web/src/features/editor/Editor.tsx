@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
 
@@ -10,6 +11,7 @@ const AUTOSAVE_MS = 1200;
 
 export function Editor() {
   const { open, saving, editBody, saveNote, rename, openNote } = useWorkspace();
+  const identity = useSession((state) => state.identity);
   const [title, setTitle] = useState(open?.note.name ?? '');
   const timer = useRef<number | undefined>(undefined);
 
@@ -22,23 +24,23 @@ export function Editor() {
     if (!open?.dirty) return;
 
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => void saveNote(), AUTOSAVE_MS);
+    timer.current = window.setTimeout(() => void saveNote(identity ?? undefined), AUTOSAVE_MS);
 
     return () => window.clearTimeout(timer.current);
-  }, [open?.body, open?.dirty, saveNote]);
+  }, [open?.body, open?.dirty, saveNote, identity]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
-        void saveNote();
+        void saveNote(identity ?? undefined);
       }
     };
 
     window.addEventListener('keydown', onKey);
 
     return () => window.removeEventListener('keydown', onKey);
-  }, [saveNote]);
+  }, [saveNote, identity]);
 
   if (!open) return null;
 
@@ -109,7 +111,7 @@ export function Editor() {
               className={styles.body}
               value={open.body}
               onChange={(event) => editBody(event.target.value)}
-              onBlur={() => void saveNote()}
+              onBlur={() => void saveNote(identity ?? undefined)}
               placeholder="Write in markdown. Everything here is encrypted before it leaves this device."
               disabled={readOnly}
               spellCheck={false}

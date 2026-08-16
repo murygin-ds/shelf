@@ -55,6 +55,7 @@ auth:
     recovery_account: { limit: 10, window: 1h }
     # a resolved invite refunds its attempt, so only failed guesses spend the counter
     invite_ip: { limit: 20, window: 15m }
+    share_ip: { limit: 60, window: 15m }
 
 log:
   level: debug # debug | info | warn | error

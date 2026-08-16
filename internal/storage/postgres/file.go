@@ -150,17 +150,29 @@ func (r *VaultRepository) UpdateFileContent(
 			   SET content = $2, content_nonce = $3, content_seq = content_seq + 1,
 			       updated_seq = $4, updated_by = $5
 			 WHERE id = $1 AND content_seq = $6
+			   AND key_scope_id = $7 AND key_version = $8
 			RETURNING ` + fileReturning
 
 		file, err := scanFileBody(tx.QueryRow(ctx, update,
-			fileID, in.Content.Ciphertext, in.Content.Nonce, seq, actorID, in.ExpectedSeq))
+			fileID, in.Content.Ciphertext, in.Content.Nonce, seq, actorID, in.ExpectedSeq,
+			in.KeyScopeID, in.KeyVersion))
 		if errors.Is(err, pgx.ErrNoRows) {
-			// The row is there, so the only reason the update matched nothing is the
-			// sequence: somebody else wrote first.
+			// The row is there, so the update matched nothing for one of two reasons:
+			// somebody wrote first, or the note was re-keyed under this write. Telling
+			// them apart costs a second read and changes nothing the client does — both
+			// mean "your copy is stale, fetch it again".
 			return nil, vault.ErrVersionConflict
 		}
 
-		return file, err
+		if err != nil {
+			return nil, err
+		}
+
+		if err := recordRevision(ctx, tx, file, in.Signature, actorID); err != nil {
+			return nil, err
+		}
+
+		return file, nil
 	})
 }
 

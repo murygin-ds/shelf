@@ -14,6 +14,7 @@ import {
 import { type Identity, splitPublicBlob } from '@/crypto/identity';
 import { type KeyGrantDto, ScopeKeyring } from '@/crypto/keyring';
 import { seal } from '@/crypto/sealedbox';
+import { signRevision } from '@/crypto/signature';
 
 import { api } from './client';
 
@@ -400,21 +401,39 @@ export async function readNote(noteId: number, keyring: ScopeKeyring): Promise<N
   return { body: locked ? '' : opened, contentSeq: dto.content_seq, locked };
 }
 
-/** Returns the next content sequence, which the following write has to carry. */
+/**
+ * Writes a body and signs it. Returns the next content sequence, which the following write
+ * has to carry.
+ *
+ * The signature covers the slot as well as the ciphertext, so it cannot be moved onto
+ * another note or replayed as a later version. Signing the sequence that is about to be
+ * written means predicting it — the server increments by one, and a wrong guess only makes
+ * the revision read as unsigned rather than corrupting anything.
+ */
 export async function writeNote(
   note: NoteNode,
   body: string,
   contentSeq: number,
   keyring: ScopeKeyring,
+  identity?: Identity,
 ): Promise<number> {
   const scope = scopeOfNode(note);
   const key = requireKey(keyring, scope);
+  const at = ref(note.vaultId, 'file', note.clientId, scope);
 
-  const sealed = await encryptContent(key, body, ref(note.vaultId, 'file', note.clientId, scope));
+  const sealed = await encryptContent(key, body, at);
+
+  const signature = identity
+    ? bytesToB64(await signRevision(identity, at, contentSeq + 1, sealed))
+    : undefined;
 
   const written = await api.put<{ content_seq: number }>(
     `/files/${note.id}/content`,
-    { content: bytesToB64(sealed.ciphertext), content_nonce: bytesToB64(sealed.nonce) },
+    {
+      content: bytesToB64(sealed.ciphertext),
+      content_nonce: bytesToB64(sealed.nonce),
+      ...(signature ? { signature } : {}),
+    },
     { headers: { 'If-Match': String(contentSeq) } },
   );
 

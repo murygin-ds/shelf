@@ -59,6 +59,16 @@ type createFileRequest struct {
 type updateContentRequest struct {
 	Content      []byte `binding:"required,min=16,max=4194304" json:"content"       format:"byte"`
 	ContentNonce []byte `binding:"required,min=12,max=32"      json:"content_nonce" format:"byte"`
+	// The scope and version the body was sealed under. content_seq alone does not cover
+	// them: a re-key rewrites the row without touching that sequence, so a write held up
+	// across a rotation would otherwise land ciphertext under a key nobody holds and the
+	// row would claim the new version.
+	KeyScopeID int64 `binding:"required,min=1" json:"key_scope_id"`
+	KeyVersion int32 `binding:"required,min=1" json:"key_version"`
+	// Signature is the author's raw ECDSA P-256 signature over this exact ciphertext in
+	// this exact slot. Optional so an older client still writes, but a body without one is
+	// stored as unsigned and the history says so rather than implying authorship.
+	Signature []byte `binding:"omitempty,len=64" json:"signature,omitempty" format:"byte"`
 }
 
 type moveRequest struct {
@@ -592,4 +602,258 @@ func auditResponse(events []vault.AuditEvent) AuditResponse {
 	}
 
 	return out
+}
+
+// -- graph -------------------------------------------------------------------
+
+type setLinksRequest struct {
+	// To are the notes this one points at, already resolved by a reader who holds the keys.
+	// The server drops any the caller cannot see rather than trusting the list.
+	To []int64 `binding:"omitempty,max=500,dive,min=1" json:"to"`
+}
+
+type GraphNodeResponse struct {
+	// Ref names the node inside this response. A visible node uses its file id; a locked
+	// one uses an opaque counter, because handing out its id would make the graph an
+	// existence oracle for notes every other route answers 404 for.
+	Ref              string `json:"ref"                          example:"88"`
+	FileID           int64  `json:"file_id,omitempty"            example:"88"`
+	ClientID         string `json:"client_id,omitempty"`
+	FolderID         *int64 `json:"folder_id,omitempty"`
+	KeyScopeID       int64  `json:"key_scope_id,omitempty"`
+	KeyScopeClientID string `json:"key_scope_client_id,omitempty"`
+	KeyVersion       int32  `json:"key_version,omitempty"`
+	Meta             []byte `json:"meta,omitempty"       format:"byte"`
+	MetaNonce        []byte `json:"meta_nonce,omitempty" format:"byte"`
+	Locked           bool   `json:"locked"                       example:"false"`
+	Degree           int    `json:"degree"                       example:"4"`
+}
+
+type GraphEdgeResponse struct {
+	From string `json:"from" example:"88"`
+	To   string `json:"to"   example:"locked-1"`
+}
+
+type GraphResponse struct {
+	Nodes []GraphNodeResponse `json:"nodes"`
+	Edges []GraphEdgeResponse `json:"edges"`
+	// Locked counts the masked nodes drawn. They exist so the picture is not a lie: a note
+	// linked only through something invisible would otherwise appear unconnected.
+	Locked int `json:"locked" example:"2"`
+	// RevealsLocked says whether this vault draws masked nodes at all, so the view can tell
+	// the reader whether they are looking at the whole graph or only their part of it.
+	RevealsLocked bool `json:"reveals_locked" example:"true"`
+}
+
+type BacklinksResponse struct {
+	Links []FileResponse `json:"links"`
+	// Hidden counts the notes that point here and that the caller cannot see. A count and
+	// never a list: the count is honest about the note's reach, the identities are not the
+	// caller's to have.
+	Hidden int `json:"hidden" example:"2"`
+}
+
+func graphResponse(graph *vault.Graph) GraphResponse {
+	out := GraphResponse{
+		Nodes:         make([]GraphNodeResponse, 0, len(graph.Nodes)),
+		Edges:         make([]GraphEdgeResponse, 0, len(graph.Edges)),
+		Locked:        graph.Locked,
+		RevealsLocked: graph.RevealsLocked,
+	}
+
+	for _, node := range graph.Nodes {
+		converted := GraphNodeResponse{
+			Ref:              node.Ref,
+			FileID:           node.FileID,
+			ClientID:         node.ClientID,
+			FolderID:         node.FolderID,
+			KeyScopeID:       node.KeyScopeID,
+			KeyScopeClientID: node.KeyScopeClientID,
+			KeyVersion:       node.KeyVersion,
+			Locked:           node.Locked,
+			Degree:           node.Degree,
+		}
+
+		if node.Meta != nil {
+			converted.Meta = node.Meta.Ciphertext
+			converted.MetaNonce = node.Meta.Nonce
+		}
+
+		out.Nodes = append(out.Nodes, converted)
+	}
+
+	for _, edge := range graph.Edges {
+		out.Edges = append(out.Edges, GraphEdgeResponse{From: edge.From, To: edge.To})
+	}
+
+	return out
+}
+
+func backlinksResponse(found *vault.Backlinks) BacklinksResponse {
+	// Without the bodies: a panel that lists what points here has no use for the contents
+	// of every note that does, and shipping them would make one click pull the vault.
+	links := make([]FileResponse, 0, len(found.Visible))
+
+	for i := range found.Visible {
+		links = append(links, fileResponse(&found.Visible[i], false))
+	}
+
+	return BacklinksResponse{Links: links, Hidden: found.Hidden}
+}
+
+// -- revisions ---------------------------------------------------------------
+
+type RevisionResponse struct {
+	ID               int64  `json:"id"                   example:"14"`
+	FileID           int64  `json:"file_id"              example:"88"`
+	KeyScopeID       int64  `json:"key_scope_id"         example:"3"`
+	KeyScopeClientID string `json:"key_scope_client_id"`
+	KeyVersion       int32  `json:"key_version"          example:"2"`
+	ContentSeq       int64  `json:"content_seq"          example:"14"`
+	ContentSize      int    `json:"content_size"         example:"4112"`
+	AuthorID         *int64 `json:"author_id,omitempty"`
+	AuthorLogin      string `json:"author_login,omitempty"`
+	AuthorName       string `json:"author_name,omitempty"`
+	// AuthorPublicKey is what the signature verifies against. It travels with the revision
+	// so checking who wrote it never depends on a second answer from the same server.
+	AuthorPublicKey []byte `json:"author_public_key,omitempty" format:"byte"`
+	Signature       []byte `json:"signature,omitempty"         format:"byte"`
+	// Signed is false for a body written before signatures existed. Unsigned is not the
+	// same as forged, but it is not proof of authorship either, and the view says so.
+	Signed       bool      `json:"signed"                  example:"true"`
+	Content      []byte    `json:"content,omitempty"       format:"byte"`
+	ContentNonce []byte    `json:"content_nonce,omitempty" format:"byte"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type RevisionsResponse struct {
+	Revisions []RevisionResponse `json:"revisions"`
+}
+
+func revisionResponse(revision *vault.Revision, withBody bool) RevisionResponse {
+	out := RevisionResponse{
+		ID:               revision.ID,
+		FileID:           revision.FileID,
+		KeyScopeID:       revision.KeyScopeID,
+		KeyScopeClientID: revision.KeyScopeClientID,
+		KeyVersion:       revision.KeyVersion,
+		ContentSeq:       revision.ContentSeq,
+		ContentSize:      revision.ContentSize,
+		AuthorID:         revision.AuthorID,
+		AuthorLogin:      revision.AuthorLogin,
+		AuthorName:       revision.AuthorName,
+		AuthorPublicKey:  revision.AuthorPublicKey,
+		Signature:        revision.Signature,
+		Signed:           revision.Signed(),
+		CreatedAt:        revision.CreatedAt,
+	}
+
+	if withBody {
+		out.Content = revision.Content.Ciphertext
+		out.ContentNonce = revision.Content.Nonce
+	}
+
+	return out
+}
+
+func revisionsResponse(list []vault.Revision) RevisionsResponse {
+	out := RevisionsResponse{Revisions: make([]RevisionResponse, 0, len(list))}
+
+	for i := range list {
+		out.Revisions = append(out.Revisions, revisionResponse(&list[i], false))
+	}
+
+	return out
+}
+
+// -- share links -------------------------------------------------------------
+
+type createShareRequest struct {
+	// TokenHash is the digest of a secret the server never sees, the same shape as a code
+	// invite. The secret travels in the link fragment and stays in the visitor's browser.
+	TokenHash []byte `binding:"required,min=32,max=64" json:"token_hash" format:"byte"`
+	// The note re-encrypted under a key derived from that secret. Not the scope key: a
+	// scope covers a whole folder or vault, and one published note must not be the key to
+	// everything sealed beside it.
+	Meta         []byte     `binding:"required,min=16,max=8192"     json:"meta"          format:"byte"`
+	MetaNonce    []byte     `binding:"required,min=12,max=32"       json:"meta_nonce"    format:"byte"`
+	Content      []byte     `binding:"required,min=16,max=4194304"  json:"content"       format:"byte"`
+	ContentNonce []byte     `binding:"required,min=12,max=32"       json:"content_nonce" format:"byte"`
+	ContentSeq   int64      `binding:"required,min=1"               json:"content_seq"`
+	ExpiresAt    *time.Time `binding:"omitempty"                    json:"expires_at,omitempty"`
+}
+
+type lookupShareRequest struct {
+	TokenHash []byte `binding:"required,min=32,max=64" json:"token_hash" format:"byte"`
+}
+
+type ShareLinkResponse struct {
+	ID     int64 `json:"id"      example:"5"`
+	FileID int64 `json:"file_id" example:"88"`
+	// ContentSeq is the version that was published. A link is a snapshot, so a note that
+	// has moved on since is something the owner should be able to see.
+	ContentSeq   int64      `json:"content_seq"   example:"14"`
+	CreatedBy    *int64     `json:"created_by,omitempty"`
+	CreatorName  string     `json:"creator_name,omitempty"`
+	Permission   string     `json:"permission"    example:"view"`
+	Live         bool       `json:"live"          example:"true"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	RevokedAt    *time.Time `json:"revoked_at,omitempty"`
+	LastViewedAt *time.Time `json:"last_viewed_at,omitempty"`
+	ViewCount    int64      `json:"view_count"    example:"12"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+type ShareLinksResponse struct {
+	Links []ShareLinkResponse `json:"links"`
+}
+
+// PublicNoteResponse is everything an anonymous visitor receives: the published copy, as
+// ciphertext, and when it was taken. No vault, no folder, no author, and nothing that opens
+// anything except this one note.
+type PublicNoteResponse struct {
+	ClientID     string    `json:"client_id"`
+	Meta         []byte    `json:"meta"          format:"byte"`
+	MetaNonce    []byte    `json:"meta_nonce"    format:"byte"`
+	Content      []byte    `json:"content"       format:"byte"`
+	ContentNonce []byte    `json:"content_nonce" format:"byte"`
+	PublishedAt  time.Time `json:"published_at"`
+}
+
+func shareLinkResponse(link *vault.ShareLink) ShareLinkResponse {
+	return ShareLinkResponse{
+		ID:           link.ID,
+		FileID:       link.FileID,
+		ContentSeq:   link.ContentSeq,
+		CreatedBy:    link.CreatedBy,
+		CreatorName:  link.CreatorName,
+		Permission:   "view",
+		Live:         link.Live(),
+		ExpiresAt:    link.ExpiresAt,
+		RevokedAt:    link.RevokedAt,
+		LastViewedAt: link.LastViewedAt,
+		ViewCount:    link.ViewCount,
+		CreatedAt:    link.CreatedAt,
+	}
+}
+
+func shareLinksResponse(links []vault.ShareLink) ShareLinksResponse {
+	out := ShareLinksResponse{Links: make([]ShareLinkResponse, 0, len(links))}
+
+	for i := range links {
+		out.Links = append(out.Links, shareLinkResponse(&links[i]))
+	}
+
+	return out
+}
+
+func publicNoteResponse(note *vault.PublicNote) PublicNoteResponse {
+	return PublicNoteResponse{
+		ClientID:     note.ClientID,
+		Meta:         note.Meta.Ciphertext,
+		MetaNonce:    note.Meta.Nonce,
+		Content:      note.Content.Ciphertext,
+		ContentNonce: note.Content.Nonce,
+		PublishedAt:  note.PublishedAt,
+	}
 }

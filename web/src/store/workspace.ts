@@ -2,12 +2,14 @@ import { create } from 'zustand';
 
 import { ApiError, OfflineError } from '@/api/client';
 import { ErrorCode } from '@/api/types';
+import * as graphApi from '@/api/graph';
 import * as rekeyApi from '@/api/rekey';
 import * as ws from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
 import type { IndexedNote } from '@/lib/search';
+import { resolveWikilinks } from '@/lib/wikilinks';
 import * as sync from '@/sync/engine';
 
 export interface OpenNote {
@@ -20,7 +22,7 @@ export interface OpenNote {
   conflict: boolean;
 }
 
-export type View = 'editor' | 'search';
+export type View = 'editor' | 'search' | 'graph';
 
 interface WorkspaceState {
   vaults: ws.Vault[];
@@ -50,7 +52,7 @@ interface WorkspaceState {
   addNote: (folderId: number | null, title: string) => Promise<void>;
   openNote: (note: ws.NoteNode) => Promise<void>;
   editBody: (body: string) => void;
-  saveNote: () => Promise<void>;
+  saveNote: (identity?: Identity) => Promise<void>;
   rename: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file', name: string) => Promise<void>;
   setIcon: (
     node: ws.FolderNode | ws.NoteNode,
@@ -279,16 +281,42 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ open: { ...open, body, dirty: true, conflict: false } });
   },
 
-  saveNote: async () => {
-    const { open, keyring } = get();
+  saveNote: async (identity) => {
+    const { open, keyring, tree } = get();
     if (!open || !keyring || !open.dirty || open.locked) return;
 
     set({ saving: true });
 
     try {
-      const contentSeq = await ws.writeNote(open.note, open.body, open.contentSeq, keyring);
+      const contentSeq = await ws.writeNote(open.note, open.body, open.contentSeq, keyring, identity);
       const current = get().open;
-      if (current) set({ open: { ...current, contentSeq, dirty: false, conflict: false } });
+
+      // The write took a round trip, and two things may have moved under it: the user may
+      // have opened another note, or kept typing. Stamping the new sequence onto whatever
+      // is open now would corrupt a different note's optimistic lock; clearing `dirty`
+      // when the body has changed would drop the keystrokes that arrived meanwhile.
+      if (current && current.note.id === open.note.id) {
+        set({
+          open: {
+            ...current,
+            contentSeq,
+            dirty: current.body !== open.body,
+            conflict: false,
+          },
+        });
+      }
+
+      // Links are resolved against what this reader can open, so they are recorded from
+      // here rather than derived on the server, which holds no titles to match.
+      const { resolved } = resolveWikilinks(open.body, tree.notes, open.note.id);
+
+      try {
+        await graphApi.setLinks(open.note.id, resolved);
+      } catch (cause) {
+        // The body is safely written; only the graph is behind. Say so rather than
+        // failing the save, and rather than pretending nothing happened.
+        report(set, cause);
+      }
 
       await get().syncNow();
     } catch (cause) {

@@ -348,6 +348,12 @@ func (r *VaultRepository) CommitRekey(
 			return err
 		}
 
+		files, err := ids(ctx, tx, `SELECT entity_id FROM key_rekey_items
+		                             WHERE rekey_id = $1 AND entity_type = 'file'`, job.ID)
+		if err != nil {
+			return err
+		}
+
 		users, groups := keptSubjects(grants)
 
 		// Everyone not on the new list loses the scope at every version — that is what makes
@@ -425,6 +431,19 @@ func (r *VaultRepository) CommitRekey(
 
 		if _, err := tx.Exec(ctx, drop, job.ID); err != nil {
 			return fmt.Errorf("drop staged rows: %w", err)
+		}
+
+		// A public link is a reading right that outlives whoever issued it, and rotating a
+		// key exists to take reading rights back. Leaving them open would make "revoke old
+		// copies" untrue for the copies that are hardest to recall.
+		if len(files) > 0 {
+			const closeLinks = `
+				UPDATE share_links SET revoked_at = now()
+				 WHERE file_id = ANY($1) AND revoked_at IS NULL`
+
+			if _, err := tx.Exec(ctx, closeLinks, files); err != nil {
+				return fmt.Errorf("revoke share links: %w", err)
+			}
 		}
 
 		action := vault.AuditKeyRotated

@@ -158,6 +158,9 @@ type RateLimit struct {
 	// InviteIP counts invite-code lookups from a single address. The code carries 125 bits,
 	// so this is not what stops a brute force — it stops the endpoint being a free oracle
 	InviteIP Rule `mapstructure:"invite_ip"`
+	// ShareIP counts public-link lookups from a single address. Same reasoning as InviteIP,
+	// with a wider allowance: a note passed round a team is opened from one office
+	ShareIP Rule `mapstructure:"share_ip"`
 }
 
 // Rule is the allowed number of requests per window
@@ -301,6 +304,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.rate_limit.recovery_account.window", time.Hour)
 	v.SetDefault("auth.rate_limit.invite_ip.limit", 20)
 	v.SetDefault("auth.rate_limit.invite_ip.window", 15*time.Minute)
+	v.SetDefault("auth.rate_limit.share_ip.limit", 60)
+	v.SetDefault("auth.rate_limit.share_ip.window", 15*time.Minute)
 
 	v.SetDefault("log.level", "debug")
 	v.SetDefault("log.format", "console")

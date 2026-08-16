@@ -86,6 +86,15 @@ export function Sidebar({
           <span className={styles.navCount}>{index.length}</span>
         </button>
 
+        <button
+          type="button"
+          className={`${styles.navItem} ${view === 'graph' ? styles.navItemActive : ''}`}
+          onClick={() => setView('graph')}
+        >
+          <Icon name="graph" style={{ flex: 'none', opacity: 0.8 }} />
+          <span className={styles.navLabel}>Graph</span>
+        </button>
+
         <div className={styles.sectionHead}>
           <span className={styles.sectionTitle}>{vault?.name ?? 'VAULT'}</span>
           <span className={styles.sectionActions}>
@@ -247,7 +256,16 @@ export function Sidebar({
 
         {tags.length ? (
           <>
-            <div className={styles.sectionHead}>
+            <button
+          type="button"
+          className={`${styles.navItem} ${view === 'graph' ? styles.navItemActive : ''}`}
+          onClick={() => setView('graph')}
+        >
+          <Icon name="graph" style={{ flex: 'none', opacity: 0.8 }} />
+          <span className={styles.navLabel}>Graph</span>
+        </button>
+
+        <div className={styles.sectionHead}>
               <span className={styles.sectionTitle}>TAGS</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '0 6px' }}>

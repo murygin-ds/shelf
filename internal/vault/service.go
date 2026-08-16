@@ -10,39 +10,48 @@ import (
 
 // Deps are the storage the service orchestrates.
 type Deps struct {
-	Vaults  Repository
-	Folders FolderRepository
-	Files   FileRepository
-	Tree    TreeRepository
-	Sync    SyncRepository
-	Rekeys  RekeyRepository
-	Audit   AuditRepository
-	Logger  *zap.Logger
+	Vaults    Repository
+	Folders   FolderRepository
+	Files     FileRepository
+	Tree      TreeRepository
+	Sync      SyncRepository
+	Rekeys    RekeyRepository
+	Audit     AuditRepository
+	Graph     GraphRepository
+	Revisions RevisionRepository
+	Shares    ShareRepository
+	Logger    *zap.Logger
 }
 
 // Service enforces authorization and the key-scope invariants. It holds no SQL and no
 // HTTP: every decision here is one a reader can check against the access model.
 type Service struct {
-	vaults  Repository
-	folders FolderRepository
-	files   FileRepository
-	tree    TreeRepository
-	sync    SyncRepository
-	rekeys  RekeyRepository
-	audit   AuditRepository
-	log     *zap.Logger
+	vaults    Repository
+	folders   FolderRepository
+	files     FileRepository
+	tree      TreeRepository
+	sync      SyncRepository
+	rekeys    RekeyRepository
+	audit     AuditRepository
+	graph     GraphRepository
+	revisions RevisionRepository
+	shares    ShareRepository
+	log       *zap.Logger
 }
 
 func NewService(deps Deps) *Service {
 	return &Service{
-		vaults:  deps.Vaults,
-		folders: deps.Folders,
-		files:   deps.Files,
-		tree:    deps.Tree,
-		sync:    deps.Sync,
-		rekeys:  deps.Rekeys,
-		audit:   deps.Audit,
-		log:     deps.Logger,
+		vaults:    deps.Vaults,
+		folders:   deps.Folders,
+		files:     deps.Files,
+		tree:      deps.Tree,
+		sync:      deps.Sync,
+		rekeys:    deps.Rekeys,
+		audit:     deps.Audit,
+		graph:     deps.Graph,
+		revisions: deps.Revisions,
+		shares:    deps.Shares,
+		log:       deps.Logger,
 	}
 }
 
@@ -343,6 +352,10 @@ func (s *Service) UpdateFile(ctx context.Context, userID, fileID int64, in MetaU
 // UpdateContent writes a note body under an optimistic lock. A stale sequence is a
 // conflict the client has to resolve, because only the client can read either version.
 func (s *Service) UpdateContent(ctx context.Context, userID, fileID int64, in ContentUpdate) (*File, error) {
+	if len(in.Signature) != 0 && len(in.Signature) != SignatureLength {
+		return nil, ErrSignatureInvalid
+	}
+
 	if _, err := s.fileFor(ctx, userID, fileID, PermEdit); err != nil {
 		return nil, err
 	}
@@ -494,7 +507,13 @@ func translate(err error, op string) error {
 		errors.Is(err, ErrScopeMismatch),
 		errors.Is(err, ErrCycle),
 		errors.Is(err, ErrDepthExceeded),
-		errors.Is(err, ErrOwnerRequired):
+		errors.Is(err, ErrOwnerRequired),
+		errors.Is(err, ErrKeyGrantMissing),
+		errors.Is(err, ErrRekeyStale),
+		errors.Is(err, ErrRekeyBatch),
+		errors.Is(err, ErrLinkBatch),
+		errors.Is(err, ErrSignatureInvalid),
+		errors.Is(err, ErrShareExpiry):
 		return err
 	default:
 		return fmt.Errorf("%s: %w", op, err)

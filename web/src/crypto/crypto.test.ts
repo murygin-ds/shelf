@@ -26,6 +26,7 @@ import {
 import { deriveAccountKeys, deriveRecoveryKeys, newSalt, normalizeRecoveryCode } from './kdf';
 import { generateRecoveryCode, isRecoveryCodeShaped, renderRecoveryKit } from './recovery';
 import { open, seal } from './sealedbox';
+import { checkAuthorship, signRevision, SIGNATURE_LENGTH } from './signature';
 
 // Argon2id at production parameters costs ~64 MiB and a few hundred ms per call.
 const KDF_TIMEOUT = 30_000;
@@ -401,5 +402,53 @@ describe('re-keying', () => {
     const moved: EntityRef = { ...REF, scopeClientId: OTHER_SCOPE };
 
     expect(isLocked(await decryptMeta(key, sealed, moved))).toBe(true);
+  });
+});
+
+describe('author signatures', () => {
+  const SEALED = { ciphertext: Uint8Array.of(9, 8, 7, 6), nonce: Uint8Array.of(1, 2, 3) };
+
+  it('proves who wrote a body', async () => {
+    const author = await generateIdentity(await generateMasterKey());
+    const signature = await signRevision(author.identity, REF, 4, SEALED);
+
+    expect(signature.length).toBe(SIGNATURE_LENGTH);
+    expect(await checkAuthorship(author.publicBlob, signature, REF, 4, SEALED)).toBe('valid');
+  });
+
+  it('refuses a body moved to another note, scope or version', async () => {
+    // Signing the ciphertext alone would let a hostile server relabel one note's body as
+    // another's, or replay an old version as the current one, and the name attached to it
+    // would still check out.
+    const author = await generateIdentity(await generateMasterKey());
+    const signature = await signRevision(author.identity, REF, 4, SEALED);
+
+    const moved = { ...REF, entityId: '00000000-0000-4000-8000-000000000000' };
+    const rescoped = { ...REF, scopeClientId: OTHER_SCOPE };
+    const rolled = { ...REF, keyVersion: REF.keyVersion + 1 };
+
+    expect(await checkAuthorship(author.publicBlob, signature, moved, 4, SEALED)).toBe('invalid');
+    expect(await checkAuthorship(author.publicBlob, signature, rescoped, 4, SEALED)).toBe('invalid');
+    expect(await checkAuthorship(author.publicBlob, signature, rolled, 4, SEALED)).toBe('invalid');
+    expect(await checkAuthorship(author.publicBlob, signature, REF, 5, SEALED)).toBe('invalid');
+  });
+
+  it('refuses a signature made by somebody else', async () => {
+    const author = await generateIdentity(await generateMasterKey());
+    const impostor = await generateIdentity(await generateMasterKey());
+
+    const signature = await signRevision(impostor.identity, REF, 4, SEALED);
+
+    expect(await checkAuthorship(author.publicBlob, signature, REF, 4, SEALED)).toBe('invalid');
+  });
+
+  it('calls an unsigned body unsigned rather than forged', async () => {
+    // A body written before signatures existed is not proof of authorship, but calling it
+    // a forgery would accuse somebody of something that did not happen.
+    const author = await generateIdentity(await generateMasterKey());
+
+    expect(await checkAuthorship(author.publicBlob, null, REF, 4, SEALED)).toBe('unsigned');
+    expect(await checkAuthorship(null, new Uint8Array(SIGNATURE_LENGTH), REF, 4, SEALED))
+      .toBe('unknown-author');
   });
 });

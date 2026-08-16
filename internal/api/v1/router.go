@@ -36,14 +36,17 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 
 	workspace := postgres.NewVaultRepository(deps.Pool)
 	vaultService := vault.NewService(vault.Deps{
-		Vaults:  workspace,
-		Folders: workspace,
-		Files:   workspace,
-		Tree:    workspace,
-		Sync:    workspace,
-		Rekeys:  workspace,
-		Audit:   workspace,
-		Logger:  deps.Logger,
+		Vaults:    workspace,
+		Folders:   workspace,
+		Files:     workspace,
+		Tree:      workspace,
+		Sync:      workspace,
+		Rekeys:    workspace,
+		Audit:     workspace,
+		Graph:     workspace,
+		Revisions: workspace,
+		Shares:    workspace,
+		Logger:    deps.Logger,
 	})
 
 	accessService := access.NewService(access.Deps{
@@ -53,7 +56,10 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 	})
 
 	protected := group.Group("", middleware.Auth(authService))
-	vaultapi.NewHandler(vaultService, deps.Logger).RegisterRoutes(protected)
+
+	workspaceHandler := vaultapi.NewHandler(vaultService, shareLookupLimit(deps.Auth.RateLimit), deps.Logger)
+	workspaceHandler.RegisterRoutes(protected)
+	workspaceHandler.RegisterPublicRoutes(group)
 	accessapi.NewHandler(accessService, inviteLookupLimit(deps.Auth.RateLimit), deps.Logger).
 		RegisterRoutes(group, protected)
 }
@@ -67,6 +73,17 @@ func inviteLookupLimit(cfg config.RateLimit) middleware.Limiter {
 	}
 
 	return ratelimit.New(cfg.InviteIP.Limit, cfg.InviteIP.Window)
+}
+
+// shareLookupLimit throttles the anonymous share lookup on the same terms as the invite
+// one: a resolved link hands the attempt back, so a note passed round an office does not
+// lock its own readers out.
+func shareLookupLimit(cfg config.RateLimit) middleware.Limiter {
+	if !cfg.Enabled {
+		return ratelimit.Nop{}
+	}
+
+	return ratelimit.New(cfg.ShareIP.Limit, cfg.ShareIP.Window)
 }
 
 // authLimits builds the rate limiters. Disabled limits stay zero:
