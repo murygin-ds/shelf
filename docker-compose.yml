@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: ${SHELF_POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${SHELF_POSTGRES_DATABASE:-shelf}
     ports:
-      - "${SHELF_POSTGRES_PORT:-5432}:5432"
+      # Bound to the loopback on purpose: this file is a development convenience, and a
+      # database published on every interface with a default password is not one.
+      - "127.0.0.1:${SHELF_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

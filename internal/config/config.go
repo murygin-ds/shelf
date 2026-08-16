@@ -68,10 +68,13 @@ func (a App) IsProduction() bool { return a.Env == EnvProd }
 
 // HTTP holds the HTTP server parameters
 type HTTP struct {
-	Host            string        `mapstructure:"host"`
-	Port            int           `mapstructure:"port"             validate:"required,min=1,max=65535"`
-	ReadTimeout     time.Duration `mapstructure:"read_timeout"     validate:"required"`
-	WriteTimeout    time.Duration `mapstructure:"write_timeout"    validate:"required"`
+	Host         string        `mapstructure:"host"`
+	Port         int           `mapstructure:"port"             validate:"required,min=1,max=65535"`
+	ReadTimeout  time.Duration `mapstructure:"read_timeout"     validate:"required"`
+	WriteTimeout time.Duration `mapstructure:"write_timeout"    validate:"required"`
+	// HandlerTimeout bounds the work behind a request, not just the socket. Without it a
+	// slow query keeps its pool connection and ten of them answer nothing at all
+	HandlerTimeout  time.Duration `mapstructure:"handler_timeout" validate:"required"`
 	IdleTimeout     time.Duration `mapstructure:"idle_timeout"     validate:"required"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required"`
 	// AllowedOrigins is the list of CORS origins. "*" allows every one of them
@@ -81,6 +84,11 @@ type HTTP struct {
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
 	// SwaggerEnabled turns on serving the Swagger UI at /swagger/index.html
 	SwaggerEnabled bool `mapstructure:"swagger_enabled"`
+	// MaxBodyBytes caps the request body: gin imposes no limit of its own, and the
+	// batch endpoints accept enough ciphertext to be worth bounding
+	MaxBodyBytes int64 `mapstructure:"max_body_bytes" validate:"required,min=65536"`
+	// StaticCacheMaxAge is the freshness of the hashed frontend assets
+	StaticCacheMaxAge time.Duration `mapstructure:"static_cache_max_age" validate:"required"`
 }
 
 // Addr returns the listen address in the host:port form
@@ -150,6 +158,15 @@ type RateLimit struct {
 	RecoveryIP Rule `mapstructure:"recovery_ip"`
 	// RecoveryAccount counts recovery attempts against a single account from all addresses
 	RecoveryAccount Rule `mapstructure:"recovery_account"`
+	// InviteIP counts invite-code lookups from a single address. The code carries 125 bits,
+	// so this is not what stops a brute force — it stops the endpoint being a free oracle
+	InviteIP Rule `mapstructure:"invite_ip"`
+	// ShareIP counts public-link lookups from a single address. Same reasoning as InviteIP,
+	// with a wider allowance: a note passed round a team is opened from one office
+	ShareIP Rule `mapstructure:"share_ip"`
+	// RegisterIP counts account creations from a single address. Registration is the one
+	// unauthenticated endpoint that runs Argon2id, twice, at 64 MiB
+	RegisterIP Rule `mapstructure:"register_ip"`
 }
 
 // Rule is the allowed number of requests per window
@@ -251,18 +268,27 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.port", 8080)
 	v.SetDefault("http.read_timeout", 10*time.Second)
 	v.SetDefault("http.write_timeout", 10*time.Second)
+	// Comfortably inside write_timeout, so the handler gives up before the socket does and
+	// the client gets an error rather than a truncated response.
+	v.SetDefault("http.handler_timeout", 8*time.Second)
 	v.SetDefault("http.idle_timeout", time.Minute)
 	v.SetDefault("http.shutdown_timeout", 10*time.Second)
-	v.SetDefault("http.allowed_origins", []string{"*"})
+	// Same-origin by construction: the binary serves the app it talks to.
+	v.SetDefault("http.allowed_origins", []string{})
 	v.SetDefault("http.trusted_proxies", []string{})
-	v.SetDefault("http.swagger_enabled", true)
+	// The API surface is not a secret, but publishing it to anonymous visitors is a
+	// choice a deployer should make rather than inherit.
+	v.SetDefault("http.swagger_enabled", false)
+	v.SetDefault("http.max_body_bytes", 8*1024*1024)
+	v.SetDefault("http.static_cache_max_age", 365*24*time.Hour)
 
 	v.SetDefault("postgres.host", "localhost")
 	v.SetDefault("postgres.port", 5432)
 	v.SetDefault("postgres.user", "postgres")
 	v.SetDefault("postgres.password", "")
 	v.SetDefault("postgres.database", "shelf")
-	v.SetDefault("postgres.ssl_mode", "disable")
+	// Anything but a unix socket or the same host sends credentials in the clear.
+	v.SetDefault("postgres.ssl_mode", "prefer")
 	v.SetDefault("postgres.max_conns", 10)
 	v.SetDefault("postgres.min_conns", 2)
 	v.SetDefault("postgres.max_conn_lifetime", 30*time.Minute)
@@ -289,6 +315,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.rate_limit.recovery_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.recovery_account.limit", 10)
 	v.SetDefault("auth.rate_limit.recovery_account.window", time.Hour)
+	v.SetDefault("auth.rate_limit.invite_ip.limit", 20)
+	v.SetDefault("auth.rate_limit.invite_ip.window", 15*time.Minute)
+	v.SetDefault("auth.rate_limit.share_ip.limit", 60)
+	v.SetDefault("auth.rate_limit.share_ip.window", 15*time.Minute)
+	v.SetDefault("auth.rate_limit.register_ip.limit", 20)
+	v.SetDefault("auth.rate_limit.register_ip.window", time.Hour)
 
 	v.SetDefault("log.level", "debug")
 	v.SetDefault("log.format", "console")

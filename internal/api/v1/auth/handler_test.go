@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,9 +153,10 @@ func validRegisterBody() map[string]any {
 	b64 := func(n int, fill byte) []byte { return bytes.Repeat([]byte{fill}, n) }
 
 	return map[string]any{
-		"login":     "dmitry",
-		"auth_hash": b64(32, 1),
-		"kdf_salt":  b64(16, 2),
+		"login":        "dmitry",
+		"display_name": "Dmitry Murygin",
+		"auth_hash":    b64(32, 1),
+		"kdf_salt":     b64(16, 2),
 		"kdf_params": map[string]any{
 			"algorithm": "argon2id", "memory": 65536, "iterations": 3, "parallelism": 2,
 		},
@@ -240,6 +242,8 @@ func TestRegisterEndpointErrors(t *testing.T) {
 
 	invalid := map[string]func(map[string]any){
 		"short login":              func(b map[string]any) { b["login"] = "ab" },
+		"no display_name":          func(b map[string]any) { delete(b, "display_name") },
+		"overlong display_name":    func(b map[string]any) { b["display_name"] = strings.Repeat("a", 129) },
 		"no auth_hash":             func(b map[string]any) { delete(b, "auth_hash") },
 		"short salt":               func(b map[string]any) { b["kdf_salt"] = bytes.Repeat([]byte{1}, 4) },
 		"weak kdf_params":          func(b map[string]any) { b["kdf_params"].(map[string]any)["memory"] = 1024 },
@@ -382,6 +386,36 @@ func TestLoginRateLimitPerAccount(t *testing.T) {
 	// Another account is counted separately.
 	if code := attempt("someone-else"); code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d for another account", code, http.StatusUnauthorized)
+	}
+}
+
+// TestAnAccountCannotBeLockedOut pins the reason the account counter is applied after the
+// credentials rather than before: otherwise anybody who knows a login could keep its owner
+// out for the window by guessing wrong, over and over.
+func TestAnAccountCannotBeLockedOut(t *testing.T) {
+	t.Parallel()
+
+	service := newStubService(t)
+	service.loginErr = auth.ErrInvalidCredentials
+
+	router := newLimitedRouter(t, service, handler.Limits{
+		LoginIP:      ratelimit.New(100, time.Minute),
+		LoginAccount: ratelimit.New(2, time.Minute),
+	})
+
+	body := map[string]any{"login": "dmitry", "auth_hash": bytes.Repeat([]byte{1}, 32)}
+
+	// An attacker empties the account's bucket.
+	for range 3 {
+		doJSON(t, router, http.MethodPost, "/api/v1/auth/login", body, "")
+	}
+
+	// The owner arrives with the right passphrase and must still get in.
+	service.loginErr = nil
+
+	if rec := doJSON(t, router, http.MethodPost, "/api/v1/auth/login", body, ""); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d — the account was locked out by somebody else's guesses",
+			rec.Code, http.StatusOK)
 	}
 }
 

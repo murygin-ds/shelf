@@ -46,6 +46,7 @@ func (k recoveryKey) toDomain() auth.NewRecoveryKey {
 // registerRequest is the registration request body.
 type registerRequest struct {
 	Login             string      `binding:"required,min=3,max=64"     json:"login"               example:"dmitry"`
+	DisplayName       string      `binding:"required,min=1,max=128"    json:"display_name"        example:"Dmitry Murygin"`
 	AuthHash          []byte      `binding:"required,min=16,max=128"   json:"auth_hash"           format:"byte"`
 	KDFSalt           []byte      `binding:"required,min=16,max=64"    json:"kdf_salt"            format:"byte"`
 	KDFParams         kdfParams   `binding:"required"                  json:"kdf_params"`
@@ -59,8 +60,9 @@ type registerRequest struct {
 
 func (r registerRequest) toDomain(login string) auth.RegisterInput {
 	return auth.RegisterInput{
-		Login:    login,
-		AuthHash: r.AuthHash,
+		Login:       login,
+		DisplayName: r.DisplayName,
+		AuthHash:    r.AuthHash,
 		Keys: auth.KeyBundle{
 			KDFSalt:           r.KDFSalt,
 			KDFParams:         r.KDFParams.toDomain(),
@@ -187,13 +189,14 @@ func tokens(pair auth.TokenPair) TokensResponse {
 
 // UserResponse holds the public account data.
 type UserResponse struct {
-	ID        int64     `json:"id"         example:"1"`
-	Login     string    `json:"login"      example:"dmitry"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          int64     `json:"id"           example:"1"`
+	Login       string    `json:"login"        example:"dmitry"`
+	DisplayName string    `json:"display_name" example:"Dmitry Murygin"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 func user(u *auth.User) UserResponse {
-	return UserResponse{ID: u.ID, Login: u.Login, CreatedAt: u.CreatedAt}
+	return UserResponse{ID: u.ID, Login: u.Login, DisplayName: u.DisplayName, CreatedAt: u.CreatedAt}
 }
 
 // KeysResponse holds the cryptographic material of the user. Only the client can decrypt it.

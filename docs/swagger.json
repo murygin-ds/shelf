@@ -1,0 +1,5847 @@
+{
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "REST API of the Shelf service.",
+        "title": "Shelf API",
+        "contact": {
+            "name": "Shelf Backend",
+            "email": "dmitr.murygin@gmail.com"
+        },
+        "license": {
+            "name": "Proprietary"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/api/v1/auth/keys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the wrapped keys: the client needs them after a restart while the access token is still alive.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Cryptographic material of the user",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.KeysResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/login": {
+            "post": {
+                "description": "Verifies auth_hash and returns the wrapped keys together with a token pair.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Login",
+                "parameters": [
+                    {
+                        "description": "Login and auth_hash",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.loginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.SessionResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/logout": {
+            "post": {
+                "description": "Revokes the session the refresh token belongs to.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Logout",
+                "parameters": [
+                    {
+                        "description": "Refresh token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.refreshRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/logout-all": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Logout on every device",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Current user",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.UserResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/password": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accepts the master key re-encrypted with the new wrapping key. All sessions are revoked and the response carries a new token pair.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Password change",
+                "parameters": [
+                    {
+                        "description": "New authentication data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.changePasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.TokensResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/prelogin": {
+            "post": {
+                "description": "Returns the salt and the KDF parameters the client needs to compute auth_hash.\nFor an unknown login it returns plausible values so the endpoint does not reveal whether the account exists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Key derivation parameters",
+                "parameters": [
+                    {
+                        "description": "Login",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.preloginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.PreloginResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/recovery/complete": {
+            "post": {
+                "description": "Sets the new authentication data using the token issued by recovery/start.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Access recovery completion",
+                "parameters": [
+                    {
+                        "description": "New authentication data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.recoveryCompleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.TokensResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/recovery/start": {
+            "post": {
+                "description": "Verifies ownership of the recovery code and returns the master key wrapped with it\ntogether with a short-lived token for completing the recovery.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Access recovery start",
+                "parameters": [
+                    {
+                        "description": "Login and recovery code verifier",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.recoveryStartRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.RecoveryChallengeResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/refresh": {
+            "post": {
+                "description": "Exchanges a refresh token for a new pair. The token is single-use: presenting it again revokes all sessions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Token pair refresh",
+                "parameters": [
+                    {
+                        "description": "Refresh token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.refreshRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.TokensResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/register": {
+            "post": {
+                "description": "Creates an account from the cryptographic material prepared by the client and opens a session.\nThe server never sees the password: the client derives the master key wrapping key and auth_hash from it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Registration",
+                "parameters": [
+                    {
+                        "description": "Registration data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.registerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/auth.SessionResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Login is already taken",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Active sessions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.DevicesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/sessions/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Session revocation",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session identifier",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Read a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Trash a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Update note metadata",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted note metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateMetaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/backlinks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "List backlinks",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.BacklinksResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/content": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Write a note body",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "content sequence the client last saw",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted body",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateContentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ContentResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "428": {
+                        "description": "Precondition Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/links": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "Replace a note's outgoing links",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "resolved targets",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.setLinksRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/move": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Move a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "destination folder",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.moveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/purge": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Purge a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Restore a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/revisions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "revisions"
+                ],
+                "summary": "List revisions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RevisionsResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/revisions/{revision_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "revisions"
+                ],
+                "summary": "Read a revision",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "revision id",
+                        "name": "revision_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RevisionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/share-links": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "List public links",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ShareLinksResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "Open a public link",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "file id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the note key wrapped under the link secret",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createShareRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ShareLinkResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Trash a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Update folder metadata",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted folder metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateMetaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FolderResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}/move": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Move a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "destination",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.moveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FolderResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}/purge": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Purge a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/folders/{id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Restore a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "folder id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Delete a group",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Rename a group",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the new name, encrypted",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.updateGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/members": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Replace a group's members",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the group key sealed to each member",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.setGroupMembersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/scopes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Read the keys a group holds",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupScopesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/invites/lookup": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Resolve an invite code",
+                "parameters": [
+                    {
+                        "description": "digest of the invite code",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.lookupInviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.ChallengeResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/invites/redeem": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Redeem an invite",
+                "parameters": [
+                    {
+                        "description": "the invite and the scope keys re-sealed to the caller",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.redeemInviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.InviteResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/me/invites": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List my invites",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.InvitesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/public/share/lookup": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "Open a shared note",
+                "parameters": [
+                    {
+                        "description": "digest of the link secret",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.lookupShareRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.PublicNoteResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/rekeys/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Abort a re-key",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "rekey id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/rekeys/{id}/commit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Commit a re-key",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "rekey id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the new key sealed to everyone who keeps access",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.commitRekeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RekeyResultResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/rekeys/{id}/items": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Stage re-encrypted rows",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "rekey id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "re-encrypted rows",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.stageRekeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/share-links/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "sharing"
+                ],
+                "summary": "Revoke a public link",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "share link id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/lookup": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Look up an account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "account login",
+                        "name": "login",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.DirectoryResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List vaults",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.VaultsResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Create a vault",
+                "parameters": [
+                    {
+                        "description": "vault metadata and the content key sealed to the creator",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createVaultRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.VaultResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.VaultResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Delete a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Update vault metadata",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.updateMetaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/audit": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the audit log",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "id of the oldest entry already seen",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.AuditResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/files": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Create a note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted note",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createFileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FileResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/files/bulk": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Read notes in bulk",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "note ids, at most 200",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.bulkFilesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FilesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/folders": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Create a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "encrypted folder metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.createFolderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.FolderResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/grants": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List grants on a node",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "folder or file",
+                        "name": "scope_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "node id",
+                        "name": "scope_ref_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GrantsResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Grant or narrow access to a node",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "permission and the scope keys sealed to the subject",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.putGrantRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GrantResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/grants/{grant_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Remove a grant",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "grant id",
+                        "name": "grant_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/graph": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "Read the note graph",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.GraphResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/group-keys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Read the caller's group keys",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupKeysResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List groups",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupsResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Create a group",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the group key sealed to each founding member",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.createGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/invites": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List pending invites",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.InvitesResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Create an invite",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "invite and the scope keys sealed to it",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.createInviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/access.InviteResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/invites/{invite_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Revoke an invite",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "invite id",
+                        "name": "invite_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/keys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List the caller's key grants",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.KeyGrantsResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List members",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.MembersResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/members/{member_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Remove a member",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "member user id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.RemovalResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Change a member's role",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "member user id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "new role",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.setRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/rekeys": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Start a re-key",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the node to re-key",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/vault.startRekeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/vault.RekeyPlanResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/scopes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List key scopes",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.ScopesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/sync": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the change feed",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "change sequence the client last stored",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "soft page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.SyncResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/trash": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the trash",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.TreeResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/tree": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Read the vault tree",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/vault.TreeResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "Returns 200 while the process is alive. Does not check external dependencies.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Liveness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ready": {
+            "get": {
+                "description": "Checks that PostgreSQL is reachable. Returns 503 if the database is unavailable.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Readiness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.HealthResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "access.ChallengeResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "invite_id": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "key_grants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.SealedKeyResponse"
+                    }
+                },
+                "preview_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_preview": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.DirectoryResponse": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
+        "access.GrantResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "edit"
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "example": 12
+                },
+                "scope_type": {
+                    "type": "string",
+                    "example": "folder"
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "subject_label": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "subject_type": {
+                    "type": "string",
+                    "example": "user"
+                }
+            }
+        },
+        "access.GrantsResponse": {
+            "type": "object",
+            "properties": {
+                "grants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GrantResponse"
+                    }
+                }
+            }
+        },
+        "access.GroupKeyResponse": {
+            "type": "object",
+            "properties": {
+                "group_client_id": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.GroupKeysResponse": {
+            "type": "object",
+            "properties": {
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupKeyResponse"
+                    }
+                }
+            }
+        },
+        "access.GroupMemberResponse": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
+        "access.GroupResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupMemberResponse"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 12
+                }
+            }
+        },
+        "access.GroupScopeResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 3
+                }
+            }
+        },
+        "access.GroupScopesResponse": {
+            "type": "object",
+            "properties": {
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupScopeResponse"
+                    }
+                }
+            }
+        },
+        "access.GroupsResponse": {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupResponse"
+                    }
+                }
+            }
+        },
+        "access.InviteResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email_hint": {
+                    "type": "string",
+                    "example": "dana@acme.dev"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "inviter_name": {
+                    "type": "string",
+                    "example": "Ilya Volkov"
+                },
+                "redeemed_at": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "editor"
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "access.InvitesResponse": {
+            "type": "object",
+            "properties": {
+                "invites": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.InviteResponse"
+                    }
+                }
+            }
+        },
+        "access.MemberResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "folder_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_state": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "last_active": {
+                    "type": "string"
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "role": {
+                    "type": "string",
+                    "example": "editor"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
+        "access.MembersResponse": {
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.MemberResponse"
+                    }
+                }
+            }
+        },
+        "access.RemovalResponse": {
+            "type": "object",
+            "properties": {
+                "pending_rotation": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "access.SealedKeyResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "example": "aesgcm-invite-v1"
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.createGroupRequest": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "members",
+                "meta",
+                "meta_nonce",
+                "public_key"
+            ],
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "members": {
+                    "description": "Members must include the caller: the private key exists only in these copies, and a\ngroup its own manager cannot open is a group nobody can ever add to.",
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedGroupKeyRequest"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "public_key": {
+                    "description": "PublicKey is the group's raw P-256 agreement key. A group never writes, so it needs\nno signing key — there would be nothing to attribute.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.createInviteRequest": {
+            "type": "object",
+            "required": [
+                "key_grants",
+                "role"
+            ],
+            "properties": {
+                "email_hint": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "preview_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "editor",
+                        "viewer"
+                    ]
+                },
+                "target_user_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "token_hash": {
+                    "description": "TokenHash is the digest of a code the server never sees. Exactly one of this and\nTargetUserID is set.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_preview": {
+                    "description": "Preview holds the vault name and the inviter, encrypted under the same code, so an\nunauthenticated lookup reveals nothing.",
+                    "type": "array",
+                    "maxItems": 2048,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.lookupInviteRequest": {
+            "type": "object",
+            "required": [
+                "token_hash"
+            ],
+            "properties": {
+                "token_hash": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.putGrantRequest": {
+            "type": "object",
+            "required": [
+                "permission",
+                "scope_ref_id",
+                "scope_type",
+                "subject_id",
+                "subject_type"
+            ],
+            "properties": {
+                "key_grants": {
+                    "description": "Keys must cover the node's scope whenever the permission allows reading: without\nthem the subject would see an entry it can never open.",
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "permission": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "view",
+                        "comment",
+                        "edit",
+                        "own"
+                    ]
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "scope_type": {
+                    "type": "string",
+                    "enum": [
+                        "folder",
+                        "file"
+                    ]
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "subject_type": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "group"
+                    ]
+                }
+            }
+        },
+        "access.redeemInviteRequest": {
+            "type": "object",
+            "required": [
+                "key_grants"
+            ],
+            "properties": {
+                "invite_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "token_hash": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.sealedGroupKeyRequest": {
+            "type": "object",
+            "required": [
+                "nonce",
+                "user_id",
+                "wrapped_key"
+            ],
+            "properties": {
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "user_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 4096,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.sealedKeyRequest": {
+            "type": "object",
+            "required": [
+                "key_version",
+                "nonce",
+                "scope_id",
+                "wrapped_key"
+            ],
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "wrap_algorithm": {
+                    "description": "Algorithm names the wrapping format. Invite keys use a code-derived symmetric key\nrather than a sealed box, because nobody knows yet whose key to seal to.",
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 2048,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.setGroupMembersRequest": {
+            "type": "object",
+            "required": [
+                "members"
+            ],
+            "properties": {
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 256,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "members": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedGroupKeyRequest"
+                    }
+                },
+                "public_key": {
+                    "description": "PublicKey and Keys are required when somebody is being dropped: the copy they hold\nopens every scope the group reaches, and deleting rows on the server does not take\nthat back.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.setRoleRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "editor",
+                        "viewer"
+                    ]
+                }
+            }
+        },
+        "access.updateGroupRequest": {
+            "type": "object",
+            "required": [
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "api.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "service": {
+                    "type": "string",
+                    "example": "shelf-backend"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        },
+        "auth.DeviceResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "current": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 12
+                },
+                "ip": {
+                    "type": "string",
+                    "example": "203.0.113.7"
+                },
+                "last_used_at": {
+                    "type": "string"
+                },
+                "user_agent": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.DevicesResponse": {
+            "type": "object",
+            "properties": {
+                "sessions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.DeviceResponse"
+                    }
+                }
+            }
+        },
+        "auth.KDFParams": {
+            "type": "object",
+            "properties": {
+                "algorithm": {
+                    "type": "string"
+                },
+                "iterations": {
+                    "type": "integer"
+                },
+                "memory": {
+                    "type": "integer"
+                },
+                "parallelism": {
+                    "type": "integer"
+                }
+            }
+        },
+        "auth.KeysResponse": {
+            "type": "object",
+            "properties": {
+                "kdf_params": {
+                    "$ref": "#/definitions/auth.KDFParams"
+                },
+                "kdf_salt": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "master_key_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "private_key_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_master_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_private_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "auth.PreloginResponse": {
+            "type": "object",
+            "properties": {
+                "kdf_params": {
+                    "$ref": "#/definitions/auth.KDFParams"
+                },
+                "kdf_salt": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "auth.RecoveryChallengeResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "recovery_token": {
+                    "type": "string"
+                },
+                "wrapped_master_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "auth.SessionResponse": {
+            "type": "object",
+            "properties": {
+                "keys": {
+                    "$ref": "#/definitions/auth.KeysResponse"
+                },
+                "tokens": {
+                    "$ref": "#/definitions/auth.TokensResponse"
+                },
+                "user": {
+                    "$ref": "#/definitions/auth.UserResponse"
+                }
+            }
+        },
+        "auth.TokensResponse": {
+            "type": "object",
+            "properties": {
+                "access_expires_at": {
+                    "type": "string"
+                },
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_expires_at": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "token_type": {
+                    "type": "string",
+                    "example": "Bearer"
+                }
+            }
+        },
+        "auth.UserResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string",
+                    "example": "Dmitry Murygin"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "login": {
+                    "type": "string",
+                    "example": "dmitry"
+                }
+            }
+        },
+        "auth.changePasswordRequest": {
+            "type": "object",
+            "required": [
+                "auth_hash",
+                "current_auth_hash",
+                "kdf_params",
+                "kdf_salt",
+                "master_key_nonce",
+                "wrapped_master_key"
+            ],
+            "properties": {
+                "auth_hash": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "current_auth_hash": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "kdf_params": {
+                    "$ref": "#/definitions/auth.kdfParams"
+                },
+                "kdf_salt": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "master_key_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "recovery": {
+                    "$ref": "#/definitions/auth.recoveryKey"
+                },
+                "wrapped_master_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "auth.kdfParams": {
+            "type": "object",
+            "required": [
+                "algorithm",
+                "iterations",
+                "memory",
+                "parallelism"
+            ],
+            "properties": {
+                "algorithm": {
+                    "type": "string",
+                    "enum": [
+                        "argon2id"
+                    ],
+                    "example": "argon2id"
+                },
+                "iterations": {
+                    "type": "integer",
+                    "maximum": 16,
+                    "minimum": 2,
+                    "example": 3
+                },
+                "memory": {
+                    "type": "integer",
+                    "minimum": 19456,
+                    "example": 65536
+                },
+                "parallelism": {
+                    "type": "integer",
+                    "maximum": 16,
+                    "minimum": 1,
+                    "example": 2
+                }
+            }
+        },
+        "auth.loginRequest": {
+            "type": "object",
+            "required": [
+                "auth_hash",
+                "login"
+            ],
+            "properties": {
+                "auth_hash": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "login": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 3,
+                    "example": "dmitry"
+                }
+            }
+        },
+        "auth.preloginRequest": {
+            "type": "object",
+            "required": [
+                "login"
+            ],
+            "properties": {
+                "login": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 3,
+                    "example": "dmitry"
+                }
+            }
+        },
+        "auth.recoveryCompleteRequest": {
+            "type": "object",
+            "required": [
+                "auth_hash",
+                "kdf_params",
+                "kdf_salt",
+                "master_key_nonce",
+                "recovery_token",
+                "wrapped_master_key"
+            ],
+            "properties": {
+                "auth_hash": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "kdf_params": {
+                    "$ref": "#/definitions/auth.kdfParams"
+                },
+                "kdf_salt": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "master_key_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "recovery": {
+                    "$ref": "#/definitions/auth.recoveryKey"
+                },
+                "recovery_token": {
+                    "type": "string"
+                },
+                "wrapped_master_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "auth.recoveryKey": {
+            "type": "object",
+            "required": [
+                "auth_hash",
+                "nonce",
+                "wrapped_master_key"
+            ],
+            "properties": {
+                "auth_hash": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_master_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "auth.recoveryStartRequest": {
+            "type": "object",
+            "required": [
+                "login",
+                "recovery_auth_hash"
+            ],
+            "properties": {
+                "login": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 3,
+                    "example": "dmitry"
+                },
+                "recovery_auth_hash": {
+                    "description": "AuthHash is derived by the client from the recovery code and serves as the verifier.",
+                    "type": "array",
+                    "maxItems": 128,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "auth.refreshRequest": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "minLength": 16
+                }
+            }
+        },
+        "auth.registerRequest": {
+            "type": "object",
+            "required": [
+                "auth_hash",
+                "display_name",
+                "kdf_params",
+                "kdf_salt",
+                "login",
+                "master_key_nonce",
+                "private_key_nonce",
+                "public_key",
+                "recovery",
+                "wrapped_master_key",
+                "wrapped_private_key"
+            ],
+            "properties": {
+                "auth_hash": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "example": "Dmitry Murygin"
+                },
+                "kdf_params": {
+                    "$ref": "#/definitions/auth.kdfParams"
+                },
+                "kdf_salt": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "login": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 3,
+                    "example": "dmitry"
+                },
+                "master_key_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "private_key_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "public_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "recovery": {
+                    "$ref": "#/definitions/auth.recoveryKey"
+                },
+                "wrapped_master_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_private_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "response.Error": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "not_found"
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "message": {
+                    "type": "string",
+                    "example": "resource not found"
+                },
+                "request_id": {
+                    "type": "string",
+                    "example": "1f8c1a5e-2b3d-4d6a-9c0e-5f5a5a7d1234"
+                }
+            }
+        },
+        "response.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/response.Error"
+                }
+            }
+        },
+        "vault.AuditEventResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "example": "key.rotated"
+                },
+                "actor_id": {
+                    "type": "integer"
+                },
+                "actor_login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "actor_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "detail": {
+                    "type": "object"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 91
+                },
+                "subject_id": {
+                    "type": "integer"
+                },
+                "subject_type": {
+                    "type": "string",
+                    "example": "user"
+                },
+                "target_id": {
+                    "type": "integer"
+                },
+                "target_type": {
+                    "type": "string",
+                    "example": "folder"
+                }
+            }
+        },
+        "vault.AuditResponse": {
+            "type": "object",
+            "properties": {
+                "cursor": {
+                    "description": "Cursor is the id to pass as before= for the next page; zero when the log is exhausted.",
+                    "type": "integer",
+                    "example": 91
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.AuditEventResponse"
+                    }
+                }
+            }
+        },
+        "vault.BacklinksResponse": {
+            "type": "object",
+            "properties": {
+                "hidden": {
+                    "description": "Hidden counts the notes that point here and that the caller cannot see. A count and\nnever a list: the count is honest about the note's reach, the identities are not the\ncaller's to have.",
+                    "type": "integer",
+                    "example": 2
+                },
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                }
+            }
+        },
+        "vault.ContentResponse": {
+            "type": "object",
+            "properties": {
+                "content_seq": {
+                    "type": "integer",
+                    "example": 15
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_seq": {
+                    "type": "integer",
+                    "example": 43
+                }
+            }
+        },
+        "vault.FileResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_seq": {
+                    "type": "integer",
+                    "example": 14
+                },
+                "content_size": {
+                    "type": "integer",
+                    "example": 8192
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "folder_id": {
+                    "type": "integer"
+                },
+                "grant_count": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "inherit_access": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "key_scope_client_id": {
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "own_scope": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "edit"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "integer"
+                },
+                "updated_seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "vault.FilesResponse": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                }
+            }
+        },
+        "vault.FolderResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "depth": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "grant_count": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 12
+                },
+                "inherit_access": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "key_scope_client_id": {
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "own_scope": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "own"
+                },
+                "position": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "integer"
+                },
+                "updated_seq": {
+                    "type": "integer",
+                    "example": 41
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "vault.GraphEdgeResponse": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string",
+                    "example": "88"
+                },
+                "to": {
+                    "type": "string",
+                    "example": "locked-1"
+                }
+            }
+        },
+        "vault.GraphNodeResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "degree": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "file_id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "folder_id": {
+                    "type": "integer"
+                },
+                "key_scope_client_id": {
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "type": "integer"
+                },
+                "key_version": {
+                    "type": "integer"
+                },
+                "locked": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "ref": {
+                    "description": "Ref names the node inside this response. A visible node uses its file id; a locked\none uses an opaque counter, because handing out its id would make the graph an\nexistence oracle for notes every other route answers 404 for.",
+                    "type": "string",
+                    "example": "88"
+                }
+            }
+        },
+        "vault.GraphResponse": {
+            "type": "object",
+            "properties": {
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.GraphEdgeResponse"
+                    }
+                },
+                "locked": {
+                    "description": "Locked counts the masked nodes drawn. They exist so the picture is not a lie: a note\nlinked only through something invisible would otherwise appear unconnected.",
+                    "type": "integer",
+                    "example": 2
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.GraphNodeResponse"
+                    }
+                },
+                "reveals_locked": {
+                    "description": "RevealsLocked says whether this vault draws masked nodes at all, so the view can tell\nthe reader whether they are looking at the whole graph or only their part of it.",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "vault.KeyGrantResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "subject_type": {
+                    "type": "string",
+                    "example": "user"
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "example": "ecdh-p256-hkdf-a256gcm"
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.KeyGrantsResponse": {
+            "type": "object",
+            "properties": {
+                "grants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.KeyGrantResponse"
+                    }
+                }
+            }
+        },
+        "vault.PublicNoteResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "published_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "vault.PurgedResponse": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "vault.RekeyPlanResponse": {
+            "type": "object",
+            "properties": {
+                "covers_vault": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "creates_scope": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "from_version": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "example": 12
+                },
+                "scope_type": {
+                    "type": "string",
+                    "example": "folder"
+                },
+                "subjects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.RekeySubjectResponse"
+                    }
+                },
+                "to_version": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "vault.RekeyResultResponse": {
+            "type": "object",
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "scope_client_id": {
+                    "type": "string"
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "example": 4
+                }
+            }
+        },
+        "vault.RekeySubjectResponse": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "group_client_id": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
+        "vault.RevisionResponse": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "integer"
+                },
+                "author_login": {
+                    "type": "string"
+                },
+                "author_name": {
+                    "type": "string"
+                },
+                "author_public_key": {
+                    "description": "AuthorPublicKey is what the signature verifies against. It travels with the revision\nso checking who wrote it never depends on a second answer from the same server.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_seq": {
+                    "type": "integer",
+                    "example": 14
+                },
+                "content_size": {
+                    "type": "integer",
+                    "example": 4112
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "file_id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 14
+                },
+                "key_scope_client_id": {
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "signature": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "signed": {
+                    "description": "Signed is false for a body written before signatures existed. Unsigned is not the\nsame as forged, but it is not proof of authorship either, and the view says so.",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "vault.RevisionsResponse": {
+            "type": "object",
+            "properties": {
+                "revisions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.RevisionResponse"
+                    }
+                }
+            }
+        },
+        "vault.ScopeResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "grant_count": {
+                    "type": "integer",
+                    "example": 6
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "ref_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "rotated_at": {
+                    "type": "string"
+                },
+                "scope_type": {
+                    "type": "string",
+                    "example": "vault"
+                }
+            }
+        },
+        "vault.ScopesResponse": {
+            "type": "object",
+            "properties": {
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.ScopeResponse"
+                    }
+                }
+            }
+        },
+        "vault.ShareLinkResponse": {
+            "type": "object",
+            "properties": {
+                "content_seq": {
+                    "description": "ContentSeq is the version that was published. A link is a snapshot, so a note that\nhas moved on since is something the owner should be able to see.",
+                    "type": "integer",
+                    "example": 14
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "integer"
+                },
+                "creator_name": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "file_id": {
+                    "type": "integer",
+                    "example": 88
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "last_viewed_at": {
+                    "type": "string"
+                },
+                "live": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "permission": {
+                    "type": "string",
+                    "example": "view"
+                },
+                "revoked_at": {
+                    "type": "string"
+                },
+                "view_count": {
+                    "type": "integer",
+                    "example": 12
+                }
+            }
+        },
+        "vault.ShareLinksResponse": {
+            "type": "object",
+            "properties": {
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.ShareLinkResponse"
+                    }
+                }
+            }
+        },
+        "vault.SyncResponse": {
+            "type": "object",
+            "properties": {
+                "cursor": {
+                    "type": "integer",
+                    "example": 4821
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FolderResponse"
+                    }
+                },
+                "full_resync_required": {
+                    "description": "FullResync tells the client to drop its cached copy of this vault. It is the only\nway it learns to forget plaintext it cached before losing access to it.",
+                    "type": "boolean",
+                    "example": false
+                },
+                "has_more": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "purged": {
+                    "$ref": "#/definitions/vault.PurgedResponse"
+                }
+            }
+        },
+        "vault.TreeResponse": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FileResponse"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.FolderResponse"
+                    }
+                }
+            }
+        },
+        "vault.VaultResponse": {
+            "type": "object",
+            "properties": {
+                "change_seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "owner_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "vault.VaultSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "change_seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_scope_client_id": {
+                    "description": "KeyScopeClientID is what a sealed key names. Sealing against the vault's own client\nid instead produces a key that silently refuses to open.",
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "key_state": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "member_count": {
+                    "type": "integer",
+                    "example": 6
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "note_count": {
+                    "type": "integer",
+                    "example": 213
+                },
+                "owner_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "role": {
+                    "type": "string",
+                    "example": "owner"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "vault.VaultsResponse": {
+            "type": "object",
+            "properties": {
+                "vaults": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/vault.VaultSummaryResponse"
+                    }
+                }
+            }
+        },
+        "vault.bulkFilesRequest": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "vault.commitRekeyRequest": {
+            "type": "object",
+            "required": [
+                "key_grants"
+            ],
+            "properties": {
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/vault.rekeyGrantRequest"
+                    }
+                }
+            }
+        },
+        "vault.createFileRequest": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "content",
+                "content_nonce",
+                "key_scope_id",
+                "key_version",
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "folder_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_scope_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.createFolderRequest": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "key_scope_id",
+                "key_version",
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "key_scope_id": {
+                    "description": "KeyScopeID and KeyVersion declare which key the blobs were sealed under. The server\nrefuses them when they do not match the destination, because the row would be\nunreadable to everyone who can see it.",
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "parent_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "position": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "vault.createShareRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "content_nonce",
+                "content_seq",
+                "meta",
+                "meta_nonce",
+                "token_hash"
+            ],
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_seq": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "meta": {
+                    "description": "The note re-encrypted under a key derived from that secret. Not the scope key: a\nscope covers a whole folder or vault, and one published note must not be the key to\neverything sealed beside it.",
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "token_hash": {
+                    "description": "TokenHash is the digest of a secret the server never sees, the same shape as a code\ninvite. The secret travels in the link fragment and stays in the visitor's browser.",
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.createVaultRequest": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "key_nonce",
+                "meta",
+                "meta_nonce",
+                "scope_client_id",
+                "wrapped_key"
+            ],
+            "properties": {
+                "client_id": {
+                    "description": "ClientID is chosen before the row exists, so the metadata can be sealed against a\nstable identity in one round trip.",
+                    "type": "string"
+                },
+                "key_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_client_id": {
+                    "description": "ScopeClientID names the vault's own key scope, which the key below is sealed against.",
+                    "type": "string"
+                },
+                "wrap_algorithm": {
+                    "description": "Algorithm names the sealed-box format, so a later format can be told apart.",
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "description": "WrappedKey is the vault content key sealed to the creator's own public key.",
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.lookupShareRequest": {
+            "type": "object",
+            "required": [
+                "token_hash"
+            ],
+            "properties": {
+                "token_hash": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.moveRequest": {
+            "type": "object",
+            "properties": {
+                "parent_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "position": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "vault.rekeyGrantRequest": {
+            "type": "object",
+            "required": [
+                "nonce",
+                "subject_id",
+                "subject_type",
+                "wrapped_key"
+            ],
+            "properties": {
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "subject_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "subject_type": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "group"
+                    ]
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 2048,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.rekeyItemRequest": {
+            "type": "object",
+            "required": [
+                "entity_id",
+                "entity_type",
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "vault",
+                        "folder",
+                        "file"
+                    ]
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.setLinksRequest": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "description": "To are the notes this one points at, already resolved by a reader who holds the keys.\nThe server drops any the caller cannot see rather than trusting the list.",
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "vault.stageRekeyRequest": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/vault.rekeyItemRequest"
+                    }
+                }
+            }
+        },
+        "vault.startRekeyRequest": {
+            "type": "object",
+            "required": [
+                "scope_ref_id",
+                "scope_type"
+            ],
+            "properties": {
+                "new_scope_client_id": {
+                    "description": "NewScopeClientID names the scope the new key belongs to. It is required when the job\ncreates a scope, because the sealed keys have to name it before the row exists.",
+                    "type": "string"
+                },
+                "scope_ref_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "scope_type": {
+                    "type": "string",
+                    "enum": [
+                        "vault",
+                        "folder",
+                        "file"
+                    ]
+                }
+            }
+        },
+        "vault.updateContentRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "content_nonce",
+                "key_scope_id",
+                "key_version"
+            ],
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "maxItems": 4194304,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "content_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "key_scope_id": {
+                    "description": "The scope and version the body was sealed under. content_seq alone does not cover\nthem: a re-key rewrites the row without touching that sequence, so a write held up\nacross a rotation would otherwise land ciphertext under a key nobody holds and the\nrow would claim the new version.",
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "signature": {
+                    "description": "Signature is the author's raw ECDSA P-256 signature over this exact ciphertext in\nthis exact slot. Optional so an older client still writes, but a body without one is\nstored as unsigned and the history says so rather than implying authorship.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "vault.updateMetaRequest": {
+            "type": "object",
+            "required": [
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "position": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "JWT token in the format: Bearer {token}",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

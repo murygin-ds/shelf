@@ -11,12 +11,16 @@ http:
   port: 8080
   read_timeout: 10s
   write_timeout: 10s
+  handler_timeout: 8s # bounds the work behind a request, not only the socket
   idle_timeout: 60s
   shutdown_timeout: 10s
-  allowed_origins:
-    - "*"
+  # The binary serves the frontend itself and the dev server proxies /api, so both are
+  # same-origin and CORS is not needed at all. Fill this in only for a separate front end.
+  allowed_origins: [ ]
   trusted_proxies: [ ] # for example: ["10.0.0.0/8"] behind nginx/ingress
-  swagger_enabled: true
+  swagger_enabled: false # the API surface is published to anyone who can reach the port
+  max_body_bytes: 8388608 # 8 MiB, the ceiling for the batch endpoints
+  static_cache_max_age: 8760h # hashed frontend assets never change under the same name
 
 postgres:
   host: localhost
@@ -24,7 +28,7 @@ postgres:
   user: postgres
   password: "" # SHELF_POSTGRES_PASSWORD
   database: shelf
-  ssl_mode: disable
+  ssl_mode: prefer # require or verify-full when Postgres is not on this host
   max_conns: 10
   min_conns: 2
   max_conn_lifetime: 30m
@@ -51,6 +55,10 @@ auth:
     login_account: { limit: 20, window: 15m }
     recovery_ip: { limit: 5, window: 15m }
     recovery_account: { limit: 10, window: 1h }
+    # a resolved invite refunds its attempt, so only failed guesses spend the counter
+    invite_ip: { limit: 20, window: 15m }
+    share_ip: { limit: 60, window: 15m }
+    register_ip: { limit: 20, window: 1h }
 
 log:
   level: debug # debug | info | warn | error

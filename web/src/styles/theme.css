@@ -1,0 +1,184 @@
+/* Design tokens lifted from the Basalt spec. The app is dark-only by design:
+   the palette is a single ramp, not a light/dark pair. */
+
+:root {
+  --canvas: #0a0a0b;
+  --panel: #0e0e10;
+  --line: #1c1c1f;
+
+  /* Popovers, modals and inset blocks sit above the panel. */
+  --surface-raised: #141417;
+  --surface-inset: #101013;
+  --surface-code: #0c0c0e;
+  --surface-active: #1d1d22;
+  --surface-hover: #1e1e23;
+  --surface-chip: #26262c;
+  --surface-chip-hover: #31313a;
+
+  --border: #232329;
+  --border-strong: #2a2a31;
+  --border-hover: #3a3a42;
+  --border-subtle: #1a1a1e;
+  --border-quiet: #1e1e23;
+
+  --text: #e8e8ea;
+  --text-secondary: #c8c8cc;
+  --text-body: #b4b4ba;
+  --text-muted: #9a9aa0;
+  --text-dim: #8a8a90;
+  --text-faint: #7a7a82;
+  --text-quiet: #6a6a70;
+  --text-ghost: #5c5c63;
+  --text-label: #55555c;
+  --text-disabled: #4a4a50;
+  --text-marker: #43434a;
+
+  --accent: #7c8ff0;
+  --accent-hover: #9baaf6;
+  --accent-ink: #0a0a0b;
+  --accent-wash: rgba(124, 143, 240, 0.18);
+  --accent-text: #c3cdf8;
+  --accent-focus: #4a5a9e;
+
+  --ok: #6d8e7c;
+  --ok-dot: #4e7a64;
+  --warn: #c0a47a;
+  --danger: #c98080;
+
+  --code-text: #b7c0e8;
+  --code-key: #8fa0de;
+  --code-bool: #8fae9c;
+  --code-string: #c0a47a;
+
+  --overlay: rgba(4, 4, 5, 0.6);
+  --shadow-popover: 0 20px 50px rgba(0, 0, 0, 0.65);
+  --shadow-modal: 0 30px 80px rgba(0, 0, 0, 0.7);
+  --shadow-rail: 0 14px 40px rgba(0, 0, 0, 0.65);
+
+  --font-sans: 'Instrument Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 5px;
+  --radius: 7px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+
+  --topbar-h: 46px;
+  --statusbar-h: 27px;
+  --sidebar-w: 250px;
+  --inspector-w: 312px;
+}
+
+/* "Cool graphite" tone from the design's theme switch. */
+:root[data-tone='graphite'] {
+  --canvas: #0d0f12;
+  --panel: #12151a;
+  --line: #212630;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-ghost);
+}
+
+::selection {
+  background: rgba(124, 143, 240, 0.3);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #242429;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #33333a;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Caret blink used by the editor and the search headline. */
+@keyframes caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

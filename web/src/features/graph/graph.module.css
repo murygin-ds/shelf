@@ -1,0 +1,110 @@
+.pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  flex: none;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title,
+.legend {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.canvas {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+
+.edge {
+  stroke: var(--border-strong, var(--border));
+  stroke-width: 1;
+}
+
+/* A link into something the reader cannot open is drawn, but never as a solid fact. */
+.edgeMasked {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.node {
+  cursor: pointer;
+}
+
+.nodeMasked {
+  cursor: default;
+}
+
+.dot {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.node:hover .dot {
+  fill: var(--accent-hover, var(--accent));
+}
+
+.dotMasked {
+  fill: none;
+  stroke: var(--text-quiet);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+.label {
+  fill: var(--text-quiet);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.node:hover .label {
+  fill: var(--text-body);
+}
+
+.note {
+  flex: none;
+  margin: 0;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-quiet);
+}
+
+.empty {
+  padding: 40px 24px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-quiet);
+}
+
+.error {
+  margin: 24px;
+  padding: 11px 13px;
+  border: 1px solid #3a2a2a;
+  border-radius: var(--radius-md);
+  background: #150f10;
+  font-size: 12.5px;
+  color: #d8b6b6;
+}

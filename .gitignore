@@ -9,6 +9,13 @@
 *.exe
 *.test
 
+# Frontend
+/web/node_modules/
+# The bundle is embedded into the binary; the directory itself must exist for //go:embed
+# to compile in a fresh clone, so the placeholder is tracked and the output is not.
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+
 # Profile
 coverage.out
 coverage.html

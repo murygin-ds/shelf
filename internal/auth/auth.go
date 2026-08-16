@@ -79,12 +79,14 @@ type NewRecoveryKey struct {
 
 // User is an account together with its wrapped keys.
 type User struct {
-	ID        int64
-	Login     string
-	AuthHash  string
-	Keys      KeyBundle
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID    int64
+	Login string
+	// DisplayName is the name other members see
+	DisplayName string
+	AuthHash    string
+	Keys        KeyBundle
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Session is an issued refresh token along with the device metadata.
@@ -101,18 +103,20 @@ type Session struct {
 
 // NewUser is the data required to create an account. The hashes are already computed by the service.
 type NewUser struct {
-	Login    string
-	AuthHash string
-	Keys     KeyBundle
-	Recovery RecoveryKey
+	Login       string
+	DisplayName string
+	AuthHash    string
+	Keys        KeyBundle
+	Recovery    RecoveryKey
 }
 
 // RegisterInput is the registration data in the form the client sent it.
 type RegisterInput struct {
-	Login    string
-	AuthHash []byte
-	Keys     KeyBundle
-	Recovery NewRecoveryKey
+	Login       string
+	DisplayName string
+	AuthHash    []byte
+	Keys        KeyBundle
+	Recovery    NewRecoveryKey
 }
 
 // NewSession is the data required to create a session.

@@ -16,7 +16,7 @@ import (
 // uniqueViolation is the PostgreSQL error code of a unique index violation.
 const uniqueViolation = "23505"
 
-const userColumns = `id, login, auth_hash, kdf_salt, kdf_params, wrapped_master_key,
+const userColumns = `id, login, display_name, auth_hash, kdf_salt, kdf_params, wrapped_master_key,
 	master_key_nonce, public_key, wrapped_private_key, private_key_nonce, created_at, updated_at`
 
 // AuthRepository implements auth.Repository on top of PostgreSQL.
@@ -35,13 +35,13 @@ func (r *AuthRepository) CreateUser(ctx context.Context, in auth.NewUser) (*auth
 
 	err := r.inTx(ctx, func(tx pgx.Tx) error {
 		const insertUser = `
-			INSERT INTO users (login, auth_hash, kdf_salt, kdf_params, wrapped_master_key,
+			INSERT INTO users (login, display_name, auth_hash, kdf_salt, kdf_params, wrapped_master_key,
 			                   master_key_nonce, public_key, wrapped_private_key, private_key_nonce)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			RETURNING ` + userColumns
 
 		row := tx.QueryRow(ctx, insertUser,
-			in.Login, in.AuthHash, in.Keys.KDFSalt, in.Keys.KDFParams, in.Keys.WrappedMasterKey,
+			in.Login, in.DisplayName, in.AuthHash, in.Keys.KDFSalt, in.Keys.KDFParams, in.Keys.WrappedMasterKey,
 			in.Keys.MasterKeyNonce, in.Keys.PublicKey, in.Keys.WrappedPrivateKey, in.Keys.PrivateKeyNonce,
 		)
 
@@ -356,7 +356,7 @@ func scanUser(row pgx.Row) (*auth.User, error) {
 	var user auth.User
 
 	err := row.Scan(
-		&user.ID, &user.Login, &user.AuthHash, &user.Keys.KDFSalt, &user.Keys.KDFParams,
+		&user.ID, &user.Login, &user.DisplayName, &user.AuthHash, &user.Keys.KDFSalt, &user.Keys.KDFParams,
 		&user.Keys.WrappedMasterKey, &user.Keys.MasterKeyNonce, &user.Keys.PublicKey,
 		&user.Keys.WrappedPrivateKey, &user.Keys.PrivateKeyNonce, &user.CreatedAt, &user.UpdatedAt,
 	)

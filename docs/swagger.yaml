@@ -1,0 +1,3998 @@
+basePath: /
+definitions:
+  access.ChallengeResponse:
+    properties:
+      expires_at:
+        type: string
+      invite_id:
+        example: 4
+        type: integer
+      key_grants:
+        items:
+          $ref: '#/definitions/access.SealedKeyResponse'
+        type: array
+      preview_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_preview:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  access.DirectoryResponse:
+    properties:
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      login:
+        example: marta@acme.dev
+        type: string
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      user_id:
+        example: 7
+        type: integer
+    type: object
+  access.GrantResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        example: 3
+        type: integer
+      permission:
+        example: edit
+        type: string
+      scope_ref_id:
+        example: 12
+        type: integer
+      scope_type:
+        example: folder
+        type: string
+      subject_id:
+        example: 7
+        type: integer
+      subject_label:
+        example: Marta Chen
+        type: string
+      subject_type:
+        example: user
+        type: string
+    type: object
+  access.GrantsResponse:
+    properties:
+      grants:
+        items:
+          $ref: '#/definitions/access.GrantResponse'
+        type: array
+    type: object
+  access.GroupKeyResponse:
+    properties:
+      group_client_id:
+        type: string
+      group_id:
+        example: 3
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  access.GroupKeysResponse:
+    properties:
+      keys:
+        items:
+          $ref: '#/definitions/access.GroupKeyResponse'
+        type: array
+    type: object
+  access.GroupMemberResponse:
+    properties:
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      key_version:
+        example: 1
+        type: integer
+      login:
+        example: marta@acme.dev
+        type: string
+      user_id:
+        example: 7
+        type: integer
+    type: object
+  access.GroupResponse:
+    properties:
+      client_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: integer
+      id:
+        example: 3
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      members:
+        items:
+          $ref: '#/definitions/access.GroupMemberResponse'
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      vault_id:
+        example: 12
+        type: integer
+    type: object
+  access.GroupScopeResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      scope_client_id:
+        type: string
+      scope_id:
+        example: 3
+        type: integer
+    type: object
+  access.GroupScopesResponse:
+    properties:
+      scopes:
+        items:
+          $ref: '#/definitions/access.GroupScopeResponse'
+        type: array
+    type: object
+  access.GroupsResponse:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/access.GroupResponse'
+        type: array
+    type: object
+  access.InviteResponse:
+    properties:
+      created_at:
+        type: string
+      email_hint:
+        example: dana@acme.dev
+        type: string
+      expires_at:
+        type: string
+      id:
+        example: 4
+        type: integer
+      inviter_name:
+        example: Ilya Volkov
+        type: string
+      redeemed_at:
+        type: string
+      role:
+        example: editor
+        type: string
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  access.InvitesResponse:
+    properties:
+      invites:
+        items:
+          $ref: '#/definitions/access.InviteResponse'
+        type: array
+    type: object
+  access.MemberResponse:
+    properties:
+      created_at:
+        type: string
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      folder_count:
+        example: 3
+        type: integer
+      key_state:
+        example: ok
+        type: string
+      last_active:
+        type: string
+      login:
+        example: marta@acme.dev
+        type: string
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      role:
+        example: editor
+        type: string
+      user_id:
+        example: 7
+        type: integer
+    type: object
+  access.MembersResponse:
+    properties:
+      members:
+        items:
+          $ref: '#/definitions/access.MemberResponse'
+        type: array
+    type: object
+  access.RemovalResponse:
+    properties:
+      pending_rotation:
+        items:
+          type: integer
+        type: array
+    type: object
+  access.SealedKeyResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      scope_client_id:
+        type: string
+      scope_id:
+        example: 1
+        type: integer
+      wrap_algorithm:
+        example: aesgcm-invite-v1
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  access.createGroupRequest:
+    properties:
+      client_id:
+        type: string
+      members:
+        description: |-
+          Members must include the caller: the private key exists only in these copies, and a
+          group its own manager cannot open is a group nobody can ever add to.
+        items:
+          $ref: '#/definitions/access.sealedGroupKeyRequest'
+        maxItems: 200
+        minItems: 1
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      public_key:
+        description: |-
+          PublicKey is the group's raw P-256 agreement key. A group never writes, so it needs
+          no signing key — there would be nothing to attribute.
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - client_id
+    - members
+    - meta
+    - meta_nonce
+    - public_key
+    type: object
+  access.createInviteRequest:
+    properties:
+      email_hint:
+        maxLength: 128
+        type: string
+      expires_at:
+        type: string
+      key_grants:
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 64
+        minItems: 1
+        type: array
+      preview_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      role:
+        enum:
+        - admin
+        - editor
+        - viewer
+        type: string
+      target_user_id:
+        minimum: 1
+        type: integer
+      token_hash:
+        description: |-
+          TokenHash is the digest of a code the server never sees. Exactly one of this and
+          TargetUserID is set.
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_preview:
+        description: |-
+          Preview holds the vault name and the inviter, encrypted under the same code, so an
+          unauthenticated lookup reveals nothing.
+        items:
+          format: byte
+          type: integer
+        maxItems: 2048
+        minItems: 16
+        type: array
+    required:
+    - key_grants
+    - role
+    type: object
+  access.lookupInviteRequest:
+    properties:
+      token_hash:
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - token_hash
+    type: object
+  access.putGrantRequest:
+    properties:
+      key_grants:
+        description: |-
+          Keys must cover the node's scope whenever the permission allows reading: without
+          them the subject would see an entry it can never open.
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 64
+        type: array
+      permission:
+        enum:
+        - none
+        - view
+        - comment
+        - edit
+        - own
+        type: string
+      scope_ref_id:
+        minimum: 1
+        type: integer
+      scope_type:
+        enum:
+        - folder
+        - file
+        type: string
+      subject_id:
+        minimum: 1
+        type: integer
+      subject_type:
+        enum:
+        - user
+        - group
+        type: string
+    required:
+    - permission
+    - scope_ref_id
+    - scope_type
+    - subject_id
+    - subject_type
+    type: object
+  access.redeemInviteRequest:
+    properties:
+      invite_id:
+        minimum: 1
+        type: integer
+      key_grants:
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 64
+        minItems: 1
+        type: array
+      token_hash:
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - key_grants
+    type: object
+  access.sealedGroupKeyRequest:
+    properties:
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      user_id:
+        minimum: 1
+        type: integer
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4096
+        minItems: 32
+        type: array
+    required:
+    - nonce
+    - user_id
+    - wrapped_key
+    type: object
+  access.sealedKeyRequest:
+    properties:
+      key_version:
+        minimum: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      scope_id:
+        minimum: 1
+        type: integer
+      wrap_algorithm:
+        description: |-
+          Algorithm names the wrapping format. Invite keys use a code-derived symmetric key
+          rather than a sealed box, because nobody knows yet whose key to seal to.
+        maxLength: 64
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 2048
+        minItems: 32
+        type: array
+    required:
+    - key_version
+    - nonce
+    - scope_id
+    - wrapped_key
+    type: object
+  access.setGroupMembersRequest:
+    properties:
+      key_grants:
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 256
+        type: array
+      members:
+        items:
+          $ref: '#/definitions/access.sealedGroupKeyRequest'
+        maxItems: 200
+        minItems: 1
+        type: array
+      public_key:
+        description: |-
+          PublicKey and Keys are required when somebody is being dropped: the copy they hold
+          opens every scope the group reaches, and deleting rows on the server does not take
+          that back.
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - members
+    type: object
+  access.setRoleRequest:
+    properties:
+      role:
+        enum:
+        - admin
+        - editor
+        - viewer
+        type: string
+    required:
+    - role
+    type: object
+  access.updateGroupRequest:
+    properties:
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+    required:
+    - meta
+    - meta_nonce
+    type: object
+  api.HealthResponse:
+    properties:
+      service:
+        example: shelf-backend
+        type: string
+      status:
+        example: ok
+        type: string
+    type: object
+  auth.DeviceResponse:
+    properties:
+      created_at:
+        type: string
+      current:
+        example: true
+        type: boolean
+      expires_at:
+        type: string
+      id:
+        example: 12
+        type: integer
+      ip:
+        example: 203.0.113.7
+        type: string
+      last_used_at:
+        type: string
+      user_agent:
+        type: string
+    type: object
+  auth.DevicesResponse:
+    properties:
+      sessions:
+        items:
+          $ref: '#/definitions/auth.DeviceResponse'
+        type: array
+    type: object
+  auth.KDFParams:
+    properties:
+      algorithm:
+        type: string
+      iterations:
+        type: integer
+      memory:
+        type: integer
+      parallelism:
+        type: integer
+    type: object
+  auth.KeysResponse:
+    properties:
+      kdf_params:
+        $ref: '#/definitions/auth.KDFParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        type: array
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      private_key_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_private_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  auth.PreloginResponse:
+    properties:
+      kdf_params:
+        $ref: '#/definitions/auth.KDFParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  auth.RecoveryChallengeResponse:
+    properties:
+      expires_at:
+        type: string
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      recovery_token:
+        type: string
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  auth.SessionResponse:
+    properties:
+      keys:
+        $ref: '#/definitions/auth.KeysResponse'
+      tokens:
+        $ref: '#/definitions/auth.TokensResponse'
+      user:
+        $ref: '#/definitions/auth.UserResponse'
+    type: object
+  auth.TokensResponse:
+    properties:
+      access_expires_at:
+        type: string
+      access_token:
+        type: string
+      refresh_expires_at:
+        type: string
+      refresh_token:
+        type: string
+      token_type:
+        example: Bearer
+        type: string
+    type: object
+  auth.UserResponse:
+    properties:
+      created_at:
+        type: string
+      display_name:
+        example: Dmitry Murygin
+        type: string
+      id:
+        example: 1
+        type: integer
+      login:
+        example: dmitry
+        type: string
+    type: object
+  auth.changePasswordRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      current_auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      kdf_params:
+        $ref: '#/definitions/auth.kdfParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 16
+        type: array
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      recovery:
+        $ref: '#/definitions/auth.recoveryKey'
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - current_auth_hash
+    - kdf_params
+    - kdf_salt
+    - master_key_nonce
+    - wrapped_master_key
+    type: object
+  auth.kdfParams:
+    properties:
+      algorithm:
+        enum:
+        - argon2id
+        example: argon2id
+        type: string
+      iterations:
+        example: 3
+        maximum: 16
+        minimum: 2
+        type: integer
+      memory:
+        example: 65536
+        minimum: 19456
+        type: integer
+      parallelism:
+        example: 2
+        maximum: 16
+        minimum: 1
+        type: integer
+    required:
+    - algorithm
+    - iterations
+    - memory
+    - parallelism
+    type: object
+  auth.loginRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+    required:
+    - auth_hash
+    - login
+    type: object
+  auth.preloginRequest:
+    properties:
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+    required:
+    - login
+    type: object
+  auth.recoveryCompleteRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      kdf_params:
+        $ref: '#/definitions/auth.kdfParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 16
+        type: array
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      recovery:
+        $ref: '#/definitions/auth.recoveryKey'
+      recovery_token:
+        type: string
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - kdf_params
+    - kdf_salt
+    - master_key_nonce
+    - recovery_token
+    - wrapped_master_key
+    type: object
+  auth.recoveryKey:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - nonce
+    - wrapped_master_key
+    type: object
+  auth.recoveryStartRequest:
+    properties:
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+      recovery_auth_hash:
+        description: AuthHash is derived by the client from the recovery code and
+          serves as the verifier.
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+    required:
+    - login
+    - recovery_auth_hash
+    type: object
+  auth.refreshRequest:
+    properties:
+      refresh_token:
+        maxLength: 256
+        minLength: 16
+        type: string
+    required:
+    - refresh_token
+    type: object
+  auth.registerRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+      display_name:
+        example: Dmitry Murygin
+        maxLength: 128
+        minLength: 1
+        type: string
+      kdf_params:
+        $ref: '#/definitions/auth.kdfParams'
+      kdf_salt:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 16
+        type: array
+      login:
+        example: dmitry
+        maxLength: 64
+        minLength: 3
+        type: string
+      master_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      private_key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      public_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+      recovery:
+        $ref: '#/definitions/auth.recoveryKey'
+      wrapped_master_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+      wrapped_private_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - auth_hash
+    - display_name
+    - kdf_params
+    - kdf_salt
+    - login
+    - master_key_nonce
+    - private_key_nonce
+    - public_key
+    - recovery
+    - wrapped_master_key
+    - wrapped_private_key
+    type: object
+  response.Error:
+    properties:
+      code:
+        example: not_found
+        type: string
+      details:
+        additionalProperties:
+          type: string
+        type: object
+      message:
+        example: resource not found
+        type: string
+      request_id:
+        example: 1f8c1a5e-2b3d-4d6a-9c0e-5f5a5a7d1234
+        type: string
+    type: object
+  response.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/response.Error'
+    type: object
+  vault.AuditEventResponse:
+    properties:
+      action:
+        example: key.rotated
+        type: string
+      actor_id:
+        type: integer
+      actor_login:
+        example: marta@acme.dev
+        type: string
+      actor_name:
+        example: Marta Chen
+        type: string
+      created_at:
+        type: string
+      detail:
+        type: object
+      id:
+        example: 91
+        type: integer
+      subject_id:
+        type: integer
+      subject_type:
+        example: user
+        type: string
+      target_id:
+        type: integer
+      target_type:
+        example: folder
+        type: string
+    type: object
+  vault.AuditResponse:
+    properties:
+      cursor:
+        description: Cursor is the id to pass as before= for the next page; zero when
+          the log is exhausted.
+        example: 91
+        type: integer
+      events:
+        items:
+          $ref: '#/definitions/vault.AuditEventResponse'
+        type: array
+    type: object
+  vault.BacklinksResponse:
+    properties:
+      hidden:
+        description: |-
+          Hidden counts the notes that point here and that the caller cannot see. A count and
+          never a list: the count is honest about the note's reach, the identities are not the
+          caller's to have.
+        example: 2
+        type: integer
+      links:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+    type: object
+  vault.ContentResponse:
+    properties:
+      content_seq:
+        example: 15
+        type: integer
+      updated_at:
+        type: string
+      updated_seq:
+        example: 43
+        type: integer
+    type: object
+  vault.FileResponse:
+    properties:
+      client_id:
+        type: string
+      content:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_seq:
+        example: 14
+        type: integer
+      content_size:
+        example: 8192
+        type: integer
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      folder_id:
+        type: integer
+      grant_count:
+        example: 1
+        type: integer
+      id:
+        example: 88
+        type: integer
+      inherit_access:
+        example: true
+        type: boolean
+      key_scope_client_id:
+        type: string
+      key_scope_id:
+        example: 1
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      own_scope:
+        example: false
+        type: boolean
+      permission:
+        example: edit
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: integer
+      updated_seq:
+        example: 42
+        type: integer
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  vault.FilesResponse:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+    type: object
+  vault.FolderResponse:
+    properties:
+      client_id:
+        type: string
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      depth:
+        example: 0
+        type: integer
+      grant_count:
+        example: 1
+        type: integer
+      id:
+        example: 12
+        type: integer
+      inherit_access:
+        example: true
+        type: boolean
+      key_scope_client_id:
+        type: string
+      key_scope_id:
+        example: 1
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      own_scope:
+        example: false
+        type: boolean
+      parent_id:
+        type: integer
+      permission:
+        example: own
+        type: string
+      position:
+        example: 0
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: integer
+      updated_seq:
+        example: 41
+        type: integer
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  vault.GraphEdgeResponse:
+    properties:
+      from:
+        example: "88"
+        type: string
+      to:
+        example: locked-1
+        type: string
+    type: object
+  vault.GraphNodeResponse:
+    properties:
+      client_id:
+        type: string
+      degree:
+        example: 4
+        type: integer
+      file_id:
+        example: 88
+        type: integer
+      folder_id:
+        type: integer
+      key_scope_client_id:
+        type: string
+      key_scope_id:
+        type: integer
+      key_version:
+        type: integer
+      locked:
+        example: false
+        type: boolean
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      ref:
+        description: |-
+          Ref names the node inside this response. A visible node uses its file id; a locked
+          one uses an opaque counter, because handing out its id would make the graph an
+          existence oracle for notes every other route answers 404 for.
+        example: "88"
+        type: string
+    type: object
+  vault.GraphResponse:
+    properties:
+      edges:
+        items:
+          $ref: '#/definitions/vault.GraphEdgeResponse'
+        type: array
+      locked:
+        description: |-
+          Locked counts the masked nodes drawn. They exist so the picture is not a lie: a note
+          linked only through something invisible would otherwise appear unconnected.
+        example: 2
+        type: integer
+      nodes:
+        items:
+          $ref: '#/definitions/vault.GraphNodeResponse'
+        type: array
+      reveals_locked:
+        description: |-
+          RevealsLocked says whether this vault draws masked nodes at all, so the view can tell
+          the reader whether they are looking at the whole graph or only their part of it.
+        example: true
+        type: boolean
+    type: object
+  vault.KeyGrantResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      scope_client_id:
+        type: string
+      scope_id:
+        example: 1
+        type: integer
+      subject_id:
+        example: 1
+        type: integer
+      subject_type:
+        example: user
+        type: string
+      wrap_algorithm:
+        example: ecdh-p256-hkdf-a256gcm
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  vault.KeyGrantsResponse:
+    properties:
+      grants:
+        items:
+          $ref: '#/definitions/vault.KeyGrantResponse'
+        type: array
+    type: object
+  vault.PublicNoteResponse:
+    properties:
+      client_id:
+        type: string
+      content:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      published_at:
+        type: string
+    type: object
+  vault.PurgedResponse:
+    properties:
+      files:
+        items:
+          type: integer
+        type: array
+      folders:
+        items:
+          type: integer
+        type: array
+    type: object
+  vault.RekeyPlanResponse:
+    properties:
+      covers_vault:
+        example: false
+        type: boolean
+      creates_scope:
+        example: true
+        type: boolean
+      expires_at:
+        type: string
+      files:
+        items:
+          type: integer
+        type: array
+      folders:
+        items:
+          type: integer
+        type: array
+      from_version:
+        example: 0
+        type: integer
+      id:
+        example: 3
+        type: integer
+      scope_client_id:
+        type: string
+      scope_ref_id:
+        example: 12
+        type: integer
+      scope_type:
+        example: folder
+        type: string
+      subjects:
+        items:
+          $ref: '#/definitions/vault.RekeySubjectResponse'
+        type: array
+      to_version:
+        example: 1
+        type: integer
+    type: object
+  vault.RekeyResultResponse:
+    properties:
+      key_version:
+        example: 1
+        type: integer
+      scope_client_id:
+        type: string
+      scope_id:
+        example: 4
+        type: integer
+    type: object
+  vault.RekeySubjectResponse:
+    properties:
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      group_client_id:
+        type: string
+      group_id:
+        example: 3
+        type: integer
+      login:
+        example: marta@acme.dev
+        type: string
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      user_id:
+        example: 7
+        type: integer
+    type: object
+  vault.RevisionResponse:
+    properties:
+      author_id:
+        type: integer
+      author_login:
+        type: string
+      author_name:
+        type: string
+      author_public_key:
+        description: |-
+          AuthorPublicKey is what the signature verifies against. It travels with the revision
+          so checking who wrote it never depends on a second answer from the same server.
+        items:
+          format: byte
+          type: integer
+        type: array
+      content:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      content_seq:
+        example: 14
+        type: integer
+      content_size:
+        example: 4112
+        type: integer
+      created_at:
+        type: string
+      file_id:
+        example: 88
+        type: integer
+      id:
+        example: 14
+        type: integer
+      key_scope_client_id:
+        type: string
+      key_scope_id:
+        example: 3
+        type: integer
+      key_version:
+        example: 2
+        type: integer
+      signature:
+        items:
+          format: byte
+          type: integer
+        type: array
+      signed:
+        description: |-
+          Signed is false for a body written before signatures existed. Unsigned is not the
+          same as forged, but it is not proof of authorship either, and the view says so.
+        example: true
+        type: boolean
+    type: object
+  vault.RevisionsResponse:
+    properties:
+      revisions:
+        items:
+          $ref: '#/definitions/vault.RevisionResponse'
+        type: array
+    type: object
+  vault.ScopeResponse:
+    properties:
+      client_id:
+        type: string
+      grant_count:
+        example: 6
+        type: integer
+      id:
+        example: 1
+        type: integer
+      key_version:
+        example: 4
+        type: integer
+      ref_id:
+        example: 1
+        type: integer
+      rotated_at:
+        type: string
+      scope_type:
+        example: vault
+        type: string
+    type: object
+  vault.ScopesResponse:
+    properties:
+      scopes:
+        items:
+          $ref: '#/definitions/vault.ScopeResponse'
+        type: array
+    type: object
+  vault.ShareLinkResponse:
+    properties:
+      content_seq:
+        description: |-
+          ContentSeq is the version that was published. A link is a snapshot, so a note that
+          has moved on since is something the owner should be able to see.
+        example: 14
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: integer
+      creator_name:
+        type: string
+      expires_at:
+        type: string
+      file_id:
+        example: 88
+        type: integer
+      id:
+        example: 5
+        type: integer
+      last_viewed_at:
+        type: string
+      live:
+        example: true
+        type: boolean
+      permission:
+        example: view
+        type: string
+      revoked_at:
+        type: string
+      view_count:
+        example: 12
+        type: integer
+    type: object
+  vault.ShareLinksResponse:
+    properties:
+      links:
+        items:
+          $ref: '#/definitions/vault.ShareLinkResponse'
+        type: array
+    type: object
+  vault.SyncResponse:
+    properties:
+      cursor:
+        example: 4821
+        type: integer
+      files:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+      folders:
+        items:
+          $ref: '#/definitions/vault.FolderResponse'
+        type: array
+      full_resync_required:
+        description: |-
+          FullResync tells the client to drop its cached copy of this vault. It is the only
+          way it learns to forget plaintext it cached before losing access to it.
+        example: false
+        type: boolean
+      has_more:
+        example: false
+        type: boolean
+      purged:
+        $ref: '#/definitions/vault.PurgedResponse'
+    type: object
+  vault.TreeResponse:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/vault.FileResponse'
+        type: array
+      folders:
+        items:
+          $ref: '#/definitions/vault.FolderResponse'
+        type: array
+    type: object
+  vault.VaultResponse:
+    properties:
+      change_seq:
+        example: 42
+        type: integer
+      client_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        example: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      owner_id:
+        example: 1
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  vault.VaultSummaryResponse:
+    properties:
+      change_seq:
+        example: 42
+        type: integer
+      client_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        example: 1
+        type: integer
+      key_scope_client_id:
+        description: |-
+          KeyScopeClientID is what a sealed key names. Sealing against the vault's own client
+          id instead produces a key that silently refuses to open.
+        type: string
+      key_scope_id:
+        example: 1
+        type: integer
+      key_state:
+        example: ok
+        type: string
+      key_version:
+        example: 1
+        type: integer
+      member_count:
+        example: 6
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      note_count:
+        example: 213
+        type: integer
+      owner_id:
+        example: 1
+        type: integer
+      role:
+        example: owner
+        type: string
+      updated_at:
+        type: string
+    type: object
+  vault.VaultsResponse:
+    properties:
+      vaults:
+        items:
+          $ref: '#/definitions/vault.VaultSummaryResponse'
+        type: array
+    type: object
+  vault.bulkFilesRequest:
+    properties:
+      ids:
+        items:
+          type: integer
+        maxItems: 200
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
+  vault.commitRekeyRequest:
+    properties:
+      key_grants:
+        items:
+          $ref: '#/definitions/vault.rekeyGrantRequest'
+        maxItems: 256
+        minItems: 1
+        type: array
+    required:
+    - key_grants
+    type: object
+  vault.createFileRequest:
+    properties:
+      client_id:
+        type: string
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      folder_id:
+        minimum: 1
+        type: integer
+      key_scope_id:
+        minimum: 1
+        type: integer
+      key_version:
+        minimum: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+    required:
+    - client_id
+    - content
+    - content_nonce
+    - key_scope_id
+    - key_version
+    - meta
+    - meta_nonce
+    type: object
+  vault.createFolderRequest:
+    properties:
+      client_id:
+        type: string
+      key_scope_id:
+        description: |-
+          KeyScopeID and KeyVersion declare which key the blobs were sealed under. The server
+          refuses them when they do not match the destination, because the row would be
+          unreadable to everyone who can see it.
+        minimum: 1
+        type: integer
+      key_version:
+        minimum: 1
+        type: integer
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      parent_id:
+        minimum: 1
+        type: integer
+      position:
+        minimum: 0
+        type: integer
+    required:
+    - client_id
+    - key_scope_id
+    - key_version
+    - meta
+    - meta_nonce
+    type: object
+  vault.createShareRequest:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      content_seq:
+        minimum: 1
+        type: integer
+      expires_at:
+        type: string
+      meta:
+        description: |-
+          The note re-encrypted under a key derived from that secret. Not the scope key: a
+          scope covers a whole folder or vault, and one published note must not be the key to
+          everything sealed beside it.
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      token_hash:
+        description: |-
+          TokenHash is the digest of a secret the server never sees, the same shape as a code
+          invite. The secret travels in the link fragment and stays in the visitor's browser.
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 32
+        type: array
+    required:
+    - content
+    - content_nonce
+    - content_seq
+    - meta
+    - meta_nonce
+    - token_hash
+    type: object
+  vault.createVaultRequest:
+    properties:
+      client_id:
+        description: |-
+          ClientID is chosen before the row exists, so the metadata can be sealed against a
+          stable identity in one round trip.
+        type: string
+      key_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      scope_client_id:
+        description: ScopeClientID names the vault's own key scope, which the key
+          below is sealed against.
+        type: string
+      wrap_algorithm:
+        description: Algorithm names the sealed-box format, so a later format can
+          be told apart.
+        maxLength: 64
+        type: string
+      wrapped_key:
+        description: WrappedKey is the vault content key sealed to the creator's own
+          public key.
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - client_id
+    - key_nonce
+    - meta
+    - meta_nonce
+    - scope_client_id
+    - wrapped_key
+    type: object
+  vault.lookupShareRequest:
+    properties:
+      token_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 64
+        minItems: 32
+        type: array
+    required:
+    - token_hash
+    type: object
+  vault.moveRequest:
+    properties:
+      parent_id:
+        minimum: 1
+        type: integer
+      position:
+        minimum: 0
+        type: integer
+    type: object
+  vault.rekeyGrantRequest:
+    properties:
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      subject_id:
+        minimum: 1
+        type: integer
+      subject_type:
+        enum:
+        - user
+        - group
+        type: string
+      wrap_algorithm:
+        maxLength: 64
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 2048
+        minItems: 32
+        type: array
+    required:
+    - nonce
+    - subject_id
+    - subject_type
+    - wrapped_key
+    type: object
+  vault.rekeyItemRequest:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      entity_id:
+        minimum: 1
+        type: integer
+      entity_type:
+        enum:
+        - vault
+        - folder
+        - file
+        type: string
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+    required:
+    - entity_id
+    - entity_type
+    - meta
+    - meta_nonce
+    type: object
+  vault.setLinksRequest:
+    properties:
+      to:
+        description: |-
+          To are the notes this one points at, already resolved by a reader who holds the keys.
+          The server drops any the caller cannot see rather than trusting the list.
+        items:
+          type: integer
+        maxItems: 500
+        type: array
+    type: object
+  vault.stageRekeyRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/vault.rekeyItemRequest'
+        maxItems: 200
+        minItems: 1
+        type: array
+    required:
+    - items
+    type: object
+  vault.startRekeyRequest:
+    properties:
+      new_scope_client_id:
+        description: |-
+          NewScopeClientID names the scope the new key belongs to. It is required when the job
+          creates a scope, because the sealed keys have to name it before the row exists.
+        type: string
+      scope_ref_id:
+        minimum: 1
+        type: integer
+      scope_type:
+        enum:
+        - vault
+        - folder
+        - file
+        type: string
+    required:
+    - scope_ref_id
+    - scope_type
+    type: object
+  vault.updateContentRequest:
+    properties:
+      content:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4194304
+        minItems: 16
+        type: array
+      content_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      key_scope_id:
+        description: |-
+          The scope and version the body was sealed under. content_seq alone does not cover
+          them: a re-key rewrites the row without touching that sequence, so a write held up
+          across a rotation would otherwise land ciphertext under a key nobody holds and the
+          row would claim the new version.
+        minimum: 1
+        type: integer
+      key_version:
+        minimum: 1
+        type: integer
+      signature:
+        description: |-
+          Signature is the author's raw ECDSA P-256 signature over this exact ciphertext in
+          this exact slot. Optional so an older client still writes, but a body without one is
+          stored as unsigned and the history says so rather than implying authorship.
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - content
+    - content_nonce
+    - key_scope_id
+    - key_version
+    type: object
+  vault.updateMetaRequest:
+    properties:
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      position:
+        minimum: 0
+        type: integer
+    required:
+    - meta
+    - meta_nonce
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: dmitr.murygin@gmail.com
+    name: Shelf Backend
+  description: REST API of the Shelf service.
+  license:
+    name: Proprietary
+  title: Shelf API
+  version: "1.0"
+paths:
+  /api/v1/auth/keys:
+    get:
+      description: 'Returns the wrapped keys: the client needs them after a restart
+        while the access token is still alive.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.KeysResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cryptographic material of the user
+      tags:
+      - auth
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Verifies auth_hash and returns the wrapped keys together with a
+        token pair.
+      parameters:
+      - description: Login and auth_hash
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.SessionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Login
+      tags:
+      - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Revokes the session the refresh token belongs to.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.refreshRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Logout
+      tags:
+      - auth
+  /api/v1/auth/logout-all:
+    post:
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout on every device
+      tags:
+      - auth
+  /api/v1/auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Current user
+      tags:
+      - auth
+  /api/v1/auth/password:
+    post:
+      consumes:
+      - application/json
+      description: Accepts the master key re-encrypted with the new wrapping key.
+        All sessions are revoked and the response carries a new token pair.
+      parameters:
+      - description: New authentication data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.changePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TokensResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Password change
+      tags:
+      - auth
+  /api/v1/auth/prelogin:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Returns the salt and the KDF parameters the client needs to compute auth_hash.
+        For an unknown login it returns plausible values so the endpoint does not reveal whether the account exists.
+      parameters:
+      - description: Login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.preloginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.PreloginResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Key derivation parameters
+      tags:
+      - auth
+  /api/v1/auth/recovery/complete:
+    post:
+      consumes:
+      - application/json
+      description: Sets the new authentication data using the token issued by recovery/start.
+      parameters:
+      - description: New authentication data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.recoveryCompleteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TokensResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Access recovery completion
+      tags:
+      - auth
+  /api/v1/auth/recovery/start:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Verifies ownership of the recovery code and returns the master key wrapped with it
+        together with a short-lived token for completing the recovery.
+      parameters:
+      - description: Login and recovery code verifier
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.recoveryStartRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RecoveryChallengeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Access recovery start
+      tags:
+      - auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 'Exchanges a refresh token for a new pair. The token is single-use:
+        presenting it again revokes all sessions.'
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.refreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TokensResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Token pair refresh
+      tags:
+      - auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Creates an account from the cryptographic material prepared by the client and opens a session.
+        The server never sees the password: the client derives the master key wrapping key and auth_hash from it.
+      parameters:
+      - description: Registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/auth.SessionResponse'
+        "409":
+          description: Login is already taken
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Registration
+      tags:
+      - auth
+  /api/v1/auth/sessions:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.DevicesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Active sessions
+      tags:
+      - auth
+  /api/v1/auth/sessions/{id}:
+    delete:
+      parameters:
+      - description: Session identifier
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Session revocation
+      tags:
+      - auth
+  /api/v1/files/{id}:
+    delete:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Trash a note
+      tags:
+      - files
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a note
+      tags:
+      - files
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted note metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateMetaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+      security:
+      - BearerAuth: []
+      summary: Update note metadata
+      tags:
+      - files
+  /api/v1/files/{id}/backlinks:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.BacklinksResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List backlinks
+      tags:
+      - graph
+  /api/v1/files/{id}/content:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: content sequence the client last saw
+        in: header
+        name: If-Match
+        required: true
+        type: integer
+      - description: encrypted body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateContentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.ContentResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "428":
+          description: Precondition Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Write a note body
+      tags:
+      - files
+  /api/v1/files/{id}/links:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: resolved targets
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.setLinksRequest'
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a note's outgoing links
+      tags:
+      - graph
+  /api/v1/files/{id}/move:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: destination folder
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.moveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Move a note
+      tags:
+      - files
+  /api/v1/files/{id}/purge:
+    delete:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Purge a note
+      tags:
+      - files
+  /api/v1/files/{id}/restore:
+    post:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Restore a note
+      tags:
+      - files
+  /api/v1/files/{id}/revisions:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: page size
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.RevisionsResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List revisions
+      tags:
+      - revisions
+  /api/v1/files/{id}/revisions/{revision_id}:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: revision id
+        in: path
+        name: revision_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.RevisionResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a revision
+      tags:
+      - revisions
+  /api/v1/files/{id}/share-links:
+    get:
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.ShareLinksResponse'
+      security:
+      - BearerAuth: []
+      summary: List public links
+      tags:
+      - sharing
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: file id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the note key wrapped under the link secret
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createShareRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.ShareLinkResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Open a public link
+      tags:
+      - sharing
+  /api/v1/folders/{id}:
+    delete:
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Trash a folder
+      tags:
+      - folders
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted folder metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateMetaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FolderResponse'
+      security:
+      - BearerAuth: []
+      summary: Update folder metadata
+      tags:
+      - folders
+  /api/v1/folders/{id}/move:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: destination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.moveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FolderResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Move a folder
+      tags:
+      - folders
+  /api/v1/folders/{id}/purge:
+    delete:
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Purge a folder
+      tags:
+      - folders
+  /api/v1/folders/{id}/restore:
+    post:
+      parameters:
+      - description: folder id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Restore a folder
+      tags:
+      - folders
+  /api/v1/groups/{id}:
+    delete:
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a group
+      tags:
+      - access
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the new name, encrypted
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.updateGroupRequest'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Rename a group
+      tags:
+      - access
+  /api/v1/groups/{id}/members:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the group key sealed to each member
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.setGroupMembersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a group's members
+      tags:
+      - access
+  /api/v1/groups/{id}/scopes:
+    get:
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupScopesResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the keys a group holds
+      tags:
+      - access
+  /api/v1/invites/lookup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: digest of the invite code
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.lookupInviteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.ChallengeResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Resolve an invite code
+      tags:
+      - access
+  /api/v1/invites/redeem:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: the invite and the scope keys re-sealed to the caller
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.redeemInviteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.InviteResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Redeem an invite
+      tags:
+      - access
+  /api/v1/me/invites:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.InvitesResponse'
+      security:
+      - BearerAuth: []
+      summary: List my invites
+      tags:
+      - access
+  /api/v1/public/share/lookup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: digest of the link secret
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.lookupShareRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.PublicNoteResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Open a shared note
+      tags:
+      - sharing
+  /api/v1/rekeys/{id}:
+    delete:
+      parameters:
+      - description: rekey id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Abort a re-key
+      tags:
+      - keys
+  /api/v1/rekeys/{id}/commit:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: rekey id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the new key sealed to everyone who keeps access
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.commitRekeyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.RekeyResultResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Commit a re-key
+      tags:
+      - keys
+  /api/v1/rekeys/{id}/items:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: rekey id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: re-encrypted rows
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.stageRekeyRequest'
+      responses:
+        "204":
+          description: No Content
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Stage re-encrypted rows
+      tags:
+      - keys
+  /api/v1/share-links/{id}:
+    delete:
+      parameters:
+      - description: share link id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Revoke a public link
+      tags:
+      - sharing
+  /api/v1/users/lookup:
+    get:
+      parameters:
+      - description: account login
+        in: query
+        name: login
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.DirectoryResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Look up an account
+      tags:
+      - access
+  /api/v1/vaults:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.VaultsResponse'
+      security:
+      - BearerAuth: []
+      summary: List vaults
+      tags:
+      - vaults
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault metadata and the content key sealed to the creator
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createVaultRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.VaultResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a vault
+      tags:
+      - vaults
+  /api/v1/vaults/{id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a vault
+      tags:
+      - vaults
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.VaultResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a vault
+      tags:
+      - vaults
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.updateMetaRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update vault metadata
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/audit:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: id of the oldest entry already seen
+        in: query
+        name: before
+        type: integer
+      - description: page size
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.AuditResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the audit log
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/files:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted note
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createFileRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.FileResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a note
+      tags:
+      - files
+  /api/v1/vaults/{id}/files/bulk:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: note ids, at most 200
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.bulkFilesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.FilesResponse'
+      security:
+      - BearerAuth: []
+      summary: Read notes in bulk
+      tags:
+      - files
+  /api/v1/vaults/{id}/folders:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: encrypted folder metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.createFolderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.FolderResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a folder
+      tags:
+      - folders
+  /api/v1/vaults/{id}/grants:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: folder or file
+        in: query
+        name: scope_type
+        required: true
+        type: string
+      - description: node id
+        in: query
+        name: scope_ref_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GrantsResponse'
+      security:
+      - BearerAuth: []
+      summary: List grants on a node
+      tags:
+      - access
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: permission and the scope keys sealed to the subject
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.putGrantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GrantResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Grant or narrow access to a node
+      tags:
+      - access
+  /api/v1/vaults/{id}/grants/{grant_id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: grant id
+        in: path
+        name: grant_id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Remove a grant
+      tags:
+      - access
+  /api/v1/vaults/{id}/graph:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.GraphResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the note graph
+      tags:
+      - graph
+  /api/v1/vaults/{id}/group-keys:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupKeysResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the caller's group keys
+      tags:
+      - access
+  /api/v1/vaults/{id}/groups:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupsResponse'
+      security:
+      - BearerAuth: []
+      summary: List groups
+      tags:
+      - access
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the group key sealed to each founding member
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.createGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/access.GroupResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a group
+      tags:
+      - access
+  /api/v1/vaults/{id}/invites:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.InvitesResponse'
+      security:
+      - BearerAuth: []
+      summary: List pending invites
+      tags:
+      - access
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: invite and the scope keys sealed to it
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.createInviteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/access.InviteResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an invite
+      tags:
+      - access
+  /api/v1/vaults/{id}/invites/{invite_id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: invite id
+        in: path
+        name: invite_id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Revoke an invite
+      tags:
+      - access
+  /api/v1/vaults/{id}/keys:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.KeyGrantsResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List the caller's key grants
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/members:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.MembersResponse'
+      security:
+      - BearerAuth: []
+      summary: List members
+      tags:
+      - access
+  /api/v1/vaults/{id}/members/{member_id}:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: member user id
+        in: path
+        name: member_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.RemovalResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a member
+      tags:
+      - access
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: member user id
+        in: path
+        name: member_id
+        required: true
+        type: integer
+      - description: new role
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.setRoleRequest'
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change a member's role
+      tags:
+      - access
+  /api/v1/vaults/{id}/rekeys:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the node to re-key
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.startRekeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/vault.RekeyPlanResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Start a re-key
+      tags:
+      - keys
+  /api/v1/vaults/{id}/scopes:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.ScopesResponse'
+      security:
+      - BearerAuth: []
+      summary: List key scopes
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/sync:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: change sequence the client last stored
+        in: query
+        name: cursor
+        type: integer
+      - description: soft page size
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.SyncResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the change feed
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/trash:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.TreeResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the trash
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/tree:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/vault.TreeResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the vault tree
+      tags:
+      - vaults
+  /health:
+    get:
+      description: Returns 200 while the process is alive. Does not check external
+        dependencies.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HealthResponse'
+      summary: Liveness probe
+      tags:
+      - system
+  /ready:
+    get:
+      description: Checks that PostgreSQL is reachable. Returns 503 if the database
+        is unavailable.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Readiness probe
+      tags:
+      - system
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT token in the format: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

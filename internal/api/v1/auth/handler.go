@@ -39,7 +39,10 @@ type Service interface {
 // Limits holds the rate limiters of the endpoints used to guess credentials.
 // A zero field means "no limit".
 type Limits struct {
-	LoginIP         middleware.Limiter
+	LoginIP middleware.Limiter
+	// RegisterIP bounds account creation. Registering runs Argon2id twice at 64 MiB, so an
+	// unbounded endpoint is a memory exhaustion primitive that needs no credentials at all.
+	RegisterIP      middleware.Limiter
 	LoginAccount    middleware.Limiter
 	RecoveryIP      middleware.Limiter
 	RecoveryAccount middleware.Limiter
@@ -48,6 +51,10 @@ type Limits struct {
 func (l Limits) orUnlimited() Limits {
 	if l.LoginIP == nil {
 		l.LoginIP = ratelimit.Nop{}
+	}
+
+	if l.RegisterIP == nil {
+		l.RegisterIP = ratelimit.Nop{}
 	}
 
 	if l.LoginAccount == nil {
@@ -81,7 +88,7 @@ func NewHandler(service Service, limits Limits, log *zap.Logger) *Handler {
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	group := rg.Group("/auth")
 
-	group.POST("/register", h.Register)
+	group.POST("/register", middleware.RateLimitByIP(h.limits.RegisterIP), h.Register)
 	group.POST("/prelogin", h.Prelogin)
 	group.POST("/login", middleware.RateLimitByIP(h.limits.LoginIP), h.Login)
 	group.POST("/refresh", h.Refresh)
@@ -183,19 +190,26 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// The per-address limit is already checked by the middleware; this one cuts off
-	// password guessing against a single account from different addresses.
+	// The per-address limit is already checked by the middleware. The per-account one is
+	// applied only to a wrong answer, and deliberately after the credentials are checked:
+	// spending it up front would let anybody who knows a login lock its owner out for the
+	// window by guessing wrong twenty times, over and over.
+	//
+	// The cost of that ordering is that the account counter no longer saves the Argon2id
+	// work — the per-address limit is what bounds that, and a distributed attack was never
+	// bounded by punishing the account it was aimed at.
 	account := accountKey(req.Login)
-
-	if ok, retryAfter := h.limits.LoginAccount.Allow(account); !ok {
-		middleware.TooManyRequests(c, retryAfter)
-		return
-	}
 
 	found, pair, err := h.service.Login(c.Request.Context(), req.Login, req.AuthHash, clientMeta(c))
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			if ok, retryAfter := h.limits.LoginAccount.Allow(account); !ok {
+				middleware.TooManyRequests(c, retryAfter)
+				return
+			}
+
 			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid login or password")
+
 			return
 		}
 
@@ -204,7 +218,6 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	h.limits.LoginAccount.Refund(account)
 	h.limits.LoginIP.Refund(c.ClientIP())
 
 	response.OK(c, SessionResponse{User: user(found), Keys: keys(found.Keys), Tokens: tokens(pair)})
@@ -534,7 +547,18 @@ func (h *Handler) RevokeSession(c *gin.Context) {
 // bind parses and validates the request body, replying to the client itself on error.
 func bind(c *gin.Context, req any) bool {
 	if err := c.ShouldBindJSON(req); err != nil {
+		// A body that ran into the size cap is not a malformed one, and telling the caller
+		// it is would send them looking in the wrong place.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeBadRequest,
+				"the request body is too large")
+
+			return false
+		}
+
 		response.FailValidation(c, err)
+
 		return false
 	}
 

@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -145,5 +146,37 @@ func TestConcurrentAllowKeepsLimit(t *testing.T) {
 
 	if allowed != 50 {
 		t.Fatalf("allowed = %d, want 50", allowed)
+	}
+}
+
+// TestTheMapIsBounded pins what happens when somebody sprays distinct keys: several of
+// these limiters are keyed by a value the caller chooses, so an unbounded map would be a
+// way to exhaust memory with no credentials at all.
+func TestTheMapIsBounded(t *testing.T) {
+	t.Parallel()
+
+	limiter := New(5, time.Minute)
+	limiter.SetMaxKeys(16)
+
+	for i := range 16 {
+		if ok, _ := limiter.Allow(fmt.Sprintf("key-%d", i)); !ok {
+			t.Fatalf("key %d was refused below the cap", i)
+		}
+	}
+
+	// Past the cap a new key is still served: refusing would deny every address not already
+	// in the map, which is a lockout of the whole service for the price of one spray.
+	if ok, _ := limiter.Allow("one-too-many"); !ok {
+		t.Fatal("a key past the cap was refused — that is a free lockout")
+	}
+
+	// And the map stayed bounded rather than growing to hold it.
+	if size := limiter.size(); size > 16 {
+		t.Fatalf("map holds %d buckets, want at most the cap", size)
+	}
+
+	// A key already known still works.
+	if ok, _ := limiter.Allow("key-1"); !ok {
+		t.Fatal("a known key was refused")
 	}
 }
