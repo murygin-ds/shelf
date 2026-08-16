@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { useSession } from '@/store/session';
 
-import { AuthLayout, ErrorNote, Field, Origin } from './AuthLayout';
+import { AuthLayout, ErrorNote, Field } from './AuthLayout';
 import styles from './auth.module.css';
 
 /**
@@ -40,25 +40,19 @@ export function SignIn() {
     <AuthLayout
       footer={
         locked ? (
-          <>
-            <span>
-              Not you?{' '}
-              <button type="button" className={styles.footerAction} onClick={() => void signOut()}>
-                Sign out
-              </button>
-            </span>
-            <Origin />
-          </>
+          <span>
+            Not you?{' '}
+            <button type="button" className={styles.footerAction} onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </span>
         ) : (
-          <>
-            <span>
-              No account?{' '}
-              <Link className={styles.footerAction} to="/signup" onClick={clearError}>
-                Create one
-              </Link>
-            </span>
-            <Origin />
-          </>
+          <span>
+            No account?{' '}
+            <Link className={styles.footerAction} to="/signup" onClick={clearError}>
+              Create one
+            </Link>
+          </span>
         )
       }
     >

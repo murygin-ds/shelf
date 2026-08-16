@@ -8,7 +8,9 @@ import type { Role } from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
+import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
+import { tip } from '@/ui/Tooltip';
 import { useNamePrompt } from '@/ui/NamePrompt';
 
 import styles from './access.module.css';
@@ -27,6 +29,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<RekeyProgress | null>(null);
+  const dismiss = useDismiss(onClose);
 
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = vault?.role === 'owner' || vault?.role === 'admin';
@@ -122,11 +125,8 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        className={`${styles.modal} ${styles.wide}`}
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div className={styles.overlay} {...dismiss}>
+      <div className={`${styles.modal} ${styles.wide}`}>
         <div className={styles.head}>
           <div>
             <div className={styles.title}>Members &amp; access</div>
@@ -258,7 +258,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
               {/* The server hands out public keys, so it could hand out its own. Comparing
                   this out of band is the only thing that rules that out. */}
-              <span className={styles.fingerprint} title="Key fingerprint — compare out of band">
+              <span className={styles.fingerprint} data-tip="Key fingerprint — compare out of band">
                 {member.fingerprint}
               </span>
 
@@ -266,7 +266,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   className={styles.rowAction}
-                  title="Remove from vault"
+                  {...tip('Remove from vault')}
                   onClick={() => void remove(member.user_id)}
                 >
                   <Icon name="trash" size={14} />
@@ -298,7 +298,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                     <button
                       type="button"
                       className={styles.rowAction}
-                      title="Revoke"
+                      {...tip('Revoke')}
                       onClick={async () => {
                         if (vaultId === null) return;
                         await collab.revokeInvite(vaultId, item.id).catch(() => undefined);
@@ -482,7 +482,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
             <button
               type="button"
               className={styles.rowAction}
-              title="Disband"
+              {...tip('Disband')}
               disabled={busy}
               onClick={() => void disband(group)}
             >

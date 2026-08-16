@@ -4,11 +4,16 @@ import { Icon } from '@/ui/Icon';
 
 import styles from './auth.module.css';
 
-/** The host the vaults live on, shown wherever the design prints NOTES.ACME.DEV. */
+/** The host the vaults live on. Only the downloadable recovery kit names it. */
 export function origin(): string {
   return window.location.host.toUpperCase();
 }
 
+/**
+ * One card and nothing beside it. Everything the screen has to say — the step counter, the
+ * way out to the other screen — lives inside the card, so the page is a single object
+ * rather than a card with loose text floating around it.
+ */
 export function AuthLayout({
   children,
   footer,
@@ -23,26 +28,15 @@ export function AuthLayout({
   return (
     <div className={styles.screen}>
       <div className={`${styles.column} ${wide ? styles.wide : ''}`}>
-        <div className={styles.brand}>
-          <span className={styles.mark} />
-          <span className={styles.wordmark}>Shelf</span>
-          {step ? <span className={styles.step}>{step}</span> : null}
+        <div className={styles.card}>
+          {step ? <div className={styles.step}>{step}</div> : null}
+
+          {children}
+
+          {footer ? <div className={styles.footer}>{footer}</div> : null}
         </div>
-
-        <div className={styles.card}>{children}</div>
-
-        {footer ? <div className={styles.footer}>{footer}</div> : null}
       </div>
     </div>
-  );
-}
-
-export function Origin() {
-  return (
-    <span className={styles.origin}>
-      <Icon name="lock" size={11} />
-      {origin()}
-    </span>
   );
 }
 

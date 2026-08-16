@@ -10,10 +10,12 @@ import { Inspector } from '@/features/inspector/Inspector';
 import { SearchView } from '@/features/search/SearchView';
 import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
+import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
-import { Icon } from '@/ui/Icon';
+import { Icon, type IconName } from '@/ui/Icon';
 import { useNamePrompt } from '@/ui/NamePrompt';
+import { tip } from '@/ui/Tooltip';
 
 import { CommandPalette } from './CommandPalette';
 import styles from './shell.module.css';
@@ -29,6 +31,7 @@ export function Workspace() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [permissionsFor, setPermissionsFor] = useState<number | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [iconPicker, setIconPicker] = useState<PickerTarget | null>(null);
   const navigate = useNavigate();
   const { ask, dialog } = useNamePrompt();
 
@@ -76,23 +79,37 @@ export function Workspace() {
 
       <div className={styles.topbar}>
         <div className={styles.switcher}>
+          {/* Two controls, not one: the mark opens the icon picker and the name opens the
+              vault list, and a button cannot be nested inside another button. */}
+          <button
+            type="button"
+            className={styles.vaultMark}
+            {...tip('Change vault icon')}
+            disabled={!vault}
+            onClick={(event) => {
+              const anchor = event.currentTarget.getBoundingClientRect();
+
+              setIconPicker({
+                ...pickerPosition(anchor),
+                current: vault?.emoji,
+                onPick: (icon) => void workspace.setVaultIcon(icon),
+              });
+            }}
+          >
+            <Icon name={(vault?.emoji as IconName) ?? 'vault'} size={17} />
+          </button>
+
           <button
             type="button"
             className={styles.switcherButton}
             onClick={() => setMenuOpen((value) => !value)}
           >
-            <span className={styles.vaultDot} />
             <span>{vault?.name ?? (loading ? 'Loading…' : 'No vault')}</span>
             <Icon name="down" size={12} style={{ color: 'var(--text-quiet)' }} />
           </button>
 
           {menuOpen ? (
             <div className={styles.menu}>
-              <div className={styles.menuHead}>
-                <Icon name="lock" size={12} />
-                SELF-HOSTED · {window.location.host.toUpperCase()}
-              </div>
-
               {vaults.map((item) => (
                 <button
                   key={item.id}
@@ -103,7 +120,11 @@ export function Workspace() {
                     setMenuOpen(false);
                   }}
                 >
-                  <span className={styles.vaultDot} style={{ width: 9, height: 9, borderRadius: 3 }} />
+                  <Icon
+                    name={(item.emoji as IconName) ?? 'vault'}
+                    size={15}
+                    style={{ flex: 'none', color: 'var(--text-faint)' }}
+                  />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span className={styles.menuName}>{item.name}</span>
                     <span className={styles.menuMeta} style={{ display: 'block' }}>
@@ -158,11 +179,11 @@ export function Workspace() {
               <button
                 type="button"
                 className={styles.iconButton}
-                title={
+                {...tip(
                   vault.keyState === 'pending_rotation'
                     ? 'A removed member still holds this key — rotate it'
-                    : 'Keys & history'
-                }
+                    : 'Keys & history',
+                )}
                 onClick={() => setSecurityOpen(true)}
               >
                 <Icon
@@ -182,13 +203,13 @@ export function Workspace() {
               </button>
             </>
           ) : null}
-          <button type="button" className={styles.iconButton} title="Lock keys" onClick={lock}>
+          <button type="button" className={styles.iconButton} {...tip('Lock keys')} onClick={lock}>
             <Icon name="lock" size={16} />
           </button>
           <button
             type="button"
             className={styles.iconButton}
-            title="Sign out"
+            {...tip('Sign out')}
             onClick={() => void signOut()}
           >
             <Icon name="user" size={16} />
@@ -268,7 +289,6 @@ export function Workspace() {
           <Icon name="lock" size={11} />
           E2E · AES-256-GCM
         </span>
-        <span>{window.location.host.toUpperCase()}</span>
         <span className={styles.statusOk}>
           <span className={styles.statusDot} style={offline ? { background: 'var(--warn)' } : undefined} />
           {offline
@@ -283,6 +303,10 @@ export function Workspace() {
         </span>
         <span>{user?.login.toUpperCase()}</span>
       </div>
+
+      {iconPicker ? (
+        <IconPicker target={iconPicker} onClose={() => setIconPicker(null)} />
+      ) : null}
 
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
       {membersOpen ? <MembersModal onClose={() => setMembersOpen(false)} /> : null}

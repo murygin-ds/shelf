@@ -89,7 +89,7 @@
 }
 
 .input:focus {
-  border-color: var(--accent-focus);
+  border-color: var(--focus-border);
 }
 
 .select {
@@ -333,7 +333,7 @@
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-inset);
   color: var(--text-body);
   font: inherit;
   font-size: 12px;

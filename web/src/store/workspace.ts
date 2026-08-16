@@ -69,6 +69,8 @@ interface WorkspaceState {
     kind: 'folder' | 'file',
     icon: string | undefined,
   ) => Promise<void>;
+  /** Only the open vault: its scope key is the one the loaded keyring holds. */
+  setVaultIcon: (icon: string | undefined) => Promise<void>;
   trash: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file') => Promise<void>;
   /** What is in the trash, loaded on demand rather than kept in sync. */
   trashed: ws.Tree;
@@ -438,6 +440,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (open && kind === 'file' && open.note.id === node.id) {
         set({ open: { ...open, note: { ...open.note, icon } } });
       }
+    });
+  },
+
+  setVaultIcon: async (icon) => {
+    await withKeyring(get, set, async (keyring) => {
+      const { vaultId, vaults } = get();
+      const vault = vaults.find((candidate) => candidate.id === vaultId);
+      if (!vault) return;
+
+      await ws.updateVaultMeta(vault, vault.name, icon, keyring);
+
+      // The sync delta carries the tree, not the vault summary, so the list is patched here
+      // rather than waiting for a reload to show the icon that was just chosen.
+      set({
+        vaults: vaults.map((candidate) =>
+          candidate.id === vault.id ? { ...candidate, emoji: icon } : candidate,
+        ),
+      });
     });
   },
 

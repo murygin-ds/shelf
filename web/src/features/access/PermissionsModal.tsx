@@ -7,7 +7,9 @@ import type { RekeyProgress } from '@/api/rekey';
 import type { FolderNode, Permission } from '@/api/workspace';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
+import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
+import { tip } from '@/ui/Tooltip';
 
 import styles from './access.module.css';
 
@@ -35,6 +37,7 @@ export function PermissionsModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<RekeyProgress | null>(null);
+  const dismiss = useDismiss(onClose);
 
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = folder.permission === 'own';
@@ -190,8 +193,8 @@ export function PermissionsModal({
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
+    <div className={styles.overlay} {...dismiss}>
+      <div className={styles.modal}>
         <div className={styles.head}>
           <div>
             <div className={styles.title}>Permissions — {folder.name}</div>
@@ -281,7 +284,7 @@ export function PermissionsModal({
                   <button
                     type="button"
                     className={styles.rowAction}
-                    title="Reset to inherited"
+                    {...tip('Reset to inherited')}
                     onClick={() => void clear(grant.id)}
                   >
                     <Icon name="x" size={14} />

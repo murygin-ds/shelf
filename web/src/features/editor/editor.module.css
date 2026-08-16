@@ -1,5 +1,6 @@
 .pane {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -16,16 +17,17 @@
 .tab {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border: 0;
-  border-right: 1px solid var(--line);
+  max-width: 200px;
   background: var(--canvas);
+  border-right: 1px solid var(--border);
   font: inherit;
   font-size: 12.5px;
   color: var(--text);
+}
+
+/* The accent underline marks the tab you are in, not every tab that is open. */
+.tabActive {
   box-shadow: inset 0 -1px 0 var(--accent);
-  max-width: 260px;
 }
 
 .tabName {
@@ -85,10 +87,6 @@
   padding: 0;
 }
 
-.title:focus {
-  outline: none;
-}
-
 .meta {
   display: flex;
   align-items: center;
@@ -112,26 +110,7 @@
 }
 
 .body {
-  width: 100%;
   margin-top: 28px;
-  min-height: 60vh;
-  border: 0;
-  background: transparent;
-  resize: none;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  line-height: 1.85;
-  padding: 0;
-  tab-size: 2;
-}
-
-.body::placeholder {
-  color: var(--text-disabled);
-}
-
-.body:disabled {
-  color: var(--text-disabled);
 }
 
 .conflict {
@@ -182,13 +161,6 @@
   font-size: 13.5px;
   line-height: 1.65;
   color: var(--text-body);
-}
-
-.tab {
-  display: flex;
-  align-items: center;
-  max-width: 200px;
-  border-right: 1px solid var(--border);
 }
 
 .tabOpen {
