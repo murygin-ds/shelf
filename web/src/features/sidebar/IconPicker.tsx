@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { Icon, ICON_NAMES, type IconName } from '@/ui/Icon';
+import { below } from '@/ui/position';
 
 import styles from './sidebar.module.css';
 
@@ -11,16 +12,11 @@ export interface PickerTarget {
   onPick: (icon: string | undefined) => void;
 }
 
-const WIDTH = 254;
-const HEIGHT = 200;
+const SIZE = { width: 254, height: 200 };
 
 /** Positions the popover so it never leaves the viewport, the way the design opens it. */
 export function pickerPosition(anchor: DOMRect): { x: number; y: number } {
-  const x = Math.max(8, Math.min(anchor.left, window.innerWidth - WIDTH - 8));
-  const below = anchor.bottom + 6;
-  const y = below + HEIGHT > window.innerHeight ? Math.max(8, anchor.top - HEIGHT - 6) : below;
-
-  return { x, y };
+  return below(anchor, SIZE);
 }
 
 export function IconPicker({ target, onClose }: { target: PickerTarget; onClose: () => void }) {

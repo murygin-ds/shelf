@@ -1,10 +1,11 @@
 .pane {
   display: flex;
   flex-direction: column;
-  width: 280px;
+  width: var(--inspector-w);
   flex: none;
+  min-height: 0;
   border-left: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--panel);
   overflow: hidden;
 }
 
@@ -140,7 +141,7 @@
   margin-top: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-inset);
   color: var(--text-body);
   font: inherit;
   font-size: 12px;

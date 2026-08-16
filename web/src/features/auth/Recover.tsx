@@ -6,7 +6,7 @@ import { isAcceptable } from '@/lib/passphrase';
 import { useSession } from '@/store/session';
 import { Icon } from '@/ui/Icon';
 
-import { AuthLayout, ErrorNote, Field, Origin } from './AuthLayout';
+import { AuthLayout, ErrorNote, Field } from './AuthLayout';
 import { PassphraseMeter } from './PassphraseMeter';
 import styles from './auth.module.css';
 
@@ -49,15 +49,12 @@ export function Recover() {
   return (
     <AuthLayout
       footer={
-        <>
-          <span>
-            Remembered it?{' '}
-            <Link className={styles.footerAction} to="/signin" onClick={clearError}>
-              Sign in
-            </Link>
-          </span>
-          <Origin />
-        </>
+        <span>
+          Remembered it?{' '}
+          <Link className={styles.footerAction} to="/signin" onClick={clearError}>
+            Sign in
+          </Link>
+        </span>
       }
     >
       {step === 1 ? (

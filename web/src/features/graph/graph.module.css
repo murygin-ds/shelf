@@ -55,7 +55,7 @@
 
 .dot {
   fill: var(--accent);
-  stroke: var(--surface);
+  stroke: var(--canvas);
   stroke-width: 2;
 }
 

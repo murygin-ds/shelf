@@ -16,31 +16,11 @@
   width: 452px;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 26px;
-}
-
-.mark {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  background: var(--accent);
-  flex: none;
-}
-
-.wordmark {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-
 .step {
-  margin-left: auto;
+  margin-bottom: 14px;
   font-family: var(--font-mono);
   font-size: 10px;
+  letter-spacing: 0.1em;
   color: var(--text-label);
 }
 
@@ -117,7 +97,7 @@
 }
 
 .input:focus {
-  border-color: var(--accent-focus);
+  border-color: var(--focus-border);
 }
 
 .input[type='password'] {
@@ -243,7 +223,19 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-quiet);
+  font-size: 12.5px;
+  color: var(--text-quiet);
+}
+
+/* The invite preview's key/value rows, which are a table rather than a footer. */
+.previewRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
   font-size: 12.5px;
   color: var(--text-quiet);
 }
@@ -255,16 +247,6 @@
   border: 0;
   padding: 0;
   font: inherit;
-}
-
-.origin {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-label);
-  white-space: nowrap;
 }
 
 /* Recovery kit */

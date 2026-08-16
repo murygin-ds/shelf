@@ -8,6 +8,7 @@ import type { FolderNode, Permission } from '@/api/workspace';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
+import { tip } from '@/ui/Tooltip';
 
 import styles from './access.module.css';
 
@@ -281,7 +282,7 @@ export function PermissionsModal({
                   <button
                     type="button"
                     className={styles.rowAction}
-                    title="Reset to inherited"
+                    {...tip('Reset to inherited')}
                     onClick={() => void clear(grant.id)}
                   >
                     <Icon name="x" size={14} />

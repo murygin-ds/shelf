@@ -21,6 +21,9 @@
 
 .switcher {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .switcherButton {
@@ -42,12 +45,26 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
-.vaultDot {
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  background: var(--accent);
+.vaultMark {
+  width: 28px;
+  height: 28px;
   flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.vaultMark:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.vaultMark:disabled {
+  color: var(--text-disabled);
+  cursor: default;
 }
 
 .menu {
@@ -63,22 +80,12 @@
   z-index: 50;
 }
 
-.menuHead {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 9px 9px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.05em;
-  color: var(--text-ghost);
-}
-
 .menuItem {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
+  margin-bottom: 3px;
   padding: 7px 9px;
   border: 0;
   border-radius: 8px;
@@ -237,11 +244,12 @@
   overflow-x: auto;
 }
 
+/* A row: the editor takes the space that is left and the inspector is the column beside it. */
 .canvas {
   flex: 1;
   min-width: 520px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: var(--canvas);
 }
 

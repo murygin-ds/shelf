@@ -40,6 +40,10 @@
   --accent-text: #c3cdf8;
   --accent-focus: #4a5a9e;
 
+  /* Keyboard-only focus: a soft ring in the palette rather than the platform outline. */
+  --focus-ring: 0 0 0 2px rgba(124, 143, 240, 0.34);
+  --focus-border: #3d4780;
+
   --ok: #6d8e7c;
   --ok-dot: #4e7a64;
   --warn: #c0a47a;
@@ -168,9 +172,21 @@ textarea::placeholder {
   color: var(--text-label);
 }
 
+/* A pointer never draws a ring. Browsers make :focus-visible true for text fields even on a
+   click, so those are opted out explicitly and signal focus through their own border. */
+:focus,
 :focus-visible {
-  outline: 2px solid var(--accent-focus);
-  outline-offset: 1px;
+  outline: none;
+}
+
+:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

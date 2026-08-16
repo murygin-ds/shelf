@@ -15,7 +15,7 @@
   padding: 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--surface-raised);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
 }
 
@@ -42,8 +42,7 @@
 }
 
 .input:focus {
-  outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus-border);
 }
 
 .actions {

@@ -8,7 +8,7 @@ import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
 
-import { AuthLayout, Field, Origin } from './AuthLayout';
+import { AuthLayout, Field } from './AuthLayout';
 import styles from './auth.module.css';
 
 /** Survives the trip through sign-in, so arriving from a link does not lose the code. */
@@ -86,14 +86,9 @@ export function JoinWithCode() {
     <AuthLayout
       wide={Boolean(preview)}
       footer={
-        <>
-          <span>
-            <Link className={styles.footerAction} to="/">
-              Back to your vaults
-            </Link>
-          </span>
-          <Origin />
-        </>
+        <Link className={styles.footerAction} to="/">
+          Back to your vaults
+        </Link>
       }
     >
       {!preview ? (
@@ -149,18 +144,15 @@ export function JoinWithCode() {
               overflow: 'hidden',
             }}
           >
-            <div className={styles.footer} style={{ margin: 0, padding: '11px 14px' }}>
-              <span style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>Your role</span>
+            <div className={styles.previewRow}>
+              <span style={{ color: 'var(--text-dim)' }}>Your role</span>
               <span style={{ flex: 1 }} />
-              <span style={{ fontSize: 12.5 }}>{preview.role}</span>
+              <span>{preview.role}</span>
             </div>
-            <div
-              className={styles.footer}
-              style={{ margin: 0, padding: '11px 14px', borderTop: '1px solid var(--border-subtle)' }}
-            >
-              <span style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>Keys in this invite</span>
+            <div className={styles.previewRow} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+              <span style={{ color: 'var(--text-dim)' }}>Keys in this invite</span>
               <span style={{ flex: 1 }} />
-              <span style={{ fontSize: 12.5 }}>{resolved.challenge.key_grants.length}</span>
+              <span>{resolved.challenge.key_grants.length}</span>
             </div>
           </div>
 

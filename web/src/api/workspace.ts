@@ -235,6 +235,35 @@ async function openVault(summary: VaultSummaryDto, identity: Identity): Promise<
   };
 }
 
+/**
+ * Reseals the vault's own name and icon. The scope key never changes here, so the current
+ * key version has to be carried into the additional data — sealing at v1 after a rotation
+ * would make the vault read as locked.
+ */
+export async function updateVaultMeta(
+  vault: Vault,
+  name: string,
+  icon: string | undefined,
+  keyring: ScopeKeyring,
+): Promise<void> {
+  const scope: Scope = {
+    id: vault.keyScopeId,
+    clientId: vault.keyScopeClientId,
+    version: vault.keyVersion,
+  };
+
+  const sealed = await encryptMeta(
+    requireKey(keyring, scope),
+    meta(name, icon),
+    vaultRef(vault.clientId, vault.keyScopeClientId, vault.keyVersion),
+  );
+
+  await api.patch<unknown>(`/vaults/${vault.id}`, {
+    meta: bytesToB64(sealed.ciphertext),
+    meta_nonce: bytesToB64(sealed.nonce),
+  });
+}
+
 export async function loadKeyring(vaultId: number, identity: Identity): Promise<ScopeKeyring> {
   // Both halves in one go: a scope key sealed to a group is bytes until the group's own
   // private key is in hand, and fetching them separately would leave a window where the
