@@ -95,6 +95,15 @@ export function Sidebar({
           <span className={styles.navLabel}>Graph</span>
         </button>
 
+        <button
+          type="button"
+          className={`${styles.navItem} ${view === 'trash' ? styles.navItemActive : ''}`}
+          onClick={() => setView('trash')}
+        >
+          <Icon name="trash" style={{ flex: 'none', opacity: 0.8 }} />
+          <span className={styles.navLabel}>Trash</span>
+        </button>
+
         <div className={styles.sectionHead}>
           <span className={styles.sectionTitle}>{vault?.name ?? 'VAULT'}</span>
           <span className={styles.sectionActions}>
@@ -263,6 +272,15 @@ export function Sidebar({
         >
           <Icon name="graph" style={{ flex: 'none', opacity: 0.8 }} />
           <span className={styles.navLabel}>Graph</span>
+        </button>
+
+        <button
+          type="button"
+          className={`${styles.navItem} ${view === 'trash' ? styles.navItemActive : ''}`}
+          onClick={() => setView('trash')}
+        >
+          <Icon name="trash" style={{ flex: 'none', opacity: 0.8 }} />
+          <span className={styles.navLabel}>Trash</span>
         </button>
 
         <div className={styles.sectionHead}>

@@ -406,10 +406,9 @@ default password and is not meant to run anywhere else.
 
 Stated plainly, because each of them is a decision rather than an oversight:
 
-- **Trash and restore work through the API, but the app has no trash view.**
-- **A 409 conflict offers reload or copy-my-version**, not a three-way merge. Nobody but a
-  client can merge two ciphertexts, and the merge itself is not written yet.
-- **The editor is single-tab.** The tab strip is a visual shell over one open note.
+- **A 409 conflict is resolved by choosing, not by merging.** The three choices are: take
+  the server's version, keep yours as a new note, or copy it out. Nobody but a client can
+  merge two ciphertexts, and a three-way merge of encrypted markdown is a feature of its own.
 - **Revision history stays under the key it was written with.** Giving a folder its own key
   re-encrypts the current rows, not the archive — the same limit as "rotation cannot un-read
   what was already read".

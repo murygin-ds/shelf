@@ -183,3 +183,45 @@
   line-height: 1.65;
   color: var(--text-body);
 }
+
+.tab {
+  display: flex;
+  align-items: center;
+  max-width: 200px;
+  border-right: 1px solid var(--border);
+}
+
+.tabOpen {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 12px;
+  border: 0;
+  background: none;
+  color: var(--text-quiet);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tabActive .tabOpen {
+  color: var(--text-body);
+}
+
+.tabClose {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 100%;
+  padding: 0 9px 0 3px;
+  border: 0;
+  background: none;
+  color: var(--text-disabled);
+  cursor: pointer;
+}
+
+.tabClose:hover {
+  color: var(--text-body);
+}

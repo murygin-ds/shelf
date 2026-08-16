@@ -8,6 +8,7 @@ import { Editor } from '@/features/editor/Editor';
 import { GraphView } from '@/features/graph/GraphView';
 import { Inspector } from '@/features/inspector/Inspector';
 import { SearchView } from '@/features/search/SearchView';
+import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -214,6 +215,8 @@ export function Workspace() {
             <SearchView />
           ) : view === 'graph' ? (
             <GraphView />
+          ) : view === 'trash' ? (
+            <TrashView />
           ) : open ? (
             <>
               <Editor />

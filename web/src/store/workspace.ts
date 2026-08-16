@@ -24,7 +24,11 @@ export interface OpenNote {
   conflict: boolean;
 }
 
-export type View = 'editor' | 'search' | 'graph';
+export type View = 'editor' | 'search' | 'graph' | 'trash';
+
+// MAX_TABS bounds the strip. Past a dozen the labels are unreadable and the strip stops
+// being a way back to anything.
+const MAX_TABS = 12;
 
 interface WorkspaceState {
   vaults: ws.Vault[];
@@ -66,6 +70,19 @@ interface WorkspaceState {
     icon: string | undefined,
   ) => Promise<void>;
   trash: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file') => Promise<void>;
+  /** What is in the trash, loaded on demand rather than kept in sync. */
+  trashed: ws.Tree;
+  loadTrash: () => Promise<void>;
+  restore: (id: number, kind: 'folder' | 'file') => Promise<void>;
+  /** Keeps a version that lost a conflict, as a note of its own. */
+  saveAsCopy: (identity?: Identity) => Promise<void>;
+  /**
+   * Notes the reader has open, newest last. Only the one in `open` is loaded — the rest are
+   * a list of places to go back to, which is what a tab strip is.
+   */
+  tabs: ws.NoteNode[];
+  closeTab: (noteId: number) => void;
+  purge: (id: number, kind: 'folder' | 'file') => Promise<void>;
   setView: (view: View) => void;
   setQuery: (query: string) => void;
   reset: () => Promise<void>;
@@ -87,6 +104,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   vaultId: null,
   keyring: null,
   tree: emptyTree,
+  trashed: emptyTree,
+  tabs: [],
   expanded: new Set(),
   open: null,
   view: 'editor',
@@ -176,6 +195,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // A note open in the editor may have been purged or trashed elsewhere.
       const open = get().open;
       if (open && !tree.notes.some((note) => note.id === open.note.id)) set({ open: null });
+
+      set({ tabs: get().tabs.filter((tab) => tree.notes.some((note) => note.id === tab.id)) });
 
       const hydrated = await sync.hydrate(
         vaultId,
@@ -275,8 +296,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     try {
       const body = await ws.readNote(note.id, keyring);
 
+      // A note already open keeps its place rather than jumping to the end: a tab strip
+      // that reorders itself under the pointer is unusable.
+      const tabs = get().tabs.some((tab) => tab.id === note.id)
+        ? get().tabs.map((tab) => (tab.id === note.id ? note : tab))
+        : [...get().tabs, note].slice(-MAX_TABS);
+
       set({
         view: 'editor',
+        tabs,
         open: {
           note,
           body: body.body,
@@ -475,6 +503,83 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().syncNow();
   },
 
+  // The server cannot merge two ciphertexts and neither can anybody else automatically, so
+  // a conflict leaves the writer holding a version with nowhere to put it. This gives it
+  // somewhere: a sibling note, saved under their own name, with nothing overwritten.
+  saveAsCopy: async (identity) => {
+    const { open, vaultId, keyring } = get();
+    if (!open || vaultId === null || !keyring) return;
+
+    set({ saving: true });
+
+    try {
+      const copy = await ws.createNote(
+        vaultId,
+        open.note.folderId,
+        `${open.note.name} (my version)`,
+        scopeOf(get(), open.note.folderId),
+        keyring,
+      );
+
+      const contentSeq = await ws.writeNote(copy, open.body, copy.contentSeq, keyring, identity);
+
+      await get().syncNow();
+      await get().openNote({ ...copy, contentSeq });
+      set({ view: 'editor' });
+    } catch (cause) {
+      report(set, cause);
+    } finally {
+      set({ saving: false });
+    }
+  },
+
+  closeTab: (noteId) => {
+    const tabs = get().tabs.filter((tab) => tab.id !== noteId);
+    const open = get().open;
+
+    set({ tabs });
+
+    // Closing the note on screen moves to its neighbour rather than to nothing: an empty
+    // editor after closing one of several tabs reads as having lost them all.
+    if (open && open.note.id === noteId) {
+      const next = tabs[tabs.length - 1];
+
+      if (next) void get().openNote(next);
+      else set({ open: null });
+    }
+  },
+
+  loadTrash: async () => {
+    const { vaultId, keyring } = get();
+    if (vaultId === null || !keyring) return;
+
+    try {
+      set({ trashed: await ws.loadTree(vaultId, keyring, true) });
+    } catch (cause) {
+      report(set, cause);
+    }
+  },
+
+  restore: async (id, kind) => {
+    try {
+      await (kind === 'folder' ? ws.restoreFolder(id) : ws.restoreNote(id));
+      await get().loadTrash();
+      await get().syncNow();
+    } catch (cause) {
+      report(set, cause);
+    }
+  },
+
+  purge: async (id, kind) => {
+    try {
+      await (kind === 'folder' ? ws.purgeFolder(id) : ws.purgeNote(id));
+      await get().loadTrash();
+      await get().syncNow();
+    } catch (cause) {
+      report(set, cause);
+    }
+  },
+
   reset: async () => {
     await cache.dropAll();
 
@@ -483,6 +588,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       vaultId: null,
       keyring: null,
       tree: emptyTree,
+  trashed: emptyTree,
+  tabs: [],
       expanded: new Set(),
       open: null,
       index: [],

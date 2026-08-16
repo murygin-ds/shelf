@@ -10,7 +10,8 @@ import styles from './editor.module.css';
 const AUTOSAVE_MS = 1200;
 
 export function Editor() {
-  const { open, saving, editBody, saveNote, rename, openNote } = useWorkspace();
+  const { open, saving, tabs, editBody, saveNote, rename, openNote, closeTab, saveAsCopy } =
+    useWorkspace();
   const identity = useSession((state) => state.identity);
   const [title, setTitle] = useState(open?.note.name ?? '');
   const timer = useRef<number | undefined>(undefined);
@@ -56,10 +57,37 @@ export function Editor() {
   return (
     <div className={styles.pane}>
       <div className={styles.tabs}>
-        <button type="button" className={styles.tab}>
-          <Icon name={(note.icon as IconName) ?? 'doc'} size={13} style={{ color: 'var(--accent)' }} />
-          <span className={styles.tabName}>{note.name}</span>
-        </button>
+        {tabs.map((tab) => {
+          const active = tab.id === note.id;
+
+          return (
+            <span key={tab.id} className={`${styles.tab} ${active ? styles.tabActive : ''}`}>
+              <button
+                type="button"
+                className={styles.tabOpen}
+                onClick={() => {
+                  if (!active) void openNote(tab);
+                }}
+              >
+                <Icon
+                  name={(tab.icon as IconName) ?? 'doc'}
+                  size={13}
+                  {...(active ? { style: { color: 'var(--accent)' } } : {})}
+                />
+                <span className={styles.tabName}>{tab.name}</span>
+              </button>
+
+              <button
+                type="button"
+                className={styles.tabClose}
+                title="Close"
+                onClick={() => closeTab(tab.id)}
+              >
+                <Icon name="x" size={11} />
+              </button>
+            </span>
+          );
+        })}
       </div>
 
       <div className={styles.scroll}>
@@ -135,9 +163,17 @@ export function Editor() {
                   <button
                     type="button"
                     className={styles.conflictButton}
+                    disabled={saving}
+                    onClick={() => void saveAsCopy(identity ?? undefined)}
+                  >
+                    Save mine as a new note
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.conflictButton}
                     onClick={() => void navigator.clipboard?.writeText(open.body)}
                   >
-                    Copy my version
+                    Copy to clipboard
                   </button>
                 </div>
               </div>

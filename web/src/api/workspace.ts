@@ -490,6 +490,10 @@ export const trashNote = (id: number) => api.delete<void>(`/files/${id}`);
 export const restoreFolder = (id: number) => api.post<void>(`/folders/${id}/restore`);
 export const restoreNote = (id: number) => api.post<void>(`/files/${id}/restore`);
 
+// Purging destroys the ciphertext. Nothing brings it back, which is why the UI asks.
+export const purgeFolder = (id: number) => api.delete<void>(`/folders/${id}/purge`);
+export const purgeNote = (id: number) => api.delete<void>(`/files/${id}/purge`);
+
 function meta(name: string, icon?: string | undefined): EntityMeta {
   return icon === undefined ? { name } : { name, icon };
 }
