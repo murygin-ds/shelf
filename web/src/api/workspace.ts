@@ -416,6 +416,65 @@ export async function readNote(noteId: number, keyring: ScopeKeyring): Promise<N
  * written means predicting it — the server increments by one, and a wrong guess only makes
  * the revision read as unsigned rather than corrupting anything.
  */
+export interface NotePayload {
+  content: B64;
+  content_nonce: B64;
+  key_scope_id: number;
+  key_version: number;
+  signature?: B64;
+}
+
+/**
+ * Seals a body without sending it.
+ *
+ * It is split from the send so a write that meets no network can be queued as ciphertext
+ * rather than as text: the outbox lives in the same IndexedDB as everything else, and the
+ * rule there is that nothing readable is ever stored.
+ */
+export async function sealNote(
+  note: NoteNode,
+  body: string,
+  contentSeq: number,
+  keyring: ScopeKeyring,
+  identity?: Identity,
+): Promise<NotePayload> {
+  const scope = scopeOfNode(note);
+  const key = requireKey(keyring, scope);
+  const at = ref(note.vaultId, 'file', note.clientId, scope);
+
+  const sealed = await encryptContent(key, body, at);
+
+  // The signature covers the sequence the server is about to assign. Predicting it is safe:
+  // a wrong guess only makes the revision read as unsigned.
+  const signature = identity
+    ? bytesToB64(await signRevision(identity, at, contentSeq + 1, sealed))
+    : undefined;
+
+  return {
+    content: bytesToB64(sealed.ciphertext),
+    content_nonce: bytesToB64(sealed.nonce),
+    // The key is part of the lock: content_seq alone does not move when a re-key does, so
+    // a write held up across a rotation has to be refused rather than relabelled.
+    key_scope_id: scope.id,
+    key_version: scope.version,
+    ...(signature ? { signature } : {}),
+  };
+}
+
+/** Sends a sealed body. Returns the next content sequence, which the following write carries. */
+export async function sendNote(
+  noteId: number,
+  payload: NotePayload,
+  contentSeq: number,
+): Promise<number> {
+  const written = await api.put<{ content_seq: number }>(`/files/${noteId}/content`, payload, {
+    headers: { 'If-Match': String(contentSeq) },
+  });
+
+  return written.content_seq;
+}
+
+/** Seals a body and sends it. */
 export async function writeNote(
   note: NoteNode,
   body: string,
@@ -423,31 +482,7 @@ export async function writeNote(
   keyring: ScopeKeyring,
   identity?: Identity,
 ): Promise<number> {
-  const scope = scopeOfNode(note);
-  const key = requireKey(keyring, scope);
-  const at = ref(note.vaultId, 'file', note.clientId, scope);
-
-  const sealed = await encryptContent(key, body, at);
-
-  const signature = identity
-    ? bytesToB64(await signRevision(identity, at, contentSeq + 1, sealed))
-    : undefined;
-
-  const written = await api.put<{ content_seq: number }>(
-    `/files/${note.id}/content`,
-    {
-      content: bytesToB64(sealed.ciphertext),
-      content_nonce: bytesToB64(sealed.nonce),
-      // The key is part of the lock: content_seq alone does not move when a re-key does,
-      // so a write held up across a rotation has to be refused rather than relabelled.
-      key_scope_id: scope.id,
-      key_version: scope.version,
-      ...(signature ? { signature } : {}),
-    },
-    { headers: { 'If-Match': String(contentSeq) } },
-  );
-
-  return written.content_seq;
+  return sendNote(note.id, await sealNote(note, body, contentSeq, keyring, identity), contentSeq);
 }
 
 export const trashFolder = (id: number) => api.delete<void>(`/folders/${id}`);

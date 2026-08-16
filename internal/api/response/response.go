@@ -79,7 +79,13 @@ func FailWithDetails(c *gin.Context, status int, code, message string, details m
 func FailValidation(c *gin.Context, err error) {
 	var validationErrs validator.ValidationErrors
 	if !errors.As(err, &validationErrs) {
-		Fail(c, http.StatusBadRequest, CodeBadRequest, err.Error())
+		// Anything that is not a validator error is a malformed body, and encoding/json
+		// describes those by naming the Go type it was decoding into. That tells the caller
+		// nothing they can act on and tells an attacker the shape of the server.
+		_ = c.Error(err)
+
+		Fail(c, http.StatusBadRequest, CodeBadRequest, "the request body is not valid JSON")
+
 		return
 	}
 

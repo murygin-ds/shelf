@@ -19,7 +19,8 @@ import styles from './shell.module.css';
 export function Workspace() {
   const { user, identity, signOut, lock } = useSession();
   const workspace = useWorkspace();
-  const { vaults, vaultId, open, view, loading, error, offline, syncing, coverage, load } = workspace;
+  const { vaults, vaultId, open, view, loading, error, offline, syncing, queued, coverage, load } =
+    workspace;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -261,7 +262,15 @@ export function Workspace() {
         <span>{window.location.host.toUpperCase()}</span>
         <span className={styles.statusOk}>
           <span className={styles.statusDot} style={offline ? { background: 'var(--warn)' } : undefined} />
-          {offline ? 'OFFLINE · CACHED' : syncing ? 'SYNCING' : 'SYNCED'}
+          {offline
+            ? queued > 0
+              ? `OFFLINE · ${queued} QUEUED`
+              : 'OFFLINE · CACHED'
+            : queued > 0
+              ? `SENDING ${queued}`
+              : syncing
+                ? 'SYNCING'
+                : 'SYNCED'}
         </span>
         <span>{user?.login.toUpperCase()}</span>
       </div>

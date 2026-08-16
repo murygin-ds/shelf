@@ -194,6 +194,13 @@ stolen browser profile no worse than a stolen database dump. The cost is that se
 only as complete as the index is warm, so the status bar shows coverage (`INDEX 12/213`)
 rather than letting an incomplete answer look complete.
 
+**A write that meets no network is queued, not lost.** The body is sealed first, so what
+waits in IndexedDB is ciphertext like everything else there, and one entry per note — a body
+write replaces the whole body, so only the newest attempt is worth keeping. It goes out on
+reconnect, on the next visible tick, and when the vault is opened again. A conflict during
+that replay is dropped rather than retried forever: nobody but a client can merge two
+ciphertexts, and a queued copy that will be refused every time is not a copy worth keeping.
+
 **A missing key is a state, not an error.** `decryptMeta` returns a locked marker instead of
 throwing, which is why greyed rows in the tree and `••••••` in the graph fall out naturally
 rather than through a try/catch in forty places.
@@ -399,8 +406,6 @@ default password and is not meant to run anywhere else.
 
 Stated plainly, because each of them is a decision rather than an oversight:
 
-- **A failed write is reported, not queued.** Going offline mid-edit keeps the text on
-  screen but does not replay the write on reconnect.
 - **Trash and restore work through the API, but the app has no trash view.**
 - **A 409 conflict offers reload or copy-my-version**, not a three-way merge. Nobody but a
   client can merge two ciphertexts, and the merge itself is not written yet.

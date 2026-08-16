@@ -11,7 +11,7 @@ import type { FileDto, FolderDto } from '@/api/workspace';
  * memory only, which is what makes the lock state mean something.
  */
 const NAME = 'shelf';
-const VERSION = 1;
+const VERSION = 2;
 
 interface Cached<T> {
   vaultId: number;
@@ -32,11 +32,34 @@ interface VaultCursor {
   cursor: number;
 }
 
+/**
+ * A note body that was written while the network was gone.
+ *
+ * It holds ciphertext, like everything else here: the body is sealed before it is queued,
+ * so a stolen browser profile is no more revealing with a full outbox than with an empty
+ * one. One entry per note — a body write replaces the whole body, so the newest attempt is
+ * the only one worth keeping.
+ */
+interface Queued {
+  id: number;
+  vaultId: number;
+  contentSeq: number;
+  payload: {
+    content: string;
+    content_nonce: string;
+    key_scope_id: number;
+    key_version: number;
+    signature?: string;
+  };
+  queuedAt: number;
+}
+
 interface Schema extends DBSchema {
   folders: { key: [number, number]; value: Cached<FolderDto>; indexes: { vault: number } };
   notes: { key: [number, number]; value: Cached<FileDto>; indexes: { vault: number } };
   bodies: { key: [number, number]; value: CachedBody; indexes: { vault: number } };
   cursors: { key: number; value: VaultCursor };
+  outbox: { key: number; value: Queued; indexes: { vault: number } };
 }
 
 let db: Promise<IDBPDatabase<Schema>> | null = null;
@@ -61,12 +84,20 @@ class CacheUnavailable extends Error {
 function open(): Promise<IDBPDatabase<Schema>> {
   db ??= Promise.race([
     openDB<Schema>(NAME, VERSION, {
-      upgrade(database) {
-        for (const store of ['folders', 'notes', 'bodies'] as const) {
-          database.createObjectStore(store, { keyPath: ['vaultId', 'id'] }).createIndex('vault', 'vaultId');
+      upgrade(database, from) {
+        if (from < 1) {
+          for (const store of ['folders', 'notes', 'bodies'] as const) {
+            database
+              .createObjectStore(store, { keyPath: ['vaultId', 'id'] })
+              .createIndex('vault', 'vaultId');
+          }
+
+          database.createObjectStore('cursors', { keyPath: 'vaultId' });
         }
 
-        database.createObjectStore('cursors', { keyPath: 'vaultId' });
+        if (from < 2) {
+          database.createObjectStore('outbox', { keyPath: 'id' }).createIndex('vault', 'vaultId');
+        }
       },
     }),
     new Promise<never>((_, reject) => {
@@ -182,3 +213,22 @@ export async function dropAll(): Promise<void> {
 }
 
 export type { CachedBody };
+
+/** Queues a body written with no network, replacing any earlier attempt at the same note. */
+export async function enqueue(write: Queued): Promise<void> {
+  await (await open()).put('outbox', write);
+}
+
+export async function outbox(vaultId: number): Promise<Queued[]> {
+  return (await open()).getAllFromIndex('outbox', 'vault', vaultId);
+}
+
+export async function dequeue(id: number): Promise<void> {
+  await (await open()).delete('outbox', id);
+}
+
+export async function outboxSize(vaultId: number): Promise<number> {
+  return (await outbox(vaultId)).length;
+}
+
+export type { Queued };

@@ -31,6 +31,9 @@ SHELF_POSTGRES_PASSWORD ?= postgres
 SHELF_POSTGRES_DATABASE ?= shelf
 SHELF_POSTGRES_SSL_MODE ?= disable
 
+# The DSN carries the password, so every recipe using it is prefixed with @: without that
+# make echoes it to the terminal on each run. It is still visible in the migrate process's
+# argv, which is why this is a local development tool and not a deployment path.
 DB_URL ?= postgres://$(SHELF_POSTGRES_USER):$(SHELF_POSTGRES_PASSWORD)@$(SHELF_POSTGRES_HOST):$(SHELF_POSTGRES_PORT)/$(SHELF_POSTGRES_DATABASE)?sslmode=$(SHELF_POSTGRES_SSL_MODE)
 
 .PHONY: help
@@ -148,34 +151,34 @@ swagger-fmt: ## Format swagger-annotations
 .PHONY: migrate-create
 migrate-create: ## Create migration: make migrate-create name=add_books
 	@test -n "$(name)" || { echo "specify name: make migrate-create name=add_books"; exit 1; }
-	$(MIGRATE) create -ext sql -dir $(MIGRATIONS_DIR) -seq $(name)
+	@$(MIGRATE) create -ext sql -dir $(MIGRATIONS_DIR) -seq $(name)
 
 .PHONY: migrate-up
 migrate-up: ## Apply all migrations
-	$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" up
+	@$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" up
 
 .PHONY: migrate-down
 migrate-down: ## Undo last migration
-	$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" down 1
+	@$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" down 1
 
 .PHONY: migrate-down-all
 migrate-down-all: ## Undo all migrations
 	@read -p "Undo ALL migrations $(SHELF_POSTGRES_DATABASE)? [y/N] " ok; [ "$$ok" = "y" ] || exit 1
-	$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" down -all
+	@$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" down -all
 
 .PHONY: migrate-version
 migrate-version: ## Show current scheme
-	$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" version
+	@$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" version
 
 .PHONY: migrate-force
 migrate-force: ## Undo dirty-flag: make migrate-force version=1
 	@test -n "$(version)" || { echo "specify version: make migrate-force version=1"; exit 1; }
-	$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" force $(version)
+	@$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" force $(version)
 
 .PHONY: migrate-drop
 migrate-drop: ## Delete all objects from Database
 	@read -p "DELETE scheme $(SHELF_POSTGRES_DATABASE)? [y/N] " ok; [ "$$ok" = "y" ] || exit 1
-	$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" drop -f
+	@$(MIGRATE) -path $(MIGRATIONS_DIR) -database "$(DB_URL)" drop -f
 
 # Docker
 

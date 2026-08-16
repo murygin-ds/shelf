@@ -18,6 +18,8 @@ export interface OpenNote {
   contentSeq: number;
   locked: boolean;
   dirty: boolean;
+  /** Written with no network and waiting in the outbox. */
+  queued?: boolean;
   /** Set when the server refused a write because someone else got there first. */
   conflict: boolean;
 }
@@ -40,6 +42,8 @@ interface WorkspaceState {
   saving: boolean;
   syncing: boolean;
   offline: boolean;
+  /** Bodies written with no network, waiting to be sent. */
+  queued: number;
   error: string | null;
 
   load: (identity: Identity) => Promise<void>;
@@ -53,6 +57,8 @@ interface WorkspaceState {
   openNote: (note: ws.NoteNode) => Promise<void>;
   editBody: (body: string) => void;
   saveNote: (identity?: Identity) => Promise<void>;
+  /** Replays every body written while the network was gone. */
+  flushOutbox: () => Promise<void>;
   rename: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file', name: string) => Promise<void>;
   setIcon: (
     node: ws.FolderNode | ws.NoteNode,
@@ -91,6 +97,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   saving: false,
   syncing: false,
   offline: false,
+  queued: 0,
   error: null,
 
   load: async (identity) => {
@@ -114,7 +121,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     try {
       const keyring = await ws.loadKeyring(vaultId, identity);
-      set({ keyring });
+      set({ keyring, queued: await cache.outboxSize(vaultId) });
+
+      // Anything left over from a previous session goes out before the first delta, so a
+      // reload does not look like the write was lost.
+      await get().flushOutbox();
 
       // Paint from the cache first: it holds ciphertext this device can already open, so
       // the tree appears without waiting for the network.
@@ -192,23 +203,29 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const delay = document.hidden ? sync.POLL_HIDDEN_MS : sync.POLL_ACTIVE_MS;
 
       timer = window.setTimeout(() => {
-        if (navigator.onLine) void get().syncNow();
+        if (navigator.onLine) void get().flushOutbox().then(() => get().syncNow());
         tick();
       }, delay);
     };
 
     const onVisible = () => {
-      if (!document.hidden) void get().syncNow();
+      if (!document.hidden) void get().flushOutbox().then(() => get().syncNow());
+    };
+
+    // Regaining the network is not the same event as coming back to the tab, and must not
+    // be gated on it: a queued write belongs to the user whether or not they are looking.
+    const onOnline = () => {
+      void get().flushOutbox();
     };
 
     tick();
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', onVisible);
+    window.addEventListener('online', onOnline);
 
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', onVisible);
+      window.removeEventListener('online', onOnline);
     };
   },
 
@@ -288,7 +305,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ saving: true });
 
     try {
-      const contentSeq = await ws.writeNote(open.note, open.body, open.contentSeq, keyring, identity);
+      const payload = await ws.sealNote(open.note, open.body, open.contentSeq, keyring, identity);
+      const contentSeq = await ws.sendNote(open.note.id, payload, open.contentSeq);
       const current = get().open;
 
       // The write took a round trip, and two things may have moved under it: the user may
@@ -326,6 +344,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
       if (cause instanceof ApiError && cause.is(ErrorCode.Conflict) && current) {
         set({ open: { ...current, conflict: true } });
+      } else if (cause instanceof OfflineError && open.note.vaultId) {
+        // The text is already sealed by the time the network fails, so what goes into the
+        // outbox is ciphertext. Losing it here is what "offline" used to mean, and the
+        // whole point of the queue is that it no longer does.
+        await queue(get, set, open, identity);
       } else {
         report(set, cause);
       }
@@ -414,6 +437,44 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().syncNow();
   },
 
+  flushOutbox: async () => {
+    const { vaultId, queued } = get();
+    if (vaultId === null || queued === 0 || !navigator.onLine) return;
+
+    for (const write of await cache.outbox(vaultId)) {
+      try {
+        const contentSeq = await ws.sendNote(write.id, write.payload, write.contentSeq);
+
+        await cache.dequeue(write.id);
+
+        const open = get().open;
+        if (open && open.note.id === write.id) {
+          set({ open: { ...open, contentSeq, conflict: false } });
+        }
+      } catch (cause) {
+        // A conflict means somebody wrote while this device was away, and nobody but a
+        // client can merge two ciphertexts. The queued copy is dropped rather than kept
+        // forever: it would be replayed on every reconnect and refused every time.
+        if (cause instanceof ApiError && cause.is(ErrorCode.Conflict)) {
+          await cache.dequeue(write.id);
+
+          const open = get().open;
+          if (open && open.note.id === write.id) set({ open: { ...open, conflict: true } });
+
+          continue;
+        }
+
+        // Still offline, or the server is unwell. Leave the rest queued and try later.
+        if (cause instanceof OfflineError) break;
+
+        report(set, cause);
+      }
+    }
+
+    set({ queued: await cache.outboxSize(vaultId), offline: false });
+    await get().syncNow();
+  },
+
   reset: async () => {
     await cache.dropAll();
 
@@ -470,6 +531,38 @@ function scopeOf(state: WorkspaceState, parentId: number | null): ws.Scope {
   if (!vault) throw new Error('no active vault');
 
   return { id: vault.keyScopeId, clientId: vault.keyScopeClientId, version: vault.keyVersion };
+}
+
+// queue parks a body the network refused to take. It is sealed first, so the outbox holds
+// ciphertext like every other store here.
+async function queue(
+  get: () => WorkspaceState,
+  set: Setter,
+  open: OpenNote,
+  identity: Identity | undefined,
+): Promise<void> {
+  const { keyring, vaultId } = get();
+  if (!keyring || vaultId === null) return;
+
+  try {
+    await cache.enqueue({
+      id: open.note.id,
+      vaultId,
+      contentSeq: open.contentSeq,
+      payload: await ws.sealNote(open.note, open.body, open.contentSeq, keyring, identity),
+      queuedAt: Date.now(),
+    });
+
+    set({
+      offline: true,
+      queued: await cache.outboxSize(vaultId),
+      open: { ...open, dirty: false, queued: true },
+    });
+  } catch (cause) {
+    // The cache is the only place a queued write can live. If it will not take it, saying
+    // the note is saved would be a lie.
+    report(set, cause);
+  }
 }
 
 function report(set: Setter, cause: unknown): void {

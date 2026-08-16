@@ -1,6 +1,10 @@
 package middleware
 
 import (
+	"maps"
+	"net/url"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -36,7 +40,7 @@ func Logger(log *zap.Logger, skipPaths ...string) gin.HandlerFunc {
 		fields := []zap.Field{
 			zap.String("method", c.Request.Method),
 			zap.String("path", path),
-			zap.String("query", query),
+			zap.String("query", redactQuery(query)),
 			zap.Int("status", status),
 			zap.Int("size", c.Writer.Size()),
 			zap.String("ip", c.ClientIP()),
@@ -72,4 +76,48 @@ func LoggerFrom(c *gin.Context) *zap.Logger {
 	}
 
 	return log
+}
+
+// secretParams are the query parameters whose values must not reach the log.
+//
+// A login is the one thing an attacker needs before guessing a password, and /users/lookup
+// takes it in the query string — so an access log kept for a month would otherwise be a
+// directory of who works here. The parameter names stay, because knowing which were used is
+// what makes a log worth reading.
+var secretParams = map[string]bool{
+	"login": true, "email": true, "code": true, "token": true,
+	"secret": true, "q": true, "query": true,
+}
+
+func redactQuery(raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		// Unparseable is not a reason to log it verbatim: whatever is in there, nobody
+		// asked for it to be kept.
+		return "?"
+	}
+
+	var out strings.Builder
+
+	for _, key := range slices.Sorted(maps.Keys(values)) {
+		if out.Len() > 0 {
+			out.WriteByte('&')
+		}
+
+		out.WriteString(key)
+		out.WriteByte('=')
+
+		if secretParams[strings.ToLower(key)] {
+			out.WriteString("[redacted]")
+			continue
+		}
+
+		out.WriteString(strings.Join(values[key], ","))
+	}
+
+	return out.String()
 }
