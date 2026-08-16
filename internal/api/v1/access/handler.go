@@ -31,6 +31,13 @@ type Service interface {
 	Invites(ctx context.Context, actorID, vaultID int64) ([]access.Invite, error)
 	MyInvites(ctx context.Context, userID int64) ([]access.Invite, error)
 	RevokeInvite(ctx context.Context, actorID, vaultID, inviteID int64) error
+
+	Groups(ctx context.Context, actorID, vaultID int64) ([]access.Group, error)
+	CreateGroup(ctx context.Context, actorID int64, in access.NewGroup) (*access.Group, error)
+	UpdateGroup(ctx context.Context, actorID, groupID int64, meta vault.Blob) error
+	DeleteGroup(ctx context.Context, actorID, groupID int64) error
+	SetGroupMembers(ctx context.Context, actorID int64, in access.GroupMembership) (*access.Group, error)
+	GroupKeys(ctx context.Context, actorID, vaultID int64) ([]access.GroupKey, error)
 	Challenge(ctx context.Context, tokenHash []byte) (*access.Challenge, error)
 	Redeem(ctx context.Context, userID int64, in access.Redemption) (*access.Invite, error)
 }
@@ -58,9 +65,17 @@ func (h *Handler) RegisterRoutes(public, protected *gin.RouterGroup) {
 	vaults.GET("/grants", h.Grants)
 	vaults.PUT("/grants", h.PutGrant)
 	vaults.DELETE("/grants/:grant_id", h.DeleteGrant)
+	vaults.GET("/groups", h.Groups)
+	vaults.POST("/groups", h.CreateGroup)
+	vaults.GET("/group-keys", h.GroupKeys)
 	vaults.GET("/invites", h.Invites)
 	vaults.POST("/invites", h.CreateInvite)
 	vaults.DELETE("/invites/:invite_id", h.RevokeInvite)
+
+	groups := protected.Group("/groups/:id")
+	groups.PATCH("", h.UpdateGroup)
+	groups.DELETE("", h.DeleteGroup)
+	groups.PUT("/members", h.SetGroupMembers)
 
 	protected.GET("/users/lookup", h.LookupUser)
 	protected.GET("/me/invites", h.MyInvites)
@@ -559,8 +574,195 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 	case errors.Is(err, access.ErrKeysRequired):
 		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
 			"the change needs the scope keys sealed to the subject")
+	case errors.Is(err, access.ErrGroupMembers):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"a group must hold between 1 and 200 members")
+	case errors.Is(err, access.ErrGroupKeyless):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"whoever writes a group's membership must be in it")
+	case errors.Is(err, access.ErrGroupRotation):
+		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			"removing a member requires a new group key and its scopes sealed again")
 	default:
 		middleware.LoggerFrom(c).Error("access handler failed", zap.String("op", op), zap.Error(err))
 		response.Internal(c)
 	}
+}
+
+// Groups lists the vault's groups.
+//
+//	@Summary	List groups
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"vault id"
+//	@Success	200	{object}	GroupsResponse
+//	@Router		/api/v1/vaults/{id}/groups [get]
+func (h *Handler) Groups(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	groups, err := h.service.Groups(c.Request.Context(), userID, vaultID)
+	if err != nil {
+		h.fail(c, "list groups", err)
+		return
+	}
+
+	response.OK(c, groupsResponse(groups))
+}
+
+// CreateGroup opens a group with its own keypair.
+//
+//	@Summary	Create a group
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		int					true	"vault id"
+//	@Param		request	body		createGroupRequest	true	"the group key sealed to each founding member"
+//	@Success	201		{object}	GroupResponse
+//	@Failure	422		{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/groups [post]
+func (h *Handler) CreateGroup(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req createGroupRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	created, err := h.service.CreateGroup(c.Request.Context(), userID, access.NewGroup{
+		VaultID:    vaultID,
+		ClientID:   req.ClientID,
+		Meta:       vault.Blob{Ciphertext: req.Meta, Nonce: req.MetaNonce},
+		PublicKey:  req.PublicKey,
+		KeyVersion: 1,
+		Members:    groupMembers(req.Members),
+	})
+	if err != nil {
+		h.fail(c, "create group", err)
+		return
+	}
+
+	response.Created(c, groupResponse(created))
+}
+
+// UpdateGroup renames a group.
+//
+//	@Summary	Rename a group
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Param		id		path	int					true	"group id"
+//	@Param		request	body	updateGroupRequest	true	"the new name, encrypted"
+//	@Success	204
+//	@Router		/api/v1/groups/{id} [patch]
+func (h *Handler) UpdateGroup(c *gin.Context) {
+	userID, groupID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req updateGroupRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	meta := vault.Blob{Ciphertext: req.Meta, Nonce: req.MetaNonce}
+
+	if err := h.service.UpdateGroup(c.Request.Context(), userID, groupID, meta); err != nil {
+		h.fail(c, "update group", err)
+		return
+	}
+
+	response.NoContent(c)
+}
+
+// DeleteGroup disbands a group and drops every permission it carried.
+//
+//	@Summary	Delete a group
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Param		id	path	int	true	"group id"
+//	@Success	204
+//	@Failure	404	{object}	response.ErrorResponse
+//	@Router		/api/v1/groups/{id} [delete]
+func (h *Handler) DeleteGroup(c *gin.Context) {
+	userID, groupID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	if err := h.service.DeleteGroup(c.Request.Context(), userID, groupID); err != nil {
+		h.fail(c, "delete group", err)
+		return
+	}
+
+	response.NoContent(c)
+}
+
+// SetGroupMembers replaces who is in a group.
+//
+//	@Summary	Replace a group's members
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		int						true	"group id"
+//	@Param		request	body		setGroupMembersRequest	true	"the group key sealed to each member"
+//	@Success	200		{object}	GroupResponse
+//	@Failure	422		{object}	response.ErrorResponse
+//	@Router		/api/v1/groups/{id}/members [put]
+func (h *Handler) SetGroupMembers(c *gin.Context) {
+	userID, groupID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req setGroupMembersRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	updated, err := h.service.SetGroupMembers(c.Request.Context(), userID, access.GroupMembership{
+		GroupID:   groupID,
+		Members:   groupMembers(req.Members),
+		PublicKey: req.PublicKey,
+		Keys:      sealedKeys(req.Keys),
+	})
+	if err != nil {
+		h.fail(c, "set group members", err)
+		return
+	}
+
+	response.OK(c, groupResponse(updated))
+}
+
+// GroupKeys hands the caller their copy of the private key of every group they are in.
+//
+//	@Summary	Read the caller's group keys
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"vault id"
+//	@Success	200	{object}	GroupKeysResponse
+//	@Router		/api/v1/vaults/{id}/group-keys [get]
+func (h *Handler) GroupKeys(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	keys, err := h.service.GroupKeys(c.Request.Context(), userID, vaultID)
+	if err != nil {
+		h.fail(c, "read group keys", err)
+		return
+	}
+
+	response.OK(c, groupKeysResponse(keys))
 }

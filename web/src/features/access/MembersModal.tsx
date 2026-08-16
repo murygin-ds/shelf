@@ -2,8 +2,10 @@ import { type FormEvent, useEffect, useState } from 'react';
 
 import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import * as groupsApi from '@/api/groups';
 import type { RekeyProgress } from '@/api/rekey';
 import type { Role } from '@/api/workspace';
+import type { Identity } from '@/crypto/identity';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -204,6 +206,8 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : null}
 
+          <Groups members={members} />
+
           <div className={styles.section}>MEMBERS</div>
 
           <div className={styles.gridHead}>
@@ -335,4 +339,187 @@ function describe(cause: unknown): string {
   if (cause instanceof ApiError) return cause.message;
 
   return cause instanceof Error ? cause.message : 'Something went wrong.';
+}
+
+/**
+ * Groups, and the one thing about them worth showing: adding somebody costs one seal
+ * whatever the group reaches, while removing somebody replaces the group's key and every
+ * scope sealed to it. The version number is how that shows up.
+ */
+function Groups({ members }: { members: collab.MemberDto[] }) {
+  const { vaultId, vaults, keyring, tree } = useWorkspace();
+  const identity = useSession((state) => state.identity);
+
+  const [groups, setGroups] = useState<groupsApi.Group[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const vault = vaults.find((v) => v.id === vaultId);
+  const canManage = vault?.role === 'owner' || vault?.role === 'admin';
+  const scope = vault ? { id: vault.keyScopeId, version: vault.keyVersion } : null;
+
+  const reload = async () => {
+    if (vaultId === null || !keyring || !scope) return;
+
+    try {
+      setGroups(await groupsApi.listGroups(vaultId, keyring, scope));
+    } catch (cause) {
+      setError(describe(cause));
+    }
+  };
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultId, keyring]);
+
+  // Every scope the caller holds a key for, which is what a group rotation has to re-seal.
+  const scopes = () => {
+    const seen = new Map<number, { id: number; clientId: string; version: number }>();
+
+    if (vault) {
+      seen.set(vault.keyScopeId, {
+        id: vault.keyScopeId,
+        clientId: vault.keyScopeClientId,
+        version: vault.keyVersion,
+      });
+    }
+
+    for (const node of [...tree.folders, ...tree.notes]) {
+      seen.set(node.keyScopeId, {
+        id: node.keyScopeId,
+        clientId: node.keyScopeClientId,
+        version: node.keyVersion,
+      });
+    }
+
+    return [...seen.values()];
+  };
+
+  const create = async () => {
+    if (vaultId === null || !keyring || !scope) return;
+
+    const name = window.prompt('Group name', 'Design');
+    if (!name) return;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      // The creator is always a founding member: the private key exists only in the copies
+      // sealed here, and a group its own manager cannot open can never be added to.
+      const me = members.find((member) => member.user_id === identityUser(members, identity));
+
+      await groupsApi.createGroup(vaultId, name.trim(), me ? [me] : [], keyring, scope);
+      await reload();
+    } catch (cause) {
+      setError(describe(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (group: groupsApi.Group, member: collab.MemberDto) => {
+    if (!identity || !keyring) return;
+
+    const inside = group.members.some((existing) => existing.user_id === member.user_id);
+
+    const next = inside
+      ? members.filter((m) => group.members.some((e) => e.user_id === m.user_id) && m.user_id !== member.user_id)
+      : [...members.filter((m) => group.members.some((e) => e.user_id === m.user_id)), member];
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await groupsApi.setGroupMembers(group, next, identity, keyring, scopes());
+      await reload();
+    } catch (cause) {
+      setError(describe(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disband = async (group: groupsApi.Group) => {
+    setBusy(true);
+    setError(null);
+
+    try {
+      await groupsApi.deleteGroup(group.id);
+      await reload();
+    } catch (cause) {
+      setError(describe(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!canManage) return null;
+
+  return (
+    <>
+      <div className={styles.section}>GROUPS · {groups.length}</div>
+
+      {error ? <div className={styles.error}>{error}</div> : null}
+
+      {groups.length === 0 ? (
+        <p className={styles.empty}>
+          A group holds a permission on behalf of several people. Its key is sealed to each
+          member, so adding somebody later costs one seal rather than one per folder.
+        </p>
+      ) : (
+        groups.map((group) => (
+          <div key={group.id} className={styles.person}>
+            <span className={styles.avatar}>{initials(group.name)}</span>
+            <span className={styles.personMain}>
+              <span className={styles.personName}>{group.name}</span>
+              <span className={styles.personMeta} style={{ display: 'block' }}>
+                {group.members.length} member{group.members.length === 1 ? '' : 's'} · key v
+                {group.keyVersion}
+              </span>
+            </span>
+
+            <select
+              className={styles.select}
+              value=""
+              disabled={busy}
+              onChange={(event) => {
+                const member = members.find((m) => String(m.user_id) === event.target.value);
+                if (member) void toggle(group, member);
+              }}
+            >
+              <option value="">Add or remove…</option>
+              {members.map((member) => (
+                <option key={member.user_id} value={member.user_id}>
+                  {group.members.some((e) => e.user_id === member.user_id) ? '− ' : '+ '}
+                  {member.display_name}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              className={styles.rowAction}
+              title="Disband"
+              disabled={busy}
+              onClick={() => void disband(group)}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+        ))
+      )}
+
+      <button type="button" className={styles.noteAction} disabled={busy} onClick={() => void create()}>
+        New group
+      </button>
+    </>
+  );
+}
+
+// The member row for whoever is signed in, matched by the fingerprint of their own key —
+// the one thing the client can compare without trusting the server's idea of who it is.
+function identityUser(members: collab.MemberDto[], identity: Identity | null): number | undefined {
+  return members.find((member) => member.fingerprint === identity?.fingerprint)?.user_id;
 }

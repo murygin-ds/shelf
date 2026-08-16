@@ -49,8 +49,10 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 		Logger:    deps.Logger,
 	})
 
+	accessRepo := postgres.NewAccessRepository(deps.Pool)
 	accessService := access.NewService(access.Deps{
-		Repo:   postgres.NewAccessRepository(deps.Pool),
+		Repo:   accessRepo,
+		Groups: accessRepo,
 		Nodes:  workspace,
 		Logger: deps.Logger,
 	})
@@ -94,6 +96,7 @@ func authLimits(cfg config.RateLimit) authapi.Limits {
 	}
 
 	return authapi.Limits{
+		RegisterIP:      ratelimit.New(cfg.RegisterIP.Limit, cfg.RegisterIP.Window),
 		LoginIP:         ratelimit.New(cfg.LoginIP.Limit, cfg.LoginIP.Window),
 		LoginAccount:    ratelimit.New(cfg.LoginAccount.Limit, cfg.LoginAccount.Window),
 		RecoveryIP:      ratelimit.New(cfg.RecoveryIP.Limit, cfg.RecoveryIP.Window),

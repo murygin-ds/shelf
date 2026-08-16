@@ -33,9 +33,15 @@ type stubService struct {
 	challenge *domain.Challenge
 	scopes    []int64
 
-	lastGrant  domain.GrantInput
-	lastInvite domain.NewInvite
-	lastRedeem domain.Redemption
+	groups    []domain.Group
+	group     *domain.Group
+	groupKeys []domain.GroupKey
+
+	lastGrant   domain.GrantInput
+	lastInvite  domain.NewInvite
+	lastRedeem  domain.Redemption
+	lastGroup   domain.NewGroup
+	lastMembers domain.GroupMembership
 }
 
 func (s *stubService) Members(context.Context, int64, int64) ([]domain.Member, error) {
@@ -67,6 +73,22 @@ func (s *stubService) MyInvites(context.Context, int64) ([]domain.Invite, error)
 	return s.invites, s.err
 }
 func (s *stubService) RevokeInvite(context.Context, int64, int64, int64) error { return s.err }
+func (s *stubService) Groups(context.Context, int64, int64) ([]domain.Group, error) {
+	return s.groups, s.err
+}
+func (s *stubService) CreateGroup(_ context.Context, _ int64, in domain.NewGroup) (*domain.Group, error) {
+	s.lastGroup = in
+	return s.group, s.err
+}
+func (s *stubService) UpdateGroup(context.Context, int64, int64, vault.Blob) error { return s.err }
+func (s *stubService) DeleteGroup(context.Context, int64, int64) error             { return s.err }
+func (s *stubService) SetGroupMembers(_ context.Context, _ int64, in domain.GroupMembership) (*domain.Group, error) {
+	s.lastMembers = in
+	return s.group, s.err
+}
+func (s *stubService) GroupKeys(context.Context, int64, int64) ([]domain.GroupKey, error) {
+	return s.groupKeys, s.err
+}
 func (s *stubService) Challenge(context.Context, []byte) (*domain.Challenge, error) {
 	return s.challenge, s.err
 }

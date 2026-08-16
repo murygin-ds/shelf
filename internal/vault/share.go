@@ -74,9 +74,6 @@ type ShareRepository interface {
 	// ShareLink reads one link so the service can authorize against the note behind it.
 	ShareLink(ctx context.Context, linkID int64) (*ShareLink, error)
 	RevokeShareLink(ctx context.Context, linkID, actorID int64) error
-	// RevokeShareLinksFor closes every live link on the given notes and reports how many.
-	// A rotation exists to take reading rights back, and a public link is a reading right.
-	RevokeShareLinksFor(ctx context.Context, fileIDs []int64, actorID int64) (int, error)
 	// PublicNote resolves a link for an anonymous caller. Every reason it might fail —
 	// wrong token, expired, revoked, note deleted — is one answer, so the endpoint cannot
 	// be used to tell live links from dead ones.

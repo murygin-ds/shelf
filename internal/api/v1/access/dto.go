@@ -258,3 +258,143 @@ func challenge(found *access.Challenge) ChallengeResponse {
 }
 
 func scopeType(value string) vault.ScopeType { return vault.ScopeType(value) }
+
+// -- groups ------------------------------------------------------------------
+
+type sealedGroupKeyRequest struct {
+	UserID     int64  `binding:"required,min=1"           json:"user_id"`
+	WrappedKey []byte `binding:"required,min=32,max=4096" json:"wrapped_key" format:"byte"`
+	Nonce      []byte `binding:"required,min=12,max=32"   json:"nonce"       format:"byte"`
+}
+
+type createGroupRequest struct {
+	ClientID  string `binding:"required,uuid"            json:"client_id"`
+	Meta      []byte `binding:"required,min=16,max=8192" json:"meta"       format:"byte"`
+	MetaNonce []byte `binding:"required,min=12,max=32"   json:"meta_nonce" format:"byte"`
+	// PublicKey is the group's raw P-256 agreement key. A group never writes, so it needs
+	// no signing key — there would be nothing to attribute.
+	PublicKey []byte `binding:"required,len=65" json:"public_key" format:"byte"`
+	// Members must include the caller: the private key exists only in these copies, and a
+	// group its own manager cannot open is a group nobody can ever add to.
+	Members []sealedGroupKeyRequest `binding:"required,min=1,max=200,dive" json:"members"`
+}
+
+type updateGroupRequest struct {
+	Meta      []byte `binding:"required,min=16,max=8192" json:"meta"       format:"byte"`
+	MetaNonce []byte `binding:"required,min=12,max=32"   json:"meta_nonce" format:"byte"`
+}
+
+type setGroupMembersRequest struct {
+	Members []sealedGroupKeyRequest `binding:"required,min=1,max=200,dive" json:"members"`
+	// PublicKey and Keys are required when somebody is being dropped: the copy they hold
+	// opens every scope the group reaches, and deleting rows on the server does not take
+	// that back.
+	PublicKey []byte             `binding:"omitempty,len=65"           json:"public_key,omitempty" format:"byte"`
+	Keys      []sealedKeyRequest `binding:"omitempty,max=256,dive"     json:"key_grants,omitempty"`
+}
+
+type GroupMemberResponse struct {
+	UserID      int64  `json:"user_id"      example:"7"`
+	Login       string `json:"login"        example:"marta@acme.dev"`
+	DisplayName string `json:"display_name" example:"Marta Chen"`
+	Fingerprint string `json:"fingerprint"  example:"A1B2 C3D4 E5F6 G7H8"`
+	KeyVersion  int32  `json:"key_version"  example:"1"`
+}
+
+type GroupResponse struct {
+	ID         int64                 `json:"id"          example:"3"`
+	ClientID   string                `json:"client_id"`
+	VaultID    int64                 `json:"vault_id"    example:"12"`
+	Meta       []byte                `json:"meta"        format:"byte"`
+	MetaNonce  []byte                `json:"meta_nonce"  format:"byte"`
+	PublicKey  []byte                `json:"public_key"  format:"byte"`
+	KeyVersion int32                 `json:"key_version" example:"1"`
+	Members    []GroupMemberResponse `json:"members"`
+	CreatedBy  *int64                `json:"created_by,omitempty"`
+	CreatedAt  time.Time             `json:"created_at"`
+}
+
+type GroupsResponse struct {
+	Groups []GroupResponse `json:"groups"`
+}
+
+// GroupKeyResponse is the caller's own copy of a group's private key. It is useless to
+// anybody else: it is sealed to the public key of the person asking.
+type GroupKeyResponse struct {
+	GroupID       int64  `json:"group_id"        example:"3"`
+	GroupClientID string `json:"group_client_id"`
+	KeyVersion    int32  `json:"key_version"     example:"1"`
+	WrappedKey    []byte `json:"wrapped_key"     format:"byte"`
+	Nonce         []byte `json:"nonce"           format:"byte"`
+}
+
+type GroupKeysResponse struct {
+	Keys []GroupKeyResponse `json:"keys"`
+}
+
+func groupResponse(group *access.Group) GroupResponse {
+	members := make([]GroupMemberResponse, 0, len(group.Members))
+
+	for _, member := range group.Members {
+		members = append(members, GroupMemberResponse{
+			UserID:      member.UserID,
+			Login:       member.Login,
+			DisplayName: member.DisplayName,
+			Fingerprint: member.Fingerprint,
+			KeyVersion:  member.KeyVersion,
+		})
+	}
+
+	return GroupResponse{
+		ID:         group.ID,
+		ClientID:   group.ClientID,
+		VaultID:    group.VaultID,
+		Meta:       group.Meta.Ciphertext,
+		MetaNonce:  group.Meta.Nonce,
+		PublicKey:  group.PublicKey,
+		KeyVersion: group.KeyVersion,
+		Members:    members,
+		CreatedBy:  group.CreatedBy,
+		CreatedAt:  group.CreatedAt,
+	}
+}
+
+func groupsResponse(groups []access.Group) GroupsResponse {
+	out := GroupsResponse{Groups: make([]GroupResponse, 0, len(groups))}
+
+	for i := range groups {
+		out.Groups = append(out.Groups, groupResponse(&groups[i]))
+	}
+
+	return out
+}
+
+func groupKeysResponse(keys []access.GroupKey) GroupKeysResponse {
+	out := GroupKeysResponse{Keys: make([]GroupKeyResponse, 0, len(keys))}
+
+	for _, key := range keys {
+		out.Keys = append(out.Keys, GroupKeyResponse{
+			GroupID:       key.GroupID,
+			GroupClientID: key.GroupClientID,
+			KeyVersion:    key.KeyVersion,
+			WrappedKey:    key.WrappedKey,
+			Nonce:         key.Nonce,
+		})
+	}
+
+	return out
+}
+
+func groupMembers(in []sealedGroupKeyRequest) []access.SealedGroupKey {
+	out := make([]access.SealedGroupKey, 0, len(in))
+
+	for _, member := range in {
+		out = append(out, access.SealedGroupKey{
+			UserID:     member.UserID,
+			WrappedKey: member.WrappedKey,
+			Nonce:      member.Nonce,
+		})
+	}
+
+	return out
+}

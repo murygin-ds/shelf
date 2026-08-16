@@ -24,6 +24,15 @@ var (
 	ErrKeysRequired  = errors.New("the change needs the scope keys sealed to the subject")
 	ErrOwnerRequired = errors.New("a vault must keep its owner")
 	ErrSelfTarget    = errors.New("a member cannot apply this to themselves")
+	// ErrGroupMembers means the membership list was empty or longer than a group should be.
+	ErrGroupMembers = errors.New("a group must hold between 1 and 200 members")
+	// ErrGroupKeyless means the caller left themselves out. The group's private key lives
+	// only in the copies sealed to its members, so a group its manager cannot open is a
+	// group nobody can ever add to.
+	ErrGroupKeyless = errors.New("whoever writes a group's membership must be in it")
+	// ErrGroupRotation means somebody was dropped without a new keypair. The copy they hold
+	// opens every scope the group reaches, and no deletion on the server takes that back.
+	ErrGroupRotation = errors.New("removing a member requires a new group key")
 )
 
 // Member is a row of the design's member table.

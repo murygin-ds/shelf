@@ -117,19 +117,25 @@ export function listGrants(
 export async function putGrant(
   vaultId: number,
   target: { scopeType: 'folder' | 'file'; scopeRefId: number; scope: Scope },
-  subjectId: number,
+  subject: { type: 'user' | 'group'; id: number; publicKey: B64 | null },
   permission: Permission,
-  recipientPublicKey: B64 | null,
   keyring: ScopeKeyring,
 ): Promise<GrantDto> {
   const keys: unknown[] = [];
 
-  if (permission !== 'none' && recipientPublicKey) {
+  if (permission !== 'none' && subject.publicKey) {
     const scopeKey = keyring.get(target.scope.id, target.scope.version);
     if (!scopeKey) throw new Error('you do not hold the key for this folder');
 
+    // A person's public key travels in the two-part identity blob; a group's is the raw
+    // point on its own, because a group has no signing half to carry.
+    const recipient =
+      subject.type === 'group'
+        ? b64ToBytes(subject.publicKey)
+        : splitPublicBlob(b64ToBytes(subject.publicKey)).seal;
+
     const box = await seal(
-      splitPublicBlob(b64ToBytes(recipientPublicKey)).seal,
+      recipient,
       await exportKey(scopeKey),
       sealInfo(target.scope.clientId, target.scope.version),
     );
@@ -145,8 +151,8 @@ export async function putGrant(
   return api.put<GrantDto>(`/vaults/${vaultId}/grants`, {
     scope_type: target.scopeType,
     scope_ref_id: target.scopeRefId,
-    subject_type: 'user',
-    subject_id: subjectId,
+    subject_type: subject.type,
+    subject_id: subject.id,
     permission,
     key_grants: keys,
   });

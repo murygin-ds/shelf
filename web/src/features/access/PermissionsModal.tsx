@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import * as groupsApi from '@/api/groups';
 import type { RekeyProgress } from '@/api/rekey';
 import type { FolderNode, Permission } from '@/api/workspace';
 import { useSession } from '@/store/session';
@@ -29,6 +30,7 @@ export function PermissionsModal({
   const identity = useSession((state) => state.identity);
 
   const [members, setMembers] = useState<collab.MemberDto[]>([]);
+  const [groups, setGroups] = useState<groupsApi.Group[]>([]);
   const [grants, setGrants] = useState<collab.GrantDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,6 +54,15 @@ export function PermissionsModal({
 
       setMembers(people.members);
       setGrants(list.grants);
+
+      if (keyring && vault) {
+        setGroups(
+          await groupsApi.listGroups(vaultId, keyring, {
+            id: vault.keyScopeId,
+            version: vault.keyVersion,
+          }),
+        );
+      }
     } catch (cause) {
       setError(describe(cause));
     }
@@ -83,9 +94,8 @@ export function PermissionsModal({
             version: folder.keyVersion,
           },
         },
-        member.user_id,
+        { type: 'user', id: member.user_id, publicKey: member.public_key },
         permission,
-        member.public_key,
         keyring,
       );
 
@@ -116,6 +126,40 @@ export function PermissionsModal({
     } finally {
       setBusy(false);
       setProgress(null);
+    }
+  };
+
+  // A group's key is its own, so the folder key is sealed to the group's public point
+  // rather than to any person's — one seal, whoever joins later.
+  const applyToGroup = async (group: groupsApi.Group, permission: Permission) => {
+    if (vaultId === null || !keyring) return;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await collab.putGrant(
+        vaultId,
+        {
+          scopeType: 'folder',
+          scopeRefId: folder.id,
+          scope: {
+            id: folder.keyScopeId,
+            clientId: folder.keyScopeClientId,
+            version: folder.keyVersion,
+          },
+        },
+        { type: 'group', id: group.id, publicKey: group.publicKey },
+        permission,
+        keyring,
+      );
+
+      await reload();
+      await syncNow();
+    } catch (cause) {
+      setError(describe(cause));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -248,6 +292,52 @@ export function PermissionsModal({
               </div>
             );
           })}
+
+          {groups.length ? (
+            <>
+              <div className={styles.section}>GROUPS · {groups.length}</div>
+
+              {groups.map((group) => {
+                const grant = grants.find(
+                  (item) => item.subject_type === 'group' && item.subject_id === group.id,
+                );
+
+                return (
+                  <div key={group.id} className={styles.person}>
+                    <span className={styles.avatar}>{initials(group.name)}</span>
+                    <span className={styles.personMain}>
+                      <span className={styles.personName}>{group.name}</span>
+                      <span className={styles.personMeta} style={{ display: 'block' }}>
+                        {grant ? 'set on this folder' : 'no permission here'} ·{' '}
+                        {group.members.length} member{group.members.length === 1 ? '' : 's'}
+                      </span>
+                    </span>
+
+                    {canManage ? (
+                      <select
+                        className={styles.select}
+                        value={grant?.permission ?? 'none'}
+                        disabled={busy}
+                        onChange={(event) =>
+                          void applyToGroup(group, event.target.value as Permission)
+                        }
+                      >
+                        {LEVELS.map((level) => (
+                          <option key={level.value} value={level.value}>
+                            {level.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={styles.cell}>{label(grant?.permission ?? 'none')}</span>
+                    )}
+
+                    <span style={{ width: 22 }} />
+                  </div>
+                );
+              })}
+            </>
+          ) : null}
 
           {members.length <= 1 ? (
             <p className={styles.empty}>

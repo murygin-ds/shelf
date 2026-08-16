@@ -19,18 +19,20 @@ type Nodes interface {
 
 type Deps struct {
 	Repo   Repository
+	Groups GroupRepository
 	Nodes  Nodes
 	Logger *zap.Logger
 }
 
 type Service struct {
-	repo  Repository
-	nodes Nodes
-	log   *zap.Logger
+	repo   Repository
+	groups GroupRepository
+	nodes  Nodes
+	log    *zap.Logger
 }
 
 func NewService(deps Deps) *Service {
-	return &Service{repo: deps.Repo, nodes: deps.Nodes, log: deps.Logger}
+	return &Service{repo: deps.Repo, groups: deps.Groups, nodes: deps.Nodes, log: deps.Logger}
 }
 
 // MaxInviteTTL bounds how long an admission can stay open.
@@ -371,7 +373,10 @@ func translate(err error, op string) error {
 		errors.Is(err, ErrAlreadyMember),
 		errors.Is(err, ErrKeysRequired),
 		errors.Is(err, ErrOwnerRequired),
-		errors.Is(err, ErrSelfTarget):
+		errors.Is(err, ErrSelfTarget),
+		errors.Is(err, ErrGroupMembers),
+		errors.Is(err, ErrGroupKeyless),
+		errors.Is(err, ErrGroupRotation):
 		return err
 	default:
 		return fmt.Errorf("%s: %w", op, err)

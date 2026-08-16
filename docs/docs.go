@@ -1259,6 +1259,127 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/groups/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Delete a group",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Rename a group",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the new name, encrypted",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.updateGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/members": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Replace a group's members",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "group id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the group key sealed to each member",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.setGroupMembersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/invites/lookup": {
             "post": {
                 "consumes": [
@@ -2167,6 +2288,121 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/vaults/{id}/group-keys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Read the caller's group keys",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupKeysResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "List groups",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupsResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Create a group",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the group key sealed to each founding member",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/access.createGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/access.GroupResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/vaults/{id}/invites": {
             "get": {
                 "security": [
@@ -2801,6 +3037,136 @@ const docTemplate = `{
                 }
             }
         },
+        "access.GroupKeyResponse": {
+            "type": "object",
+            "properties": {
+                "group_client_id": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.GroupKeysResponse": {
+            "type": "object",
+            "properties": {
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupKeyResponse"
+                    }
+                }
+            }
+        },
+        "access.GroupMemberResponse": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "example": "Marta Chen"
+                },
+                "fingerprint": {
+                    "type": "string",
+                    "example": "A1B2 C3D4 E5F6 G7H8"
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "login": {
+                    "type": "string",
+                    "example": "marta@acme.dev"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 7
+                }
+            }
+        },
+        "access.GroupResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "key_version": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupMemberResponse"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "public_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 12
+                }
+            }
+        },
+        "access.GroupsResponse": {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/access.GroupResponse"
+                    }
+                }
+            }
+        },
         "access.InviteResponse": {
             "type": "object",
             "properties": {
@@ -2940,6 +3306,56 @@ const docTemplate = `{
                     "example": "aesgcm-invite-v1"
                 },
                 "wrapped_key": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "access.createGroupRequest": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "members",
+                "meta",
+                "meta_nonce",
+                "public_key"
+            ],
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "members": {
+                    "description": "Members must include the caller: the private key exists only in these copies, and a\ngroup its own manager cannot open is a group nobody can ever add to.",
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedGroupKeyRequest"
+                    }
+                },
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "public_key": {
+                    "description": "PublicKey is the group's raw P-256 agreement key. A group never writes, so it needs\nno signing key — there would be nothing to attribute.",
                     "type": "array",
                     "items": {
                         "type": "integer",
@@ -3105,6 +3521,38 @@ const docTemplate = `{
                 }
             }
         },
+        "access.sealedGroupKeyRequest": {
+            "type": "object",
+            "required": [
+                "nonce",
+                "user_id",
+                "wrapped_key"
+            ],
+            "properties": {
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "user_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 4096,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
         "access.sealedKeyRequest": {
             "type": "object",
             "required": [
@@ -3147,6 +3595,37 @@ const docTemplate = `{
                 }
             }
         },
+        "access.setGroupMembersRequest": {
+            "type": "object",
+            "required": [
+                "members"
+            ],
+            "properties": {
+                "key_grants": {
+                    "type": "array",
+                    "maxItems": 256,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedKeyRequest"
+                    }
+                },
+                "members": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/access.sealedGroupKeyRequest"
+                    }
+                },
+                "public_key": {
+                    "description": "PublicKey and Keys are required when somebody is being dropped: the copy they hold\nopens every scope the group reaches, and deleting rows on the server does not take\nthat back.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
         "access.setRoleRequest": {
             "type": "object",
             "required": [
@@ -3160,6 +3639,33 @@ const docTemplate = `{
                         "editor",
                         "viewer"
                     ]
+                }
+            }
+        },
+        "access.updateGroupRequest": {
+            "type": "object",
+            "required": [
+                "meta",
+                "meta_nonce"
+            ],
+            "properties": {
+                "meta": {
+                    "type": "array",
+                    "maxItems": 8192,
+                    "minItems": 16,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "meta_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
                 }
             }
         },

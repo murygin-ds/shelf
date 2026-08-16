@@ -108,6 +108,13 @@ lint-fix: ## Start golangci-lint with auto format
 test: ## Tests
 	$(GO) test -race -count=1 ./...
 
+.PHONY: test-integration
+test-integration: ## Tests against a real Postgres: make test-integration dsn=postgres://...
+	@test -n "$(dsn)$(SHELF_TEST_POSTGRES_DSN)" || { \
+		echo "set dsn=... or SHELF_TEST_POSTGRES_DSN — these tests need a database they may wipe"; exit 1; }
+	SHELF_TEST_POSTGRES_DSN="$(if $(dsn),$(dsn),$(SHELF_TEST_POSTGRES_DSN))" \
+		$(GO) test -tags integration -count=1 ./internal/storage/postgres/
+
 .PHONY: test-cover
 test-cover: ## Tests with coverage report (coverage.html)
 	$(GO) test -race -count=1 -coverprofile=$(COVERAGE_FILE) -covermode=atomic ./...

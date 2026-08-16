@@ -12,7 +12,7 @@ import {
   sealInfo,
 } from '@/crypto/envelope';
 import { type Identity, splitPublicBlob } from '@/crypto/identity';
-import { type KeyGrantDto, ScopeKeyring } from '@/crypto/keyring';
+import { type GroupKeyDto, type KeyGrantDto, ScopeKeyring } from '@/crypto/keyring';
 import { seal } from '@/crypto/sealedbox';
 import { signRevision } from '@/crypto/signature';
 
@@ -236,9 +236,15 @@ async function openVault(summary: VaultSummaryDto, identity: Identity): Promise<
 }
 
 export async function loadKeyring(vaultId: number, identity: Identity): Promise<ScopeKeyring> {
-  const { grants } = await api.get<{ grants: KeyGrantDto[] }>(`/vaults/${vaultId}/keys`);
+  // Both halves in one go: a scope key sealed to a group is bytes until the group's own
+  // private key is in hand, and fetching them separately would leave a window where the
+  // tree renders group folders as locked.
+  const [{ grants }, { keys }] = await Promise.all([
+    api.get<{ grants: KeyGrantDto[] }>(`/vaults/${vaultId}/keys`),
+    api.get<{ keys: GroupKeyDto[] }>(`/vaults/${vaultId}/group-keys`),
+  ]);
 
-  return ScopeKeyring.fromGrants(grants, identity);
+  return ScopeKeyring.fromGrants(grants, identity, keys);
 }
 
 export async function loadTree(
@@ -432,6 +438,10 @@ export async function writeNote(
     {
       content: bytesToB64(sealed.ciphertext),
       content_nonce: bytesToB64(sealed.nonce),
+      // The key is part of the lock: content_seq alone does not move when a re-key does,
+      // so a write held up across a rotation has to be refused rather than relabelled.
+      key_scope_id: scope.id,
+      key_version: scope.version,
       ...(signature ? { signature } : {}),
     },
     { headers: { 'If-Match': String(contentSeq) } },

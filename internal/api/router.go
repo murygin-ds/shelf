@@ -58,6 +58,7 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		middleware.RequestID(),
 		middleware.Logger(deps.Logger, pathHealth, pathReady),
 		middleware.Recovery(deps.Logger),
+		middleware.SecurityHeaders(),
 		middleware.CORS(deps.Config.HTTP),
 		middleware.MaxBody(deps.Config.HTTP.MaxBodyBytes),
 	)

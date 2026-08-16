@@ -75,6 +75,96 @@ definitions:
           $ref: '#/definitions/access.GrantResponse'
         type: array
     type: object
+  access.GroupKeyResponse:
+    properties:
+      group_client_id:
+        type: string
+      group_id:
+        example: 3
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+    type: object
+  access.GroupKeysResponse:
+    properties:
+      keys:
+        items:
+          $ref: '#/definitions/access.GroupKeyResponse'
+        type: array
+    type: object
+  access.GroupMemberResponse:
+    properties:
+      display_name:
+        example: Marta Chen
+        type: string
+      fingerprint:
+        example: A1B2 C3D4 E5F6 G7H8
+        type: string
+      key_version:
+        example: 1
+        type: integer
+      login:
+        example: marta@acme.dev
+        type: string
+      user_id:
+        example: 7
+        type: integer
+    type: object
+  access.GroupResponse:
+    properties:
+      client_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: integer
+      id:
+        example: 3
+        type: integer
+      key_version:
+        example: 1
+        type: integer
+      members:
+        items:
+          $ref: '#/definitions/access.GroupMemberResponse'
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
+      public_key:
+        items:
+          format: byte
+          type: integer
+        type: array
+      vault_id:
+        example: 12
+        type: integer
+    type: object
+  access.GroupsResponse:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/access.GroupResponse'
+        type: array
+    type: object
   access.InviteResponse:
     properties:
       created_at:
@@ -176,6 +266,48 @@ definitions:
           format: byte
           type: integer
         type: array
+    type: object
+  access.createGroupRequest:
+    properties:
+      client_id:
+        type: string
+      members:
+        description: |-
+          Members must include the caller: the private key exists only in these copies, and a
+          group its own manager cannot open is a group nobody can ever add to.
+        items:
+          $ref: '#/definitions/access.sealedGroupKeyRequest'
+        maxItems: 200
+        minItems: 1
+        type: array
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      public_key:
+        description: |-
+          PublicKey is the group's raw P-256 agreement key. A group never writes, so it needs
+          no signing key — there would be nothing to attribute.
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - client_id
+    - members
+    - meta
+    - meta_nonce
+    - public_key
     type: object
   access.createInviteRequest:
     properties:
@@ -298,6 +430,30 @@ definitions:
     required:
     - key_grants
     type: object
+  access.sealedGroupKeyRequest:
+    properties:
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      user_id:
+        minimum: 1
+        type: integer
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 4096
+        minItems: 32
+        type: array
+    required:
+    - nonce
+    - user_id
+    - wrapped_key
+    type: object
   access.sealedKeyRequest:
     properties:
       key_version:
@@ -332,6 +488,31 @@ definitions:
     - scope_id
     - wrapped_key
     type: object
+  access.setGroupMembersRequest:
+    properties:
+      key_grants:
+        items:
+          $ref: '#/definitions/access.sealedKeyRequest'
+        maxItems: 256
+        type: array
+      members:
+        items:
+          $ref: '#/definitions/access.sealedGroupKeyRequest'
+        maxItems: 200
+        minItems: 1
+        type: array
+      public_key:
+        description: |-
+          PublicKey and Keys are required when somebody is being dropped: the copy they hold
+          opens every scope the group reaches, and deleting rows on the server does not take
+          that back.
+        items:
+          format: byte
+          type: integer
+        type: array
+    required:
+    - members
+    type: object
   access.setRoleRequest:
     properties:
       role:
@@ -342,6 +523,26 @@ definitions:
         type: string
     required:
     - role
+    type: object
+  access.updateGroupRequest:
+    properties:
+      meta:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8192
+        minItems: 16
+        type: array
+      meta_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+    required:
+    - meta
+    - meta_nonce
     type: object
   api.HealthResponse:
     properties:
@@ -2702,6 +2903,81 @@ paths:
       summary: Restore a folder
       tags:
       - folders
+  /api/v1/groups/{id}:
+    delete:
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a group
+      tags:
+      - access
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the new name, encrypted
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.updateGroupRequest'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Rename a group
+      tags:
+      - access
+  /api/v1/groups/{id}/members:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the group key sealed to each member
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.setGroupMembersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a group's members
+      tags:
+      - access
   /api/v1/invites/lookup:
     post:
       consumes:
@@ -3267,6 +3543,77 @@ paths:
       summary: Read the note graph
       tags:
       - graph
+  /api/v1/vaults/{id}/group-keys:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupKeysResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the caller's group keys
+      tags:
+      - access
+  /api/v1/vaults/{id}/groups:
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.GroupsResponse'
+      security:
+      - BearerAuth: []
+      summary: List groups
+      tags:
+      - access
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: the group key sealed to each founding member
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/access.createGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/access.GroupResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a group
+      tags:
+      - access
   /api/v1/vaults/{id}/invites:
     get:
       parameters:

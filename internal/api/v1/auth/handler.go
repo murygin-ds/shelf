@@ -39,7 +39,10 @@ type Service interface {
 // Limits holds the rate limiters of the endpoints used to guess credentials.
 // A zero field means "no limit".
 type Limits struct {
-	LoginIP         middleware.Limiter
+	LoginIP middleware.Limiter
+	// RegisterIP bounds account creation. Registering runs Argon2id twice at 64 MiB, so an
+	// unbounded endpoint is a memory exhaustion primitive that needs no credentials at all.
+	RegisterIP      middleware.Limiter
 	LoginAccount    middleware.Limiter
 	RecoveryIP      middleware.Limiter
 	RecoveryAccount middleware.Limiter
@@ -48,6 +51,10 @@ type Limits struct {
 func (l Limits) orUnlimited() Limits {
 	if l.LoginIP == nil {
 		l.LoginIP = ratelimit.Nop{}
+	}
+
+	if l.RegisterIP == nil {
+		l.RegisterIP = ratelimit.Nop{}
 	}
 
 	if l.LoginAccount == nil {
@@ -81,7 +88,7 @@ func NewHandler(service Service, limits Limits, log *zap.Logger) *Handler {
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	group := rg.Group("/auth")
 
-	group.POST("/register", h.Register)
+	group.POST("/register", middleware.RateLimitByIP(h.limits.RegisterIP), h.Register)
 	group.POST("/prelogin", h.Prelogin)
 	group.POST("/login", middleware.RateLimitByIP(h.limits.LoginIP), h.Login)
 	group.POST("/refresh", h.Refresh)

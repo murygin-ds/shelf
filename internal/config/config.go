@@ -161,6 +161,9 @@ type RateLimit struct {
 	// ShareIP counts public-link lookups from a single address. Same reasoning as InviteIP,
 	// with a wider allowance: a note passed round a team is opened from one office
 	ShareIP Rule `mapstructure:"share_ip"`
+	// RegisterIP counts account creations from a single address. Registration is the one
+	// unauthenticated endpoint that runs Argon2id, twice, at 64 MiB
+	RegisterIP Rule `mapstructure:"register_ip"`
 }
 
 // Rule is the allowed number of requests per window
@@ -264,9 +267,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("http.write_timeout", 10*time.Second)
 	v.SetDefault("http.idle_timeout", time.Minute)
 	v.SetDefault("http.shutdown_timeout", 10*time.Second)
-	v.SetDefault("http.allowed_origins", []string{"*"})
+	// Same-origin by construction: the binary serves the app it talks to.
+	v.SetDefault("http.allowed_origins", []string{})
 	v.SetDefault("http.trusted_proxies", []string{})
-	v.SetDefault("http.swagger_enabled", true)
+	// The API surface is not a secret, but publishing it to anonymous visitors is a
+	// choice a deployer should make rather than inherit.
+	v.SetDefault("http.swagger_enabled", false)
 	v.SetDefault("http.max_body_bytes", 8*1024*1024)
 	v.SetDefault("http.static_cache_max_age", 365*24*time.Hour)
 
@@ -275,7 +281,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("postgres.user", "postgres")
 	v.SetDefault("postgres.password", "")
 	v.SetDefault("postgres.database", "shelf")
-	v.SetDefault("postgres.ssl_mode", "disable")
+	// Anything but a unix socket or the same host sends credentials in the clear.
+	v.SetDefault("postgres.ssl_mode", "prefer")
 	v.SetDefault("postgres.max_conns", 10)
 	v.SetDefault("postgres.min_conns", 2)
 	v.SetDefault("postgres.max_conn_lifetime", 30*time.Minute)
@@ -306,6 +313,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.rate_limit.invite_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.share_ip.limit", 60)
 	v.SetDefault("auth.rate_limit.share_ip.window", 15*time.Minute)
+	v.SetDefault("auth.rate_limit.register_ip.limit", 20)
+	v.SetDefault("auth.rate_limit.register_ip.window", time.Hour)
 
 	v.SetDefault("log.level", "debug")
 	v.SetDefault("log.format", "console")
