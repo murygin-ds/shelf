@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { search } from '@/lib/search';
 import { useWorkspace } from '@/store/workspace';
+import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
 
 import styles from './palette.module.css';
@@ -16,6 +17,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const { index, tree, openNote, setQuery, setView } = useWorkspace();
   const [term, setTerm] = useState('');
   const [cursor, setCursor] = useState(0);
+  const dismiss = useDismiss(onClose);
 
   const hits = useMemo(() => search(index, term).slice(0, MAX_ROWS), [index, term]);
 
@@ -55,8 +57,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   }, [hits.length, onClose]);
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.panel} onClick={(event) => event.stopPropagation()}>
+    <div className={styles.overlay} {...dismiss}>
+      <div className={styles.panel}>
         <div className={styles.head}>
           <Icon name="search" size={16} style={{ color: 'var(--text-quiet)' }} />
           <input

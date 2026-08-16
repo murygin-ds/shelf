@@ -1,13 +1,18 @@
-// Throwaway harness for eyeballing the live-preview extension outside the locked app.
-// Deleted once the behaviour is confirmed.
+// Throwaway harness for exercising the new editor and the dialog dismissal outside the
+// locked app. Deleted once the behaviour is confirmed.
+import { createElement, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 
 import { editorTheme, livePreview } from './src/features/editor/livepreview';
+import { useNamePrompt } from './src/ui/NamePrompt';
 import './src/styles/theme.css';
 import '@fontsource/instrument-sans/400.css';
+import '@fontsource/instrument-sans/600.css';
 import '@fontsource/jetbrains-mono/400.css';
 
 const doc = `# Test
@@ -15,25 +20,6 @@ const doc = `# Test
 123
 
 321321321
-
-## Second level
-
-Some **bold** and *em* and \`code\` and [a link](https://example.com).
-
-> quoted line one
-> quoted line two
-
-- one
-- two
-
-\`\`\`js
-const x = 1;
-\`\`\`
-
----
-
-Setext title
-============
 `;
 
 const view = new EditorView({
@@ -51,11 +37,18 @@ const view = new EditorView({
   }),
 });
 
-// Handles for driving it from the console.
-Object.assign(window as unknown as Record<string, unknown>, {
-  cm: view,
-  put: (pos: number) => {
-    view.focus();
-    view.dispatch({ selection: { anchor: pos } });
-  },
-});
+const closed: Array<string | null> = [];
+
+function Dialog() {
+  const { ask, dialog } = useNamePrompt();
+
+  useEffect(() => {
+    void ask('Folder name', 'New folder').then((name) => closed.push(name));
+  }, [ask]);
+
+  return dialog;
+}
+
+createRoot(document.getElementById('dialog')!).render(createElement(Dialog));
+
+Object.assign(window as unknown as Record<string, unknown>, { cm: view, closed });

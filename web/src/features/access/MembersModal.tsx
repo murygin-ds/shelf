@@ -8,6 +8,7 @@ import type { Role } from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
+import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
 import { tip } from '@/ui/Tooltip';
 import { useNamePrompt } from '@/ui/NamePrompt';
@@ -28,6 +29,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<RekeyProgress | null>(null);
+  const dismiss = useDismiss(onClose);
 
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = vault?.role === 'owner' || vault?.role === 'admin';
@@ -123,11 +125,8 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        className={`${styles.modal} ${styles.wide}`}
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div className={styles.overlay} {...dismiss}>
+      <div className={`${styles.modal} ${styles.wide}`}>
         <div className={styles.head}>
           <div>
             <div className={styles.title}>Members &amp; access</div>

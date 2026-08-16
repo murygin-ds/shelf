@@ -1,5 +1,6 @@
 import { type FormEvent, type ReactElement, useCallback, useState } from 'react';
 
+import { useDismiss } from './dismiss';
 import styles from './nameprompt.module.css';
 
 interface Request {
@@ -45,6 +46,7 @@ export function useNamePrompt(): {
 
 function NamePrompt({ request, onClose }: { request: Request; onClose: (name: string | null) => void }) {
   const [value, setValue] = useState(request.initial);
+  const dismiss = useDismiss(() => onClose(null));
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -54,8 +56,8 @@ function NamePrompt({ request, onClose }: { request: Request; onClose: (name: st
   };
 
   return (
-    <div className={styles.overlay} onClick={() => onClose(null)}>
-      <form className={styles.card} onSubmit={submit} onClick={(event) => event.stopPropagation()}>
+    <div className={styles.overlay} {...dismiss}>
+      <form className={styles.card} onSubmit={submit}>
         <label className={styles.label} htmlFor="name-prompt">
           {request.label}
         </label>
