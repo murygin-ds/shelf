@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language';
-import type { Line, Range } from '@codemirror/state';
+import type { EditorState, Line, Range } from '@codemirror/state';
 import {
   Decoration,
   EditorView,
@@ -18,7 +18,7 @@ import {
  * wrong and no way for a note body to become markup.
  */
 
-interface Span {
+export interface Span {
   from: number;
   to: number;
 }
@@ -41,6 +41,7 @@ const INLINE: Record<string, string> = {
   InlineCode: 'cm-md-code',
   Link: 'cm-md-link',
   Image: 'cm-md-link',
+  Autolink: 'cm-md-link',
 };
 
 /**
@@ -55,20 +56,27 @@ function cursorSpans(view: EditorView): Span[] {
   return view.state.selection.ranges.map((range) => ({ from: range.from, to: range.to }));
 }
 
-function isRaw(spans: Span[], line: Line): boolean {
+function isRaw(spans: readonly Span[], line: Line): boolean {
   return spans.some((span) => span.from <= line.to && span.to >= line.from);
 }
 
-interface Built {
+export interface Built {
   decorations: DecorationSet;
   /** Only the concealed ranges, so arrow keys step over hidden markup in one press. */
   hidden: DecorationSet;
 }
 
-function build(view: EditorView): Built {
-  const state = view.state;
+/**
+ * Split out from the plugin so the part with all the judgement in it can be exercised
+ * without a DOM: given a document, what is visible and where the caret is, this says what
+ * gets styled and what gets hidden.
+ */
+export function buildDecorations(
+  state: EditorState,
+  visibleRanges: readonly Span[],
+  spans: readonly Span[],
+): Built {
   const tree = syntaxTree(state);
-  const spans = cursorSpans(view);
 
   const all: Range<Decoration>[] = [];
   const hidden: Range<Decoration>[] = [];
@@ -78,11 +86,19 @@ function build(view: EditorView): Built {
     all.push(Decoration.line({ class: cls }).range(state.doc.lineAt(at).from));
   };
 
-  const block = (from: number, to: number, cls: string, edges?: [string, string]) => {
-    const first = state.doc.lineAt(from).number;
-    const last = state.doc.lineAt(to).number;
+  /**
+   * `node` is the block's true extent and `visible` the slice on screen. The edge classes
+   * are decided by the former: a viewport boundary landing inside a fenced block would
+   * otherwise round off its corners in the middle of the code.
+   */
+  const block = (node: Span, visible: Span, cls: string, edges?: [string, string]) => {
+    const first = state.doc.lineAt(node.from).number;
+    const last = state.doc.lineAt(node.to).number;
 
-    for (let pos = from; pos <= to; ) {
+    const start = Math.max(node.from, visible.from);
+    const end = Math.min(node.to, visible.to);
+
+    for (let pos = start; pos <= end; ) {
       const at = state.doc.lineAt(pos);
 
       line(at.from, cls);
@@ -113,23 +129,21 @@ function build(view: EditorView): Built {
     else conceal(from, to);
   };
 
-  for (const range of view.visibleRanges) {
+  for (const range of visibleRanges) {
     tree.iterate({
       from: range.from,
       to: range.to,
       enter: (node) => {
         const name = node.name;
-        const from = Math.max(node.from, range.from);
-        const to = Math.min(node.to, range.to);
 
         const heading = HEADING[name];
         if (heading) {
-          block(from, to, heading);
+          block(node, range, heading);
           return;
         }
 
         if (name === 'Blockquote') {
-          block(from, to, 'cm-md-quote');
+          block(node, range, 'cm-md-quote');
           return;
         }
 
@@ -139,7 +153,7 @@ function build(view: EditorView): Built {
         }
 
         if (name === 'FencedCode' || name === 'CodeBlock') {
-          block(from, to, 'cm-md-codeline', ['cm-md-codefirst', 'cm-md-codelast']);
+          block(node, range, 'cm-md-codeline', ['cm-md-codefirst', 'cm-md-codelast']);
           return;
         }
 
@@ -217,12 +231,12 @@ function build(view: EditorView): Built {
             return;
 
           case 'URL':
-            // A bare autolink emits URL straight under Paragraph — there it is the text.
-            if (
-              node.matchContext(['Link']) ||
-              node.matchContext(['Image']) ||
-              node.matchContext(['Autolink'])
-            ) {
+            // Only where the construct has separate link text to fall back on. Inside
+            // `<https://example.com>` the URL is the only text there is, and hiding it
+            // alongside the angle brackets leaves an empty line; a note holding one
+            // bookmark would render blank. A bare autolink emits URL straight under
+            // Paragraph and is likewise the text itself.
+            if (node.matchContext(['Link']) || node.matchContext(['Image'])) {
               marker(node.from, node.to, raw);
             }
 
@@ -242,6 +256,10 @@ function build(view: EditorView): Built {
     decorations: Decoration.set(all, true),
     hidden: Decoration.set(hidden, true),
   };
+}
+
+function build(view: EditorView): Built {
+  return buildDecorations(view.state, view.visibleRanges, cursorSpans(view));
 }
 
 class LivePreview {
