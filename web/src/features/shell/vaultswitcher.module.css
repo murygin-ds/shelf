@@ -1,0 +1,239 @@
+.switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  max-width: 300px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+}
+
+.trigger:hover,
+.triggerOpen {
+  background: var(--surface-hover);
+}
+
+.triggerName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: var(--text-quiet);
+}
+
+/* The mark: filled for a vault of your own, outlined for one you were let into. */
+
+.mark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.markJoined {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-hover);
+  color: var(--text-muted);
+}
+
+.markEmpty {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text-disabled);
+}
+
+.pill {
+  flex: none;
+  padding: 2px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+/* Menu */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.menu {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  width: 328px;
+  z-index: 51;
+  padding: 6px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+  animation: switcher-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
+}
+
+@keyframes switcher-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.list {
+  max-height: 330px;
+  overflow-y: auto;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
+
+.groupHead:first-child {
+  padding-top: 5px;
+}
+
+.groupRule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.rowActive {
+  background: var(--surface-active);
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowName {
+  display: block;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: var(--text-quiet);
+}
+
+.check {
+  flex: none;
+  color: var(--accent);
+}
+
+.warn {
+  flex: none;
+  color: var(--warn);
+}
+
+.quiet {
+  flex: none;
+  color: var(--text-disabled);
+}
+
+.empty {
+  margin: 0;
+  padding: 10px 9px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-quiet);
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 4px;
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.action:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.actionIcon {
+  width: 14px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+}

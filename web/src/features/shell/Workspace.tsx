@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import { MembersModal } from '@/features/access/MembersModal';
 import { PermissionsModal } from '@/features/access/PermissionsModal';
@@ -10,14 +9,14 @@ import { Inspector } from '@/features/inspector/Inspector';
 import { SearchView } from '@/features/search/SearchView';
 import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
-import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
-import { Icon, type IconName } from '@/ui/Icon';
+import { Icon } from '@/ui/Icon';
 import { NamePrompt, useNamePrompt } from '@/ui/NamePrompt';
 import { tip } from '@/ui/Tooltip';
 
 import { CommandPalette } from './CommandPalette';
+import { VaultSwitcher } from './VaultSwitcher';
 import styles from './shell.module.css';
 
 export function Workspace() {
@@ -38,13 +37,10 @@ export function Workspace() {
     load,
   } = workspace;
 
-  const [menuOpen, setMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [permissionsFor, setPermissionsFor] = useState<number | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
-  const [iconPicker, setIconPicker] = useState<PickerTarget | null>(null);
-  const navigate = useNavigate();
   const { ask, dialog } = useNamePrompt();
 
   useEffect(() => {
@@ -77,13 +73,10 @@ export function Workspace() {
       ? null
       : (workspace.tree.folders.find((folder) => folder.id === permissionsFor) ?? null);
 
-  const newVault = () => {
-    setMenuOpen(false);
-
+  const newVault = () =>
     void ask('Vault name', 'Personal').then((name) => {
       if (name && identity) void workspace.createVault(name, identity);
     });
-  };
 
   // A fresh account has nowhere to put anything: folders, notes and keys all hang off a
   // vault, so every create verb in the shell is a no-op until one exists. The first one is
@@ -110,86 +103,7 @@ export function Workspace() {
       ) : null}
 
       <div className={styles.topbar}>
-        <div className={styles.switcher}>
-          {/* Two controls, not one: the mark opens the icon picker and the name opens the
-              vault list, and a button cannot be nested inside another button. */}
-          <button
-            type="button"
-            className={styles.vaultMark}
-            {...tip('Change vault icon')}
-            disabled={!vault}
-            onClick={(event) => {
-              const anchor = event.currentTarget.getBoundingClientRect();
-
-              setIconPicker({
-                ...pickerPosition(anchor),
-                current: vault?.emoji,
-                onPick: (icon) => void workspace.setVaultIcon(icon),
-              });
-            }}
-          >
-            <Icon name={(vault?.emoji as IconName) ?? 'vault'} size={17} />
-          </button>
-
-          <button
-            type="button"
-            className={styles.switcherButton}
-            onClick={() => setMenuOpen((value) => !value)}
-          >
-            <span>{vault?.name ?? (loading ? 'Loading…' : 'No vault')}</span>
-            <Icon name="down" size={12} style={{ color: 'var(--text-quiet)' }} />
-          </button>
-
-          {menuOpen ? (
-            <div className={styles.menu}>
-              {vaults.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={styles.menuItem}
-                  onClick={() => {
-                    if (identity) void workspace.selectVault(item.id, identity);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Icon
-                    name={(item.emoji as IconName) ?? 'vault'}
-                    size={15}
-                    style={{ flex: 'none', color: 'var(--text-faint)' }}
-                  />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span className={styles.menuName}>{item.name}</span>
-                    <span className={styles.menuMeta} style={{ display: 'block' }}>
-                      {item.noteCount} notes · {item.memberCount} member
-                      {item.memberCount === 1 ? '' : 's'}
-                    </span>
-                  </span>
-                  <span className={styles.rolePill}>{item.role.toUpperCase()}</span>
-                </button>
-              ))}
-
-              <div className={styles.menuDivider} />
-
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button type="button" className={styles.menuAction} onClick={newVault}>
-                  <Icon name="plus" size={13} />
-                  New vault
-                </button>
-                <button
-                  type="button"
-                  className={styles.menuAction}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate('/join');
-                  }}
-                >
-                  <Icon name="key" size={13} />
-                  Join with code
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <VaultSwitcher onNewVault={newVault} />
 
         <div className={styles.breadcrumb}>
           {open ? (
@@ -337,10 +251,6 @@ export function Workspace() {
         </span>
         <span>{user?.login.toUpperCase()}</span>
       </div>
-
-      {iconPicker ? (
-        <IconPicker target={iconPicker} onClose={() => setIconPicker(null)} />
-      ) : null}
 
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
       {membersOpen ? <MembersModal onClose={() => setMembersOpen(false)} /> : null}

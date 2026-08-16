@@ -264,6 +264,12 @@ export async function updateVaultMeta(
   });
 }
 
+/**
+ * Destroys a vault and everything sealed under it, for every member. Owner only, and there
+ * is no trash behind it: the ciphertext is gone, and no key anybody kept can bring it back.
+ */
+export const deleteVault = (vaultId: number) => api.delete<void>(`/vaults/${vaultId}`);
+
 export async function loadKeyring(vaultId: number, identity: Identity): Promise<ScopeKeyring> {
   // Both halves in one go: a scope key sealed to a group is bytes until the group's own
   // private key is in hand, and fetching them separately would leave a window where the

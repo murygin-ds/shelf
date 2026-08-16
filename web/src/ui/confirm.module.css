@@ -1,0 +1,113 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18vh;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-modal);
+}
+
+.title {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.body {
+  margin: 9px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-body);
+}
+
+.label {
+  display: block;
+  margin: 16px 0 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.phrase {
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.input:focus {
+  border-color: var(--focus-border);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.cancel,
+.destroy {
+  flex: 1;
+  height: 38px;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cancel {
+  border: 1px solid var(--border-strong);
+  background: none;
+  color: var(--text-secondary);
+}
+
+.cancel:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+/* Destructive buttons are outlined rather than filled: a solid red block reads as the
+   default action, and it never is one. */
+.destroy {
+  border: 1px solid rgba(201, 128, 128, 0.45);
+  background: rgba(201, 128, 128, 0.1);
+  color: var(--danger);
+}
+
+.destroy:hover:not(:disabled) {
+  background: rgba(201, 128, 128, 0.18);
+  border-color: var(--danger);
+}
+
+.destroy:disabled {
+  cursor: default;
+  opacity: 0.45;
+}

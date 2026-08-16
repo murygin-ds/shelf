@@ -22,6 +22,7 @@ type Service interface {
 	Lookup(ctx context.Context, login string) (*access.Directory, error)
 	SetRole(ctx context.Context, actorID, vaultID, targetID int64, role vault.Role) error
 	RemoveMember(ctx context.Context, actorID, vaultID, targetID int64) ([]int64, error)
+	Leave(ctx context.Context, userID, vaultID int64) ([]int64, error)
 
 	Grants(ctx context.Context, userID, vaultID int64, scopeType vault.ScopeType, scopeRefID int64) ([]access.Grant, error)
 	PutGrant(ctx context.Context, actorID int64, in access.GrantInput) (*access.Grant, error)
@@ -63,6 +64,9 @@ func (h *Handler) RegisterRoutes(public, protected *gin.RouterGroup) {
 	vaults.GET("/members", h.Members)
 	vaults.PATCH("/members/:member_id", h.SetRole)
 	vaults.DELETE("/members/:member_id", h.RemoveMember)
+	// Its own verb rather than a self-shaped DELETE on /members: the router cannot hold a
+	// literal beside :member_id, and leaving answers to different rules than removing.
+	vaults.POST("/leave", h.Leave)
 	vaults.GET("/grants", h.Grants)
 	vaults.PUT("/grants", h.PutGrant)
 	vaults.DELETE("/grants/:grant_id", h.DeleteGrant)
@@ -199,6 +203,35 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 	scopes, err := h.service.RemoveMember(c.Request.Context(), userID, vaultID, memberID)
 	if err != nil {
 		h.fail(c, "remove member", err)
+		return
+	}
+
+	if scopes == nil {
+		scopes = []int64{}
+	}
+
+	response.OK(c, RemovalResponse{PendingRotation: scopes})
+}
+
+// Leave gives up the caller's own membership.
+//
+//	@Summary	Leave a vault
+//	@Tags		access
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"vault id"
+//	@Success	200	{object}	RemovalResponse
+//	@Failure	403	{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/leave [post]
+func (h *Handler) Leave(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	scopes, err := h.service.Leave(c.Request.Context(), userID, vaultID)
+	if err != nil {
+		h.fail(c, "leave vault", err)
 		return
 	}
 

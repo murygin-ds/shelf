@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { ApiError, OfflineError } from '@/api/client';
 import { ErrorCode } from '@/api/types';
+import * as collab from '@/api/collab';
 import * as graphApi from '@/api/graph';
 import * as rekeyApi from '@/api/rekey';
 import * as ws from '@/api/workspace';
@@ -55,6 +56,11 @@ interface WorkspaceState {
   load: (identity: Identity) => Promise<void>;
   selectVault: (vaultId: number, identity: Identity) => Promise<void>;
   createVault: (name: string, identity: Identity) => Promise<void>;
+  /**
+   * Destroys a vault of one's own, or walks out of somebody else's. Both end the same way
+   * here — the vault is gone from this account — so they share the aftermath.
+   */
+  removeVault: (vaultId: number, mode: 'delete' | 'leave', identity: Identity) => Promise<void>;
   syncNow: () => Promise<void>;
   startPolling: () => () => void;
   toggleFolder: (folderId: number) => void;
@@ -185,6 +191,49 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const created = await ws.createVault(name, undefined, identity);
       set({ vaults: await ws.listVaults(identity) });
       await get().selectVault(created.id, identity);
+    } catch (cause) {
+      report(set, cause);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  removeVault: async (vaultId, mode, identity) => {
+    set({ loading: true, error: null });
+
+    try {
+      await (mode === 'delete' ? ws.deleteVault(vaultId) : collab.leaveVault(vaultId));
+
+      // Whatever this device cached for it is unopenable from here on, and a queued write
+      // for it can never land. Both go with the vault rather than sitting in IndexedDB.
+      await cache.dropVault(vaultId);
+
+      const vaults = await ws.listVaults(identity);
+      set({ vaults });
+
+      // Another vault was on screen, so nothing the reader is looking at has moved.
+      if (get().vaultId !== vaultId) return;
+
+      const next = vaults[0];
+      if (next) {
+        await get().selectVault(next.id, identity);
+        return;
+      }
+
+      // Nothing left to fall back to. The shell's first-vault prompt takes it from here,
+      // which it cannot do while the tree of a vault that no longer exists is still up.
+      set({
+        vaultId: null,
+        keyring: null,
+        tree: emptyTree,
+        trashed: emptyTree,
+        tabs: [],
+        expanded: new Set(),
+        open: null,
+        index: [],
+        coverage: { covered: 0, total: 0 },
+        queued: 0,
+      });
     } catch (cause) {
       report(set, cause);
     } finally {

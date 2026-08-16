@@ -3753,6 +3753,30 @@ paths:
       summary: List the caller's key grants
       tags:
       - vaults
+  /api/v1/vaults/{id}/leave:
+    post:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.RemovalResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Leave a vault
+      tags:
+      - access
   /api/v1/vaults/{id}/members:
     get:
       parameters:
