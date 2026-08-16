@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type ReactElement, useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { useDismiss } from './dismiss';
 import styles from './nameprompt.module.css';
@@ -38,16 +38,43 @@ export function useNamePrompt(): {
   };
 
   const dialog = request ? (
-    <NamePrompt key={request.label} request={request} onClose={close} />
+    <NamePrompt
+      key={request.label}
+      label={request.label}
+      initial={request.initial}
+      onSubmit={close}
+      onCancel={() => close(null)}
+    />
   ) : null;
 
   return { ask, dialog };
 }
 
-function NamePrompt({ request, onClose }: { request: Request; onClose: (name: string | null) => void }) {
-  const [value, setValue] = useState(request.initial);
-  const dismiss = useDismiss(() => onClose(null));
+export function NamePrompt({
+  label,
+  initial,
+  hint,
+  error,
+  confirmLabel = 'OK',
+  busy = false,
+  onSubmit,
+  onCancel,
+}: {
+  label: string;
+  initial: string;
+  hint?: string;
+  error?: string | null;
+  confirmLabel?: string;
+  /** Keeps a slow create from being fired twice. */
+  busy?: boolean;
+  onSubmit: (name: string) => void;
+  /** Left out when an answer is required: no Cancel, no Escape, no backdrop dismissal. */
+  onCancel?: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const dismiss = useDismiss(() => onCancel?.());
   const field = useRef<HTMLInputElement | null>(null);
+  const fieldId = useId();
 
   // Renaming almost always means replacing the whole name, so the suggestion comes up
   // selected and typing overwrites it. Done here rather than through `autoFocus` and an
@@ -59,36 +86,44 @@ function NamePrompt({ request, onClose }: { request: Request; onClose: (name: st
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
 
     // An empty box means the suggestion, the way a native prompt's pre-filled value does.
-    onClose(value.trim() || request.initial);
+    onSubmit(value.trim() || initial);
   };
 
   return (
     <div className={styles.overlay} {...dismiss}>
       <form className={styles.card} onSubmit={submit}>
-        <label className={styles.label} htmlFor="name-prompt">
-          {request.label}
+        <label className={styles.label} htmlFor={fieldId}>
+          {label}
         </label>
+
+        {hint ? <p className={styles.hint}>{hint}</p> : null}
 
         <input
           ref={field}
-          id="name-prompt"
+          id={fieldId}
           className={styles.input}
           value={value}
           autoFocus
+          disabled={busy}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Escape') onClose(null);
+            if (event.key === 'Escape') onCancel?.();
           }}
         />
 
+        {error ? <p className={styles.error}>{error}</p> : null}
+
         <div className={styles.actions}>
-          <button type="button" className={styles.cancel} onClick={() => onClose(null)}>
-            Cancel
-          </button>
-          <button type="submit" className={styles.confirm}>
-            OK
+          {onCancel ? (
+            <button type="button" className={styles.cancel} onClick={() => onCancel()}>
+              Cancel
+            </button>
+          ) : null}
+          <button type="submit" className={styles.confirm} disabled={busy}>
+            {confirmLabel}
           </button>
         </div>
       </form>

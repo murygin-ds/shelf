@@ -14,7 +14,7 @@ import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sideba
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
-import { useNamePrompt } from '@/ui/NamePrompt';
+import { NamePrompt, useNamePrompt } from '@/ui/NamePrompt';
 import { tip } from '@/ui/Tooltip';
 
 import { CommandPalette } from './CommandPalette';
@@ -23,8 +23,20 @@ import styles from './shell.module.css';
 export function Workspace() {
   const { user, identity, signOut, lock } = useSession();
   const workspace = useWorkspace();
-  const { vaults, vaultId, open, view, loading, error, offline, syncing, queued, coverage, load } =
-    workspace;
+  const {
+    vaults,
+    vaultId,
+    open,
+    view,
+    loaded,
+    loading,
+    error,
+    offline,
+    syncing,
+    queued,
+    coverage,
+    load,
+  } = workspace;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -73,9 +85,29 @@ export function Workspace() {
     });
   };
 
+  // A fresh account has nowhere to put anything: folders, notes and keys all hang off a
+  // vault, so every create verb in the shell is a no-op until one exists. The first one is
+  // therefore not a choice — this prompt has no cancel and stays up until a vault is made.
+  // `loaded` gates it: an empty list before the first read is just an unanswered request.
+  const needsFirstVault = loaded && vaults.length === 0;
+
   return (
     <div className={styles.app}>
       {dialog}
+
+      {needsFirstVault ? (
+        <NamePrompt
+          label="Name your first vault"
+          initial="Personal"
+          hint="Everything you write lives in a vault. Its key is generated on this device and sealed to your own public key, so nothing readable ever leaves it."
+          error={error}
+          confirmLabel="Create vault"
+          busy={loading}
+          onSubmit={(name) => {
+            if (identity) void workspace.createVault(name, identity);
+          }}
+        />
+      ) : null}
 
       <div className={styles.topbar}>
         <div className={styles.switcher}>
@@ -217,7 +249,9 @@ export function Workspace() {
         </div>
       </div>
 
-      {error ? (
+      {/* While the first-vault prompt is up it carries the error itself: a banner behind the
+          overlay would be unreadable and its close button unclickable. */}
+      {error && !needsFirstVault ? (
         <div className={styles.banner}>
           <Icon name="warn" size={14} />
           <span>{error}</span>

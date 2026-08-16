@@ -42,6 +42,8 @@ interface WorkspaceState {
   /** Decrypted, in memory only. Persisting it would put plaintext on disk. */
   index: IndexedNote[];
   coverage: { covered: number; total: number };
+  /** The vault list has been read at least once. An empty list only means something after it. */
+  loaded: boolean;
   loading: boolean;
   saving: boolean;
   syncing: boolean;
@@ -114,6 +116,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   query: '',
   index: [],
   coverage: { covered: 0, total: 0 },
+  loaded: false,
   loading: false,
   saving: false,
   syncing: false,
@@ -126,7 +129,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     try {
       const vaults = await ws.listVaults(identity);
-      set({ vaults });
+      set({ vaults, loaded: true });
 
       const first = vaults[0];
       if (first && get().vaultId === null) await get().selectVault(first.id, identity);
@@ -667,6 +670,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       coverage: { covered: 0, total: 0 },
       query: '',
       view: 'editor',
+      loaded: false,
       error: null,
     });
   },
