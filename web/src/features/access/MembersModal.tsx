@@ -9,6 +9,7 @@ import type { Identity } from '@/crypto/identity';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
+import { useNamePrompt } from '@/ui/NamePrompt';
 
 import styles from './access.module.css';
 
@@ -353,6 +354,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
   const [groups, setGroups] = useState<groupsApi.Group[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { ask, dialog } = useNamePrompt();
 
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = vault?.role === 'owner' || vault?.role === 'admin';
@@ -376,7 +378,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
   const create = async () => {
     if (vaultId === null || !keyring || !scope) return;
 
-    const name = window.prompt('Group name', 'Design');
+    const name = await ask('Group name', 'Design');
     if (!name) return;
 
     setBusy(true);
@@ -436,6 +438,8 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
 
   return (
     <>
+      {dialog}
+
       <div className={styles.section}>GROUPS · {groups.length}</div>
 
       {error ? <div className={styles.error}>{error}</div> : null}

@@ -13,6 +13,7 @@ import { Sidebar } from '@/features/sidebar/Sidebar';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
+import { useNamePrompt } from '@/ui/NamePrompt';
 
 import { CommandPalette } from './CommandPalette';
 import styles from './shell.module.css';
@@ -29,6 +30,7 @@ export function Workspace() {
   const [permissionsFor, setPermissionsFor] = useState<number | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
   const navigate = useNavigate();
+  const { ask, dialog } = useNamePrompt();
 
   useEffect(() => {
     if (identity) void load(identity);
@@ -61,13 +63,17 @@ export function Workspace() {
       : (workspace.tree.folders.find((folder) => folder.id === permissionsFor) ?? null);
 
   const newVault = () => {
-    const name = window.prompt('Vault name', 'Personal');
-    if (name && identity) void workspace.createVault(name.trim() || 'Personal', identity);
     setMenuOpen(false);
+
+    void ask('Vault name', 'Personal').then((name) => {
+      if (name && identity) void workspace.createVault(name, identity);
+    });
   };
 
   return (
     <div className={styles.app}>
+      {dialog}
+
       <div className={styles.topbar}>
         <div className={styles.switcher}>
           <button

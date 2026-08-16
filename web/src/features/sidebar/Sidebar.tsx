@@ -5,6 +5,7 @@ import { allTags } from '@/lib/search';
 import { useSession } from '@/store/session';
 import { treeRows, useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
+import { useNamePrompt } from '@/ui/NamePrompt';
 
 import { IconPicker, type PickerTarget, pickerPosition } from './IconPicker';
 import styles from './sidebar.module.css';
@@ -49,14 +50,11 @@ export function Sidebar({
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
 
-  const promptFor = (label: string, fallback: string): string | null => {
-    const value = window.prompt(label, fallback);
-
-    return value === null ? null : value.trim() || fallback;
-  };
+  const { ask, dialog } = useNamePrompt();
 
   return (
     <div className={styles.sidebar}>
+      {dialog}
       <div className={styles.search}>
         <button type="button" className={styles.searchButton} onClick={onOpenPalette}>
           <Icon name="search" />
@@ -111,10 +109,11 @@ export function Sidebar({
               type="button"
               className={styles.sectionButton}
               title="New folder"
-              onClick={() => {
-                const name = promptFor('Folder name', 'New folder');
-                if (name) void addFolder(null, name);
-              }}
+              onClick={() =>
+                void ask('Folder name', 'New folder').then((name) => {
+                  if (name) void addFolder(null, name);
+                })
+              }
             >
               <Icon name="folder" size={13} />
             </button>
@@ -122,10 +121,11 @@ export function Sidebar({
               type="button"
               className={styles.sectionButton}
               title="New note"
-              onClick={() => {
-                const title = promptFor('Note title', 'Untitled');
-                if (title) void addNote(null, title);
-              }}
+              onClick={() =>
+                void ask('Note title', 'Untitled').then((title) => {
+                  if (title) void addNote(null, title);
+                })
+              }
             >
               <Icon name="plus" size={13} />
             </button>
@@ -230,10 +230,11 @@ export function Sidebar({
                       type="button"
                       className={styles.rowAction}
                       title="New note here"
-                      onClick={() => {
-                        const title = promptFor('Note title', 'Untitled');
-                        if (title) void addNote(node.id, title);
-                      }}
+                      onClick={() =>
+                        void ask('Note title', 'Untitled').then((title) => {
+                          if (title) void addNote(node.id, title);
+                        })
+                      }
                     >
                       <Icon name="plus" size={12} />
                     </button>
@@ -242,10 +243,11 @@ export function Sidebar({
                     type="button"
                     className={styles.rowAction}
                     title="Rename"
-                    onClick={() => {
-                      const name = promptFor('Name', node.name);
-                      if (name && name !== node.name) void rename(node, kind, name);
-                    }}
+                    onClick={() =>
+                      void ask('Name', node.name).then((name) => {
+                        if (name && name !== node.name) void rename(node, kind, name);
+                      })
+                    }
                   >
                     <Icon name="tag" size={12} />
                   </button>
