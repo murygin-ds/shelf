@@ -13,12 +13,16 @@ import { useRef, type MouseEvent } from 'react';
  * backdrop" from "finished a selection somewhere else".
  */
 export function useDismiss(onClose: () => void): {
+  'data-modal': string;
   onMouseDown: (event: MouseEvent<HTMLElement>) => void;
   onClick: (event: MouseEvent<HTMLElement>) => void;
 } {
   const fromBackdrop = useRef(false);
 
   return {
+    // Says the layer is modal, for anything that has to know the app behind it is held
+    // still — the window-level menu reads it before offering verbs that would act there.
+    'data-modal': '',
     onMouseDown: (event) => {
       fromBackdrop.current = event.target === event.currentTarget;
     },

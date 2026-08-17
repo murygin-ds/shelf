@@ -32,8 +32,21 @@ export function IconPicker({ target, onClose }: { target: PickerTarget; onClose:
 
   return (
     <>
-      <div className={styles.backdrop} onClick={onClose} />
-      <div className={styles.picker} style={{ left: target.x, top: target.y }}>
+      {/* The right button answers here rather than falling through to the window, which would
+          offer to create a note over a picker that is either still open or already gone. */}
+      <div
+        className={styles.backdrop}
+        onClick={onClose}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onClose();
+        }}
+      />
+      <div
+        className={styles.picker}
+        style={{ left: target.x, top: target.y }}
+        onContextMenu={(event) => event.preventDefault()}
+      >
         <div className={styles.pickerHead}>
           <span className="label">ICON</span>
           <button

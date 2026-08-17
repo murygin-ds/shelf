@@ -12,6 +12,11 @@ import { useNamePrompt } from '@/ui/NamePrompt';
  * the page a note is laid out on, the empty canvas, every text field in the app. The platform
  * menu is suppressed there too, and until now nothing took its place — which is the one thing
  * suppressing it cannot be worth. This is what takes its place.
+ *
+ * What takes its place is not always the shell's verbs. In a text field the menu is about the
+ * field, the way the platform's was; under a dialog the shell is held still, so a note created
+ * from here would land somewhere the reader cannot see and the prompt for its name would stack
+ * over the question they are already answering.
  */
 export function RootMenu() {
   const { open: openMenu, menu } = useContextMenu();
@@ -26,7 +31,8 @@ export function RootMenu() {
 
       const field = fieldAt(event.target);
       const head = field ? fieldItems(field) : copyItems();
-      const items = [...head, ...appItems(ask, head.length > 0)];
+      const shell = !field && document.querySelector('[data-modal]') === null;
+      const items = shell ? [...head, ...appItems(ask, head.length > 0)] : head;
 
       if (items.length) openMenu(event, items);
     };
