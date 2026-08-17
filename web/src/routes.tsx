@@ -19,6 +19,10 @@ function RequireUnlocked({ children }: { children: ReactElement }) {
 
   if (status === 'kit') return <Navigate to={KIT_PATH} replace />;
 
+  // Nothing is drawn while the tab opens its unlock record. Redirecting on the way would
+  // flash the unlock screen and spend `from` on a navigation that is about to be undone.
+  if (status === 'resuming') return null;
+
   if (status !== 'unlocked') {
     // Carried so unlocking lands back on the note that was on screen rather than at the root.
     return (
@@ -37,6 +41,7 @@ function RequireAnonymous({ children }: { children: ReactElement }) {
   const status = useSession((state) => state.status);
 
   if (status === 'kit') return <Navigate to={KIT_PATH} replace />;
+  if (status === 'resuming') return null;
 
   return status === 'unlocked' ? <Navigate to="/" replace /> : children;
 }

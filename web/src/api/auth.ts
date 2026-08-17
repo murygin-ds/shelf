@@ -113,6 +113,19 @@ export async function unlock(passphrase: string): Promise<UnlockedSession> {
   return { user: await api.get<User>('/auth/me'), ...opened };
 }
 
+/**
+ * Rebuilds the session around a master key the tab restored from its unlock record: the
+ * one way in that derives nothing, because the passphrase was already proved by the unlock
+ * this record was written from. The identity keypairs are re-derived rather than stored,
+ * so the record stays a single wrapped key.
+ */
+export async function resumeWith(masterKey: CryptoKey): Promise<UnlockedSession> {
+  const keys = await api.get<Keys>('/auth/keys');
+  const identity = await openIdentity(keys, masterKey);
+
+  return { user: await api.get<User>('/auth/me'), identity, masterKey };
+}
+
 /** The display name is the one account field the server can read, so the only one it can change. */
 export function updateDisplayName(displayName: string): Promise<User> {
   return api.patch<User>('/auth/me', { display_name: displayName });
@@ -239,13 +252,15 @@ async function openKeys(
     wrappingKey,
   );
 
-  const identity = await unwrapIdentity(
+  return { identity: await openIdentity(keys, masterKey), masterKey };
+}
+
+function openIdentity(keys: Keys, masterKey: CryptoKey): Promise<Identity> {
+  return unwrapIdentity(
     b64ToBytes(keys.public_key),
     sealedFrom(keys.wrapped_private_key, keys.private_key_nonce),
     masterKey,
   );
-
-  return { identity, masterKey };
 }
 
 /** Builds a fresh passphrase wrap plus a rotated recovery key, which always travel together. */

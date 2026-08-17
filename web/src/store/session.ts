@@ -5,9 +5,12 @@ import { ApiError, clearSession, hasAccessToken, readSession, setSessionLostHand
 import { ErrorCode, type User } from '@/api/types';
 import type { Identity } from '@/crypto/identity';
 import { dropAll as dropCache } from '@/db/cache';
+import * as tabUnlock from '@/db/unlock';
 
 /**
  * anonymous — no session at all.
+ * resuming  — this tab left an unlock record behind and is opening it. Transient, and only
+ *             ever the state the app starts in.
  * locked    — the refresh token survived a reload but the master key did not, so the
  *             passphrase has to be entered again. This is the "KEY UNLOCKED" indicator.
  * kit       — keys are ready, but a freshly issued recovery code has not been acknowledged.
@@ -15,7 +18,7 @@ import { dropAll as dropCache } from '@/db/cache';
  *             where that code is ever shown.
  * unlocked  — keys are in memory and the vaults can be read.
  */
-export type SessionStatus = 'anonymous' | 'locked' | 'kit' | 'unlocked';
+export type SessionStatus = 'anonymous' | 'resuming' | 'locked' | 'kit' | 'unlocked';
 
 interface SessionState {
   status: SessionStatus;
@@ -31,6 +34,7 @@ interface SessionState {
 
   signIn: (login: string, passphrase: string) => Promise<void>;
   unlock: (passphrase: string) => Promise<void>;
+  resume: () => Promise<void>;
   register: (input: authApi.RegisterInput) => Promise<void>;
   recover: (login: string, code: string, passphrase: string) => Promise<void>;
   acknowledgeKit: () => void;
@@ -43,7 +47,9 @@ interface SessionState {
 }
 
 function initialStatus(): SessionStatus {
-  return readSession() ? 'locked' : 'anonymous';
+  if (!readSession()) return 'anonymous';
+
+  return tabUnlock.pending() ? 'resuming' : 'locked';
 }
 
 export const useSession = create<SessionState>((set, get) => ({
@@ -59,6 +65,8 @@ export const useSession = create<SessionState>((set, get) => ({
   signIn: async (login, passphrase) => {
     await run(set, async () => {
       const session = await authApi.signIn(login, passphrase);
+      await tabUnlock.remember(session.user.login, session.masterKey);
+
       set({ ...session, status: 'unlocked', knownLogin: session.user.login });
     });
   },
@@ -66,8 +74,39 @@ export const useSession = create<SessionState>((set, get) => ({
   unlock: async (passphrase) => {
     await run(set, async () => {
       const session = await authApi.unlock(passphrase);
+      await tabUnlock.remember(session.user.login, session.masterKey);
+
       set({ ...session, status: 'unlocked', knownLogin: session.user.login });
     });
+  },
+
+  /**
+   * Opens the record this tab left behind before its last reload. Runs once, at startup,
+   * and every way it can fail lands on the same place: the unlock screen. A record that
+   * does not open, a session the server has since revoked and a browser with no storage
+   * at all are the same event here — nothing was resumed.
+   */
+  resume: async () => {
+    if (get().status !== 'resuming') return;
+
+    try {
+      const resumed = await tabUnlock.resume();
+
+      if (!resumed) {
+        set({ status: 'locked' });
+
+        return;
+      }
+
+      const session = await authApi.resumeWith(resumed.masterKey);
+      set({ ...session, status: 'unlocked', knownLogin: session.user.login });
+    } catch {
+      await tabUnlock.forget();
+
+      // A 401 on the way has already taken the session apart through the lost handler, and
+      // that verdict outranks this one: there is no session left to be merely locked.
+      if (get().status === 'resuming') set({ status: 'locked' });
+    }
   },
 
   register: async (input) => {
@@ -101,7 +140,15 @@ export const useSession = create<SessionState>((set, get) => ({
     });
   },
 
-  acknowledgeKit: () => set({ status: 'unlocked', pendingRecoveryCode: null }),
+  /** The first point where a reload may skip the passphrase: before it, the unshown code
+   *  would be lost to a resume that walked straight past this screen. */
+  acknowledgeKit: () => {
+    const { user, masterKey } = get();
+
+    set({ status: 'unlocked', pendingRecoveryCode: null });
+
+    if (user && masterKey) void tabUnlock.remember(user.login, masterKey);
+  },
 
   updateDisplayName: async (displayName) => {
     await run(set, async () => {
@@ -123,6 +170,10 @@ export const useSession = create<SessionState>((set, get) => ({
 
       const { recoveryCode } = await authApi.changePassphrase(user.login, current, next, masterKey);
 
+      // The wrap would still open — the master key is the same one — but a reload before
+      // the new code is acknowledged has to land on the kit, not past it.
+      await tabUnlock.forget();
+
       set({ status: 'kit', pendingRecoveryCode: recoveryCode, knownLogin: user.login });
     });
   },
@@ -130,6 +181,7 @@ export const useSession = create<SessionState>((set, get) => ({
   deleteAccount: async (passphrase) => {
     await run(set, async () => {
       await authApi.deleteAccount(passphrase);
+      await tabUnlock.forget();
       await dropCache().catch(() => undefined);
 
       set({
@@ -146,6 +198,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   signOut: async () => {
     await authApi.signOut().catch(() => undefined);
+    await tabUnlock.forget();
     await dropCache().catch(() => undefined);
 
     set({
@@ -163,6 +216,9 @@ export const useSession = create<SessionState>((set, get) => ({
     // Locking while a kit is pending would strand the code, so it is refused.
     if (get().status === 'kit') return;
 
+    // The record goes with them, or a reload would undo the lock the user just asked for.
+    void tabUnlock.forget();
+
     set({ status: get().user ? 'locked' : 'anonymous', identity: null, masterKey: null });
   },
 
@@ -171,6 +227,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
 setSessionLostHandler(() => {
   clearSession();
+  void tabUnlock.forget();
 
   useSession.setState({
     status: 'anonymous',

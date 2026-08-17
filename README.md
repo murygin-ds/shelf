@@ -243,6 +243,16 @@ stolen browser profile no worse than a stolen database dump. The cost is that se
 only as complete as the index is warm, so the status bar shows coverage (`INDEX 12/213`)
 rather than letting an incomplete answer look complete.
 
+**A reload skips the passphrase, a new tab does not.** The master key is wrapped with an AES
+key generated non-extractable and parked in a database of its own (`shelf-unlock`), while
+the permission to use that wrap is a marker in `sessionStorage` — so it dies with the tab
+that wrote it, and the key is resumable for exactly as long as the tab that was already
+holding it in memory. Twelve hours bound the one case that stretches that: a browser told to
+restore its tabs restores their `sessionStorage` along with them. Signing out, locking by
+hand, changing the passphrase and a refresh the server rejects all delete the record, and a
+fresh session only starts writing one once the recovery kit is acknowledged, so no resume
+can walk past a code that was never shown.
+
 **A write that meets no network is queued, not lost.** The body is sealed first, so what
 waits in IndexedDB is ciphertext like everything else there, and one entry per note — a body
 write replaces the whole body, so only the newest attempt is worth keeping. It goes out on
