@@ -66,10 +66,14 @@
   color: var(--text-secondary);
 }
 
-.iconButton:hover {
+.iconButton:hover:not(:disabled) {
   border-color: var(--border-hover);
   background: #101013;
   color: var(--text);
+}
+
+.iconButton:disabled {
+  cursor: default;
 }
 
 .title {

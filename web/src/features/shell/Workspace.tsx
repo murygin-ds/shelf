@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { MembersModal } from '@/features/access/MembersModal';
 import { PermissionsModal } from '@/features/access/PermissionsModal';
@@ -6,21 +6,24 @@ import { SecurityModal } from '@/features/access/SecurityModal';
 import { Editor } from '@/features/editor/Editor';
 import { GraphView } from '@/features/graph/GraphView';
 import { Inspector } from '@/features/inspector/Inspector';
+import { ProfileView } from '@/features/profile/ProfileView';
 import { SearchView } from '@/features/search/SearchView';
 import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
+import { summarize } from '@/sync/status';
 import { Icon } from '@/ui/Icon';
 import { NamePrompt, useNamePrompt } from '@/ui/NamePrompt';
-import { tip } from '@/ui/Tooltip';
 
+import { AccountMenu } from './AccountMenu';
 import { CommandPalette } from './CommandPalette';
 import { VaultSwitcher } from './VaultSwitcher';
+import { useShellHistory } from './history';
 import styles from './shell.module.css';
 
 export function Workspace() {
-  const { user, identity, signOut, lock } = useSession();
+  const { identity } = useSession();
   const workspace = useWorkspace();
   const {
     vaults,
@@ -32,7 +35,9 @@ export function Workspace() {
     error,
     offline,
     syncing,
+    saving,
     queued,
+    lastSyncedAt,
     coverage,
     load,
   } = workspace;
@@ -43,9 +48,11 @@ export function Workspace() {
   const [securityOpen, setSecurityOpen] = useState(false);
   const { ask, dialog } = useNamePrompt();
 
+  const restoredVaultId = useShellHistory(identity);
+
   useEffect(() => {
-    if (identity) void load(identity);
-  }, [identity, load]);
+    if (identity) void load(identity, restoredVaultId ?? undefined);
+  }, [identity, load, restoredVaultId]);
 
   // One poller for the whole shell, torn down on unmount so a remount cannot stack timers.
   useEffect(() => {
@@ -66,6 +73,29 @@ export function Workspace() {
 
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Counted from the body in memory rather than the saved copy: what the status bar reports
+  // is what is on screen, including the keystrokes that have not been sealed yet.
+  const counted = useMemo(() => {
+    const body = open?.body.trim() ?? '';
+
+    return { words: body ? body.split(/\s+/).length : 0, chars: open?.body.length ?? 0 };
+  }, [open?.body]);
+
+  // A poll that finds nothing takes a few dozen milliseconds, and flashing SYNCING at every
+  // one of them every eight seconds reads as trouble rather than as work. Only a sync that
+  // outlasts this is worth saying out loud.
+  const pulling = useHeldTrue(syncing, SYNC_FLICKER_MS);
+
+  const status = summarize({
+    offline,
+    syncing: pulling,
+    saving,
+    dirty: open?.dirty ?? false,
+    queued,
+    lastSyncedAt,
+    now: Date.now(),
+  });
 
   const vault = vaults.find((v) => v.id === vaultId);
   const permissionsFolder =
@@ -103,7 +133,11 @@ export function Workspace() {
       ) : null}
 
       <div className={styles.topbar}>
-        <VaultSwitcher onNewVault={newVault} />
+        <VaultSwitcher
+          onNewVault={newVault}
+          onMembers={() => setMembersOpen(true)}
+          onSecurity={() => setSecurityOpen(true)}
+        />
 
         <div className={styles.breadcrumb}>
           {open ? (
@@ -111,55 +145,23 @@ export function Workspace() {
               <span>{vault?.name}</span>
               <span className={styles.crumbSeparator}>/</span>
               <span className={styles.crumbCurrent}>{open.note.name}</span>
-              <span className={styles.savedDot} />
+              <span
+                className={styles.savedDot}
+                data-tone={open.dirty ? 'busy' : open.queued ? 'warn' : 'ok'}
+              />
               <span className={styles.savedLabel}>
-                {open.dirty ? 'UNSAVED' : 'SAVED · ENCRYPTED'}
+                {open.dirty
+                  ? 'UNSAVED'
+                  : open.queued
+                    ? 'SAVED HERE · NOT SENT'
+                    : 'SAVED · ENCRYPTED'}
               </span>
             </>
           ) : null}
         </div>
 
         <div className={styles.topbarRight}>
-          {vault ? (
-            <>
-              <button
-                type="button"
-                className={styles.iconButton}
-                {...tip(
-                  vault.keyState === 'pending_rotation'
-                    ? 'A removed member still holds this key — rotate it'
-                    : 'Keys & history',
-                )}
-                onClick={() => setSecurityOpen(true)}
-              >
-                <Icon
-                  name={vault.keyState === 'pending_rotation' ? 'warn' : 'key'}
-                  size={16}
-                  {...(vault.keyState === 'pending_rotation'
-                    ? { style: { color: 'var(--warn)' } }
-                    : {})}
-                />
-              </button>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={() => setMembersOpen(true)}
-              >
-                Share
-              </button>
-            </>
-          ) : null}
-          <button type="button" className={styles.iconButton} {...tip('Lock keys')} onClick={lock}>
-            <Icon name="lock" size={16} />
-          </button>
-          <button
-            type="button"
-            className={styles.iconButton}
-            {...tip('Sign out')}
-            onClick={() => void signOut()}
-          >
-            <Icon name="user" size={16} />
-          </button>
+          <AccountMenu />
         </div>
       </div>
 
@@ -192,6 +194,8 @@ export function Workspace() {
             <GraphView />
           ) : view === 'trash' ? (
             <TrashView />
+          ) : view === 'profile' ? (
+            <ProfileView />
           ) : open ? (
             <>
               <Editor />
@@ -232,24 +236,18 @@ export function Workspace() {
             INDEX {coverage.covered}/{coverage.total}
           </span>
         ) : null}
-        <span>MARKDOWN</span>
-        <span className={styles.statusOk}>
-          <Icon name="lock" size={11} />
-          E2E · AES-256-GCM
+        {/* The note behind the graph or the trash is not what the reader is looking at, so
+            the counts belong to the editor rather than to whatever is merely open. */}
+        {open && view === 'editor' ? (
+          <span>
+            {counted.words} {counted.words === 1 ? 'WORD' : 'WORDS'} · {counted.chars}{' '}
+            {counted.chars === 1 ? 'CHAR' : 'CHARS'}
+          </span>
+        ) : null}
+        <span className={styles.status} data-tone={status.tone} title={status.detail}>
+          <span className={styles.statusDot} />
+          {status.label}
         </span>
-        <span className={styles.statusOk}>
-          <span className={styles.statusDot} style={offline ? { background: 'var(--warn)' } : undefined} />
-          {offline
-            ? queued > 0
-              ? `OFFLINE · ${queued} QUEUED`
-              : 'OFFLINE · CACHED'
-            : queued > 0
-              ? `SENDING ${queued}`
-              : syncing
-                ? 'SYNCING'
-                : 'SYNCED'}
-        </span>
-        <span>{user?.login.toUpperCase()}</span>
       </div>
 
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
@@ -260,4 +258,25 @@ export function Workspace() {
       ) : null}
     </div>
   );
+}
+
+/** How long a sync has to run before the status line calls it one. */
+const SYNC_FLICKER_MS = 400;
+
+/** True once `value` has stayed true for `delayMs`, and false the instant it stops. */
+function useHeldTrue(value: boolean, delayMs: number): boolean {
+  const [held, setHeld] = useState(false);
+
+  useEffect(() => {
+    if (!value) {
+      setHeld(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setHeld(true), delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+
+  return held;
 }

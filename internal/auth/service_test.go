@@ -89,6 +89,41 @@ func (r *fakeRepo) UserByID(_ context.Context, id int64) (*auth.User, error) {
 	return nil, auth.ErrUserNotFound
 }
 
+func (r *fakeRepo) UpdateDisplayName(_ context.Context, userID int64, displayName string) (*auth.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, u := range r.users {
+		if u.ID == userID {
+			u.DisplayName = displayName
+			clone := *u
+
+			return &clone, nil
+		}
+	}
+
+	return nil, auth.ErrUserNotFound
+}
+
+func (r *fakeRepo) DeleteUser(_ context.Context, userID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for i, u := range r.users {
+		if u.ID != userID {
+			continue
+		}
+
+		r.users = append(r.users[:i], r.users[i+1:]...)
+		delete(r.recovery, userID)
+		r.revokeUserLocked(userID)
+
+		return nil
+	}
+
+	return auth.ErrUserNotFound
+}
+
 func (r *fakeRepo) ResetCredentials(_ context.Context, userID int64, in auth.Credentials) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -633,5 +668,63 @@ func TestChangePasswordRevokesSessions(t *testing.T) {
 
 	if fresh.AccessToken == "" {
 		t.Error("ChangePassword() returned an empty access token")
+	}
+}
+
+func TestUpdateDisplayNameTrimsAndRefusesBlank(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+	ctx := context.Background()
+
+	user, _, err := service.Register(ctx, testRegisterInput("dmitry"), auth.ClientMeta{})
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	renamed, err := service.UpdateDisplayName(ctx, user.ID, "  Dmitry Murygin  ")
+	if err != nil {
+		t.Fatalf("UpdateDisplayName() error = %v", err)
+	}
+
+	if renamed.DisplayName != "Dmitry Murygin" {
+		t.Errorf("display name = %q, want it trimmed", renamed.DisplayName)
+	}
+
+	if _, err := service.UpdateDisplayName(ctx, user.ID, "   "); !errors.Is(err, auth.ErrBlankDisplayName) {
+		t.Errorf("UpdateDisplayName() error = %v, want ErrBlankDisplayName", err)
+	}
+}
+
+func TestDeleteAccountNeedsThePassword(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+	ctx := context.Background()
+
+	user, _, err := service.Register(ctx, testRegisterInput("dmitry"), auth.ClientMeta{})
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	if err := service.DeleteAccount(ctx, user.ID, []byte("wrong")); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("DeleteAccount() error = %v, want ErrInvalidCredentials", err)
+	}
+
+	if _, err := service.User(ctx, user.ID); err != nil {
+		t.Fatalf("a refused deletion removed the account: %v", err)
+	}
+
+	if err := service.DeleteAccount(ctx, user.ID, []byte("client-auth-hash")); err != nil {
+		t.Fatalf("DeleteAccount() error = %v", err)
+	}
+
+	if _, err := service.User(ctx, user.ID); !errors.Is(err, auth.ErrUserNotFound) {
+		t.Errorf("User() error = %v, want ErrUserNotFound", err)
+	}
+
+	// The login is free again, and the old secret opens nothing.
+	if _, _, err := service.Login(ctx, "dmitry", []byte("client-auth-hash"), auth.ClientMeta{}); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("Login() error = %v, want ErrInvalidCredentials", err)
 	}
 }

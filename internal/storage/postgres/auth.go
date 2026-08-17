@@ -109,6 +109,47 @@ func (r *AuthRepository) UserByID(ctx context.Context, id int64) (*auth.User, er
 	return user, nil
 }
 
+// UpdateDisplayName changes the name other members see.
+func (r *AuthRepository) UpdateDisplayName(ctx context.Context, userID int64, displayName string) (*auth.User, error) {
+	const query = `UPDATE users SET display_name = $2 WHERE id = $1 RETURNING ` + userColumns
+
+	user, err := scanUser(r.pool.QueryRow(ctx, query, userID, displayName))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, auth.ErrUserNotFound
+		}
+
+		return nil, fmt.Errorf("update display name: %w", err)
+	}
+
+	return user, nil
+}
+
+// DeleteUser removes the account and everything that hangs off it.
+//
+// The owned vaults go first: their owner_id is ON DELETE RESTRICT, so the user row cannot
+// be removed while any of them stands, and a vault whose owner is gone has nobody left who
+// can rotate its keys or admit anybody to it. Membership in somebody else's vault needs no
+// statement here — those rows cascade from the user.
+func (r *AuthRepository) DeleteUser(ctx context.Context, userID int64) error {
+	return r.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DELETE FROM vaults WHERE owner_id = $1`, userID); err != nil {
+			return fmt.Errorf("delete owned vaults: %w", err)
+		}
+
+		tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+		if err != nil {
+			return fmt.Errorf("delete user: %w", err)
+		}
+
+		if tag.RowsAffected() == 0 {
+			return auth.ErrUserNotFound
+		}
+
+		return nil
+	})
+}
+
 // ResetCredentials updates the authentication data, rotates the recovery key
 // when needed and revokes all sessions of the user.
 func (r *AuthRepository) ResetCredentials(ctx context.Context, userID int64, in auth.Credentials) error {

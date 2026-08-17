@@ -13,7 +13,7 @@ import type { ScopeKeyring } from '@/crypto/keyring';
 import { seal } from '@/crypto/sealedbox';
 
 import { api } from './client';
-import { fetchBodies, type FolderNode, type NoteNode, type Vault } from './workspace';
+import { buildMeta, fetchBodies, type FolderNode, type NoteNode, type Vault } from './workspace';
 
 /** Matches the server's own batch ceiling; going over is a 422, not a truncation. */
 const BATCH = 200;
@@ -173,16 +173,22 @@ async function reseal(
   const step = async (
     entity: 'vault' | 'folder' | 'file',
     id: number,
-    node: { clientId: string; name: string; icon?: string | undefined; locked: boolean } | undefined,
+    node:
+      | {
+          clientId: string;
+          name: string;
+          icon?: string | undefined;
+          tags?: readonly string[];
+          locked: boolean;
+        }
+      | undefined,
   ): Promise<{ item: RekeyItem; at: EntityRef }> => {
     if (!node || node.locked) throw new Error(`${entity} ${id} will not open with the key you hold`);
 
     const at = ref(entity, node.clientId);
-    const sealed = await encryptMeta(
-      key,
-      { name: node.name, ...(node.icon ? { icon: node.icon } : {}) },
-      at,
-    );
+    // Through the shared builder, and with every field the node carries: this overwrites the
+    // only ciphertext that holds them, so anything left out here is gone for good.
+    const sealed = await encryptMeta(key, buildMeta(node.name, node.icon, node.tags), at);
 
     const item: RekeyItem = {
       entity_type: entity,

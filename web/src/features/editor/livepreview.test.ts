@@ -1,7 +1,8 @@
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 
+import { contextOf, vaultContext } from './context';
+import { noteLanguage } from './language';
 import { buildDecorations, type Span } from './livepreview';
 
 /**
@@ -11,13 +12,19 @@ import { buildDecorations, type Span } from './livepreview';
  * changes the answer.
  */
 
-function open(doc: string): EditorState {
-  return EditorState.create({ doc, extensions: [markdown({ base: markdownLanguage })] });
+function open(doc: string, titles: string[] = []): EditorState {
+  return EditorState.create({
+    doc,
+    extensions: [
+      noteLanguage,
+      vaultContext.of(contextOf(titles.map((name, id) => ({ id, name })), [])),
+    ],
+  });
 }
 
 /** The document as a reader sees it, with every concealed range removed. */
-function rendered(doc: string, caret?: number): string {
-  const state = open(doc);
+function rendered(doc: string, caret?: number, titles: string[] = []): string {
+  const state = open(doc, titles);
   const spans: Span[] = caret === undefined ? [] : [{ from: caret, to: caret }];
   const { hidden } = buildDecorations(state, [{ from: 0, to: doc.length }], spans);
 
@@ -35,6 +42,22 @@ function rendered(doc: string, caret?: number): string {
   }
 
   return out + doc.slice(at);
+}
+
+/** The classes live preview put on spans of text, as opposed to on whole lines. */
+function marks(doc: string, titles: string[] = []): string[] {
+  const state = open(doc, titles);
+  const { decorations } = buildDecorations(state, [{ from: 0, to: doc.length }], []);
+
+  const out: string[] = [];
+
+  decorations.between(0, doc.length, (from, to, value) => {
+    const cls = (value.spec as { class?: string }).class;
+
+    if (from !== to && cls) out.push(cls);
+  });
+
+  return out;
 }
 
 /** Line number -> the classes live preview put on it. */
@@ -79,6 +102,36 @@ describe('what the reader sees', () => {
   });
 });
 
+describe('wikilinks', () => {
+  // The bug this whole construct exists for: read as a reference link, `[[Файл 2]]` lost one
+  // bracket from each side and rendered as `[Файл 2]`.
+  it('shows the title without any brackets at all', () => {
+    expect(rendered('см. [[Файл 2]] ок')).toBe('см. Файл 2 ок');
+  });
+
+  it('shows the alias rather than the target', () => {
+    expect(rendered('[[Launch Plan|the plan]]')).toBe('the plan');
+  });
+
+  it('keeps the target when the bar has nothing after it', () => {
+    expect(rendered('[[A|]]')).toBe('A');
+  });
+
+  it('gives the brackets back once the caret is on that line', () => {
+    expect(rendered('[[Roadmap]]', 4)).toBe('[[Roadmap]]');
+  });
+
+  it('marks a link to a note that exists differently from one that does not', () => {
+    expect(marks('[[Roadmap]]', ['Roadmap'])).toContain('cm-md-wiki');
+    expect(marks('[[Roadmap]]', ['Roadmap'])).not.toContain('cm-md-wiki cm-md-wiki-missing');
+    expect(marks('[[Nowhere]]', ['Roadmap'])).toContain('cm-md-wiki cm-md-wiki-missing');
+  });
+
+  it('matches titles the way the graph does, ignoring case and surrounding space', () => {
+    expect(marks('[[  launch PLAN ]]', ['Launch Plan'])).toContain('cm-md-wiki');
+  });
+});
+
 describe('text that must never be concealed', () => {
   // An autolink has no separate link text: the URL is the only thing on the line, so hiding
   // it alongside the angle brackets renders a note holding one bookmark as blank.
@@ -95,8 +148,26 @@ describe('text that must never be concealed', () => {
     expect(rendered('[ref]: https://example.com')).toBe('[ref]: https://example.com');
   });
 
-  it('keeps the fence of a code block, which says where the block ends', () => {
-    expect(rendered('```js\nconst x = 1;\n```')).toBe('```js\nconst x = 1;\n```');
+});
+
+describe('fenced code', () => {
+  const doc = '```js\nconst x = 1;\n```';
+
+  it('drops the fence and the language once nobody is in the block', () => {
+    expect(rendered(doc)).toBe('\nconst x = 1;\n');
+  });
+
+  // While a block is being written the closing fence is the only thing saying where it
+  // ends, so it comes back for the whole block rather than for the caret's line alone.
+  it('brings the whole fence back while the caret is inside', () => {
+    expect(rendered(doc, 10)).toBe(doc);
+    expect(rendered(doc, 0)).toBe(doc);
+  });
+
+  it('leaves it hidden when the caret is on a line outside the block', () => {
+    const withProse = `${doc}\n\nafter`;
+
+    expect(rendered(withProse, withProse.length)).toBe('\nconst x = 1;\n\n\nafter');
   });
 });
 
@@ -145,6 +216,14 @@ describe('malformed input', () => {
     '## \n\n### x ###',
     '![img](a.png)',
     'Setext\n======',
+    '[[]]',
+    '[[',
+    '[[a',
+    '[[a|b',
+    '[[[a]]]',
+    '[[a]] [[b]]',
+    '[[a|]]',
+    '| a | b |\n| - | - |\n| 1 | 2 |',
   ];
 
   it.each(nasty)('builds a legal decoration set for %j', (doc) => {

@@ -20,7 +20,10 @@ function RequireUnlocked({ children }: { children: ReactElement }) {
   if (status === 'kit') return <Navigate to={KIT_PATH} replace />;
 
   if (status !== 'unlocked') {
-    return <Navigate to="/signin" replace state={{ from: location.pathname }} />;
+    // Carried so unlocking lands back on the note that was on screen rather than at the root.
+    return (
+      <Navigate to="/signin" replace state={{ from: location.pathname + location.search }} />
+    );
   }
 
   return children;

@@ -8,6 +8,9 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 
+import { vaultContext } from './context';
+import { wikilinkParts } from './wikilink';
+
 /**
  * Live preview for markdown, in the shape people expect from a notes app: the document is
  * always editable and always rendered. A heading is a heading the moment the caret leaves
@@ -58,6 +61,17 @@ function cursorSpans(view: EditorView): Span[] {
 
 function isRaw(spans: readonly Span[], line: Line): boolean {
   return spans.some((span) => span.from <= line.to && span.to >= line.from);
+}
+
+/**
+ * Whether the caret is anywhere inside a whole block, rather than merely on one of its
+ * lines. A fenced block is edited as a unit — the fence has to stay put while the caret is
+ * three lines down inside it, or it would flicker in and out on every arrow key.
+ */
+function within(spans: readonly Span[], node: { from: number; to: number } | null): boolean {
+  if (!node) return true;
+
+  return spans.some((span) => span.from <= node.to && span.to >= node.from);
 }
 
 export interface Built {
@@ -157,6 +171,39 @@ export function buildDecorations(
           return;
         }
 
+        if (name === 'Table') {
+          block(node, range, 'cm-md-table');
+          return;
+        }
+
+        if (name === 'TableHeader') {
+          line(node.from, 'cm-md-thead');
+          return;
+        }
+
+        // The whole `|---|---|` line is one node, and so is every `|` inside a row. Both are
+        // scaffolding the reader does not need to read, but neither may be concealed: the
+        // pipes are what the columns are made of.
+        if (name === 'TableDelimiter') {
+          mark(node.from, node.to, 'cm-md-marker');
+          return;
+        }
+
+        // Taken whole rather than through child nodes: the parser leaves a wikilink as a
+        // single node, and everything to hide inside it is an offset into its own text.
+        if (name === 'Wikilink') {
+          const text = state.doc.sliceString(node.from, node.to);
+          const { target, hidden: cuts } = wikilinkParts(text);
+          const known = state.facet(vaultContext).titles.has(target.toLowerCase());
+
+          mark(node.from, node.to, known ? 'cm-md-wiki' : 'cm-md-wiki cm-md-wiki-missing');
+
+          const showing = isRaw(spans, state.doc.lineAt(node.from));
+          for (const [from, to] of cuts) marker(node.from + from, node.from + to, showing);
+
+          return;
+        }
+
         const inline = INLINE[name];
         if (inline) {
           // Descends on purpose: the markers inside still have to be dealt with.
@@ -214,10 +261,23 @@ export function buildDecorations(
             return;
 
           case 'CodeMark':
-            // The backticks around a code span go. A fenced block's ``` stays: while the
-            // block is being written it is the only thing saying where it ends.
-            if (node.matchContext(['InlineCode'])) marker(node.from, node.to, raw);
-            else mark(node.from, node.to, 'cm-md-marker');
+            if (node.matchContext(['InlineCode'])) {
+              marker(node.from, node.to, raw);
+              return;
+            }
+
+            // A fence is scaffolding: once the block is finished it says nothing the block's
+            // own background does not. It comes back the moment the caret is anywhere inside
+            // the block — including while one is being typed, when the closing fence is the
+            // only thing saying where it ends.
+            marker(node.from, node.to, within(spans, node.node.parent));
+
+            return;
+
+          // The language after the opening fence. Hidden with it, and for the same reason:
+          // the colours in the block already say what language it is.
+          case 'CodeInfo':
+            marker(node.from, node.to, within(spans, node.node.parent));
 
             return;
 
@@ -405,6 +465,81 @@ export const editorTheme = EditorView.theme(
       color: 'var(--code-text)',
     },
     '.cm-md-link': { color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: '2px' },
+
+    '.cm-md-wiki': {
+      color: 'var(--accent)',
+      textDecoration: 'underline',
+      textDecorationStyle: 'dotted',
+      textUnderlineOffset: '3px',
+      cursor: 'pointer',
+    },
+    // A link to a note that does not exist yet is an invitation, not a mistake, so it is
+    // dimmed rather than coloured like a warning.
+    '.cm-md-wiki-missing': {
+      color: 'var(--text-dim)',
+      textDecorationColor: 'var(--text-marker)',
+      cursor: 'default',
+    },
+
+    // The raw rows, seen only while the caret is inside the table and it is being edited.
+    '.cm-md-table': { fontVariantLigatures: 'none' },
+    '.cm-md-thead': { fontWeight: '700', color: 'var(--text)' },
+
+    // The rendered grid that stands in for them the rest of the time.
+    '.cm-md-grid': {
+      borderCollapse: 'collapse',
+      width: '100%',
+      margin: '0.5em 0',
+      fontFamily: 'var(--font-sans)',
+      fontSize: '13px',
+      lineHeight: '1.5',
+    },
+    '.cm-md-grid th, .cm-md-grid td': {
+      padding: '6px 10px',
+      border: '1px solid var(--border)',
+      verticalAlign: 'top',
+    },
+    '.cm-md-grid th': {
+      background: 'var(--surface-inset)',
+      fontWeight: '600',
+      color: 'var(--text)',
+    },
+    '.cm-md-grid td': { color: 'var(--text-body)' },
+    // An empty cell would otherwise collapse to a hairline and break the grid.
+    '.cm-md-grid td:empty::after': { content: '"\\00a0"' },
+    // The cells are edited in place, so the focus ring is the only thing saying which one
+    // the keyboard is in. Inset rather than outlined: an outline on a collapsed border
+    // doubles the grid line and the row appears to jump.
+    '.cm-md-grid th:focus, .cm-md-grid td:focus': {
+      outline: 'none',
+      boxShadow: 'inset 0 0 0 1.5px var(--accent-focus)',
+      background: 'var(--accent-wash)',
+    },
+
+
+    // CodeMirror's own popup, wearing the same surface as every other floating thing here.
+    '.cm-tooltip.cm-tooltip-autocomplete': {
+      border: '1px solid var(--border-strong)',
+      borderRadius: 'var(--radius-lg)',
+      background: 'var(--surface-raised)',
+      boxShadow: 'var(--shadow-popover)',
+      overflow: 'hidden',
+    },
+    '.cm-tooltip-autocomplete > ul': {
+      maxHeight: '15em',
+      fontFamily: 'var(--font-mono)',
+      fontSize: '12px',
+    },
+    '.cm-tooltip-autocomplete > ul > li': {
+      padding: '5px 10px',
+      color: 'var(--text-body)',
+      lineHeight: '1.5',
+    },
+    '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+      background: 'var(--accent-wash)',
+      color: 'var(--text)',
+    },
+    '.cm-completionIcon': { display: 'none' },
   },
   { dark: true },
 );

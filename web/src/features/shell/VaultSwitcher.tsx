@@ -23,7 +23,17 @@ import styles from './vaultswitcher.module.css';
  * somebody else's room — so the menu splits them and the mark carries the difference where
  * the list is not open: owned marks are filled, joined ones are outlined.
  */
-export function VaultSwitcher({ onNewVault }: { onNewVault: () => void }) {
+export function VaultSwitcher({
+  onNewVault,
+  onMembers,
+  onSecurity,
+}: {
+  onNewVault: () => void;
+  /** Who the open vault is shared with, and the keys behind it: both belong to the vault,
+      so they hang off the control that names it rather than off the account beside it. */
+  onMembers: () => void;
+  onSecurity: () => void;
+}) {
   const { identity } = useSession();
   const { vaults, vaultId, loading, selectVault, setVaultIcon, setVaultLabel, removeVault } =
     useWorkspace();
@@ -222,6 +232,48 @@ export function VaultSwitcher({ onNewVault }: { onNewVault: () => void }) {
             </div>
 
             <div className={styles.divider} />
+
+            {vault ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.action}
+                  onClick={() => {
+                    setOpen(false);
+                    onMembers();
+                  }}
+                >
+                  <span className={styles.actionIcon}>
+                    <Icon name="user" size={13} />
+                  </span>
+                  Members &amp; sharing
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.action}
+                  onClick={() => {
+                    setOpen(false);
+                    onSecurity();
+                  }}
+                >
+                  <span className={styles.actionIcon}>
+                    <Icon
+                      name={vault.keyState === 'pending_rotation' ? 'warn' : 'key'}
+                      size={13}
+                      {...(vault.keyState === 'pending_rotation'
+                        ? { style: { color: 'var(--warn)' } }
+                        : {})}
+                    />
+                  </span>
+                  Keys &amp; history
+                </button>
+
+                <div className={styles.divider} />
+              </>
+            ) : null}
 
             <button
               type="button"

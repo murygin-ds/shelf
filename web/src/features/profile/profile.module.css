@@ -1,0 +1,414 @@
+.pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  flex: none;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-body);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.back:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.inner {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 22px 24px 40px;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.avatar {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 50%;
+  background: #2f3a44;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #c6d2da;
+}
+
+.identityText {
+  min-width: 0;
+}
+
+.name {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--text-quiet);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section {
+  margin: 26px 0 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+.facts {
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.factLabel {
+  flex: none;
+  width: 140px;
+  font-size: 12.5px;
+  color: var(--text-quiet);
+}
+
+.factValue {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-body);
+}
+
+.fingerprint {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--code-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copy {
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-quiet);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.copy:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.note {
+  margin: 16px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-quiet);
+}
+
+/* Forms */
+
+.field {
+  display: block;
+  margin: 0;
+}
+
+.fieldLabel {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 12.5px;
+  color: var(--text-quiet);
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.input {
+  flex: 1;
+  width: 100%;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.input:focus {
+  border-color: var(--focus-border);
+}
+
+/* The meter sizes its bars with flex, so it needs a block of its own to grow into. */
+.meterRow {
+  display: block;
+  margin-top: 7px;
+}
+
+.error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-body);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.destructive {
+  border-color: #4a2a2a;
+  background: #1a1011;
+  color: #e08a8a;
+}
+
+.destructive:hover:not(:disabled) {
+  border-color: #6a3a3a;
+  color: #f0a0a0;
+}
+
+/* Danger zone: its own box, because the line around it is the point. */
+
+.danger {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid #3a2224;
+  border-radius: var(--radius-md);
+  background: #140e0f;
+}
+
+.dangerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.dangerTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0a0a0;
+}
+
+.dangerBody {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-quiet);
+}
+
+/* Deletion dialog */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  background: var(--overlay);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 440px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-modal);
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dialogBody {
+  margin: 9px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-body);
+}
+
+.dialogLabel {
+  display: block;
+  margin: 16px 0 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.dialogPhrase {
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.dialogInput {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.dialogInput:focus {
+  border-color: var(--focus-border);
+}
+
+.dialogError {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.dialogActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.dialogCancel,
+.dialogDestroy {
+  flex: 1;
+  height: 38px;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dialogCancel {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-body);
+}
+
+.dialogCancel:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.dialogDestroy {
+  border: 1px solid #5a2f2f;
+  background: #2a1618;
+  color: #f0a0a0;
+}
+
+.dialogDestroy:hover:not(:disabled) {
+  border-color: #7a3f3f;
+  background: #35191c;
+}
+
+.dialogDestroy:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

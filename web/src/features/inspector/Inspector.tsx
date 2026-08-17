@@ -6,16 +6,18 @@ import * as graphApi from '@/api/graph';
 import * as revisionsApi from '@/api/revisions';
 import * as shareApi from '@/api/share';
 import type { NoteNode } from '@/api/workspace';
+import { allTags, extractTags, normalizeTag } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
 
 import styles from './inspector.module.css';
 
-type Tab = 'links' | 'history' | 'share';
+type Tab = 'links' | 'tags' | 'history' | 'share';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'links', label: 'LINKS' },
+  { id: 'tags', label: 'TAGS' },
   { id: 'history', label: 'HISTORY' },
   { id: 'share', label: 'SHARE' },
 ];
@@ -40,6 +42,7 @@ export function Inspector({ note }: { note: NoteNode }) {
 
       <div className={styles.body}>
         {tab === 'links' ? <Links note={note} /> : null}
+        {tab === 'tags' ? <Tags note={note} /> : null}
         {tab === 'history' ? <History note={note} /> : null}
         {tab === 'share' ? <Share note={note} /> : null}
       </div>
@@ -146,6 +149,137 @@ function Links({ note }: { note: NoteNode }) {
           {unresolved.length > 3 ? '…' : ''}. Unmatched titles stay on this device — sending
           them would publish the text.
         </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The note's own tags.
+ *
+ * They live in the same encrypted meta as its name, so choosing one is a save rather than an
+ * edit to the text — which is the whole difference from Obsidian, where a tag is a word you
+ * remember to type. Tags written into the body still count, and are listed here as what they
+ * are: part of the text, editable only there.
+ */
+function Tags({ note }: { note: NoteNode }) {
+  const { open, index, setTags, setQuery } = useWorkspace();
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const readOnly = note.permission === 'view' || note.permission === 'comment';
+  const body = open?.note.id === note.id ? open.body : '';
+
+  // From the body rather than from the index: the index is rebuilt on sync, and a tag just
+  // typed would take eight seconds to show up under the caret that typed it.
+  const inline = extractTags(body).filter((tag) => !note.tags.includes(tag));
+  const suggestions = allTags(index).filter((tag) => !note.tags.includes(tag));
+
+  const add = async (raw: string) => {
+    const tag = normalizeTag(raw);
+    if (!tag || note.tags.includes(tag)) {
+      setDraft('');
+      return;
+    }
+
+    setBusy(true);
+    setDraft('');
+
+    try {
+      await setTags(note, [...note.tags, tag]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (tag: string) => {
+    setBusy(true);
+
+    try {
+      await setTags(note, note.tags.filter((candidate) => candidate !== tag));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className={styles.section}>TAGS · {note.tags.length}</p>
+
+      {note.tags.length ? (
+        <div className={styles.chips}>
+          {note.tags.map((tag) => (
+            <span key={tag} className={styles.chip}>
+              <button type="button" className={styles.chipLabel} onClick={() => setQuery(`#${tag}`)}>
+                #{tag}
+              </button>
+              {readOnly ? null : (
+                <button
+                  type="button"
+                  className={styles.chipRemove}
+                  disabled={busy}
+                  aria-label={`Remove ${tag}`}
+                  onClick={() => void remove(tag)}
+                >
+                  <Icon name="x" size={10} />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className={styles.empty}>
+          No tags yet. They are sealed with the note’s name, so the server never sees them.
+        </p>
+      )}
+
+      {readOnly ? null : (
+        <>
+          <input
+            className={styles.input}
+            value={draft}
+            list="shelf-tag-suggestions"
+            placeholder="Add a tag"
+            spellCheck={false}
+            disabled={busy}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void add(draft);
+              }
+            }}
+          />
+          <datalist id="shelf-tag-suggestions">
+            {suggestions.map((tag) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
+        </>
+      )}
+
+      {inline.length ? (
+        <>
+          <p className={styles.section} style={{ marginTop: 16 }}>
+            IN THE TEXT · {inline.length}
+          </p>
+          <div className={styles.chips}>
+            {inline.map((tag) => (
+              <span key={tag} className={`${styles.chip} ${styles.chipQuiet}`}>
+                <button
+                  type="button"
+                  className={styles.chipLabel}
+                  onClick={() => setQuery(`#${tag}`)}
+                >
+                  #{tag}
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className={styles.hidden}>
+            These are written into the note itself. Edit the text to change them.
+          </div>
+        </>
       ) : null}
     </>
   );

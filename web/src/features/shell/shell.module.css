@@ -51,6 +51,14 @@
   flex: none;
 }
 
+.savedDot[data-tone='busy'] {
+  background: var(--text-quiet);
+}
+
+.savedDot[data-tone='warn'] {
+  background: var(--warn);
+}
+
 .savedLabel {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -65,14 +73,96 @@
 }
 
 .avatar {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
+  background: #2f3a44;
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
+  color: #c6d2da;
   flex: none;
+}
+
+/* Account */
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 34px;
+  max-width: 220px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.account:hover {
+  background: var(--surface-hover);
+}
+
+.accountText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.accountName {
+  font-size: 12.5px;
+  font-weight: 500;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountState {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-ghost);
+}
+
+.accountChevron {
+  flex: none;
+  color: var(--text-quiet);
+}
+
+/* The divider under it is the next item's own `separated` rule, not a border here. */
+.accountHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 8px 6px;
+}
+
+.accountHeadText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.accountHeadName {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountHeadMeta {
+  font-size: 11px;
+  color: var(--text-quiet);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .iconButton {
@@ -148,11 +238,20 @@
   flex: 1;
 }
 
-.statusOk {
+.status {
   display: flex;
   align-items: center;
   gap: 5px;
   color: var(--ok);
+  cursor: default;
+}
+
+.status[data-tone='busy'] {
+  color: var(--text-quiet);
+}
+
+.status[data-tone='warn'] {
+  color: var(--warn);
 }
 
 .statusDot {
@@ -160,6 +259,27 @@
   height: 5px;
   border-radius: 50%;
   background: var(--ok-dot);
+}
+
+.status[data-tone='busy'] .statusDot {
+  background: var(--text-quiet);
+  animation: statusPulse 1.4s ease-in-out infinite;
+}
+
+.status[data-tone='warn'] .statusDot {
+  background: var(--warn);
+}
+
+@keyframes statusPulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status[data-tone='busy'] .statusDot {
+    animation: none;
+  }
 }
 
 .banner {

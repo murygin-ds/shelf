@@ -215,6 +215,41 @@ func (s *Service) User(ctx context.Context, userID int64) (*User, error) {
 	return s.repo.UserByID(ctx, userID)
 }
 
+// UpdateDisplayName changes the name the other members of a shared vault see. It is the
+// one account field the server can read, so it is also the only one it can change.
+func (s *Service) UpdateDisplayName(ctx context.Context, userID int64, displayName string) (*User, error) {
+	name := strings.TrimSpace(displayName)
+	if name == "" {
+		return nil, ErrBlankDisplayName
+	}
+
+	return s.repo.UpdateDisplayName(ctx, userID, name)
+}
+
+// DeleteAccount destroys the account once the password proves whose it is.
+//
+// The access token alone is not enough: it outlives the moment it was issued in, and this
+// is the one action with nothing behind it to undo it. What the account wrote in somebody
+// else's vault stays there — those notes are sealed under a key that is not this account's,
+// and nothing here could remove them from it anyway.
+func (s *Service) DeleteAccount(ctx context.Context, userID int64, authHash []byte) error {
+	user, err := s.repo.UserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	ok, err := Verify(authHash, user.AuthHash)
+	if err != nil {
+		return fmt.Errorf("verify auth secret: %w", err)
+	}
+
+	if !ok {
+		return ErrInvalidCredentials
+	}
+
+	return s.repo.DeleteUser(ctx, userID)
+}
+
 // Sessions returns the active sessions of the user.
 func (s *Service) Sessions(ctx context.Context, userID int64) ([]Session, error) {
 	return s.repo.ListSessions(ctx, userID)
