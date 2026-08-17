@@ -20,7 +20,7 @@ const inviteColumns = `i.id, i.vault_id, i.role, COALESCE(i.email_hint, ''), i.t
 func (r *AccessRepository) CreateInvite(ctx context.Context, in access.NewInvite) (*access.Invite, error) {
 	var created *access.Invite
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		const insert = `
 			INSERT INTO invites (vault_id, token_hash, target_user_id, email_hint, role,
 			                     wrapped_preview, preview_nonce, invited_by, expires_at)
@@ -115,7 +115,7 @@ func (r *AccessRepository) queryInvites(ctx context.Context, query string, arg i
 }
 
 func (r *AccessRepository) RevokeInvite(ctx context.Context, vaultID, inviteID, actorID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		const query = `
 			UPDATE invites SET revoked_at = now()
 			 WHERE id = $1 AND vault_id = $2 AND redeemed_at IS NULL AND revoked_at IS NULL`
@@ -232,7 +232,7 @@ func (r *AccessRepository) Redeem(
 ) (*access.Invite, error) {
 	var redeemed *access.Invite
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		const claim = `
 			UPDATE invites SET redeemed_at = now(), redeemed_by = $3
 			 WHERE (($1::BYTEA IS NOT NULL AND token_hash = $1)

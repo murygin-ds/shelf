@@ -81,6 +81,10 @@ func Run(ctx context.Context) error {
 		log.Info("shutdown signal received")
 	}
 
+	// Before Shutdown rather than after: it neither closes hijacked connections nor waits
+	// for them, so a live socket would be severed at the TCP level instead of being told.
+	router.Close()
+
 	// The request context is already cancelled by the signal, so shutdown uses an independent one.
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.HTTP.ShutdownTimeout)
 	defer cancel()

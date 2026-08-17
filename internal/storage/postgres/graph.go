@@ -17,7 +17,7 @@ import (
 // writer never had is not a resolved wikilink — it is a guessed id, and storing it would
 // let one member probe the vault through another member's graph.
 func (r *VaultRepository) ReplaceLinks(ctx context.Context, fileID, userID int64, to []int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		vaultID, err := fileVaultTx(ctx, tx, fileID)
 		if err != nil {
 			return err

@@ -14,6 +14,12 @@ export const POLL_HIDDEN_MS = 60_000;
  * is to ask — rarely enough that a long outage is not a request per few seconds.
  */
 export const POLL_OFFLINE_MS = 20_000;
+/**
+ * How often to ask anyway while the live socket is up. The socket is what makes a change
+ * visible at once; this is the floor under it, so a hub that dies costs latency rather than
+ * leaving the tree frozen until the tab is reloaded.
+ */
+export const POLL_LIVE_MS = 30_000;
 
 export interface Snapshot {
   folders: ws.FolderNode[];

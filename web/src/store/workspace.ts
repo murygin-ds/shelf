@@ -11,8 +11,13 @@ import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
 import { normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
+import type { PeerDto } from '@/api/realtime';
+import { createSession, type EditingSession } from '@/collab/session';
+import { b64ToBytes } from '@/crypto/bytes';
+import type { CollabBinding } from '@/features/editor/MarkdownEditor';
 import * as connectivity from '@/sync/connectivity';
 import * as sync from '@/sync/engine';
+import * as live from '@/sync/live';
 
 export interface OpenNote {
   note: ws.NoteNode;
@@ -61,8 +66,18 @@ interface WorkspaceState {
   offline: boolean;
   /** When the last pull came back. Null until one does, which is not the same as synced. */
   lastSyncedAt: number | null;
+  /** How far this device has read the vault. Compared against a hint before pulling on it. */
+  cursor: number;
+  /** Hints are arriving, so the poll can slow down. Never a reason to stop polling. */
+  live: boolean;
   /** Bodies written with no network, waiting to be sent. */
   queued: number;
+  /** The shared document behind the open note, while a live session is up. */
+  collab: CollabBinding | null;
+  /** Who else has this note open. Empty when nobody else does, or when the socket is down. */
+  peers: PeerDto[];
+  /** Whether this tab is the one writing the body back. Decided by the server, not here. */
+  committer: boolean;
   error: string | null;
 
   /**
@@ -91,6 +106,13 @@ interface WorkspaceState {
   closeNote: () => void;
   editBody: (body: string) => void;
   saveNote: (identity?: Identity) => Promise<void>;
+  /**
+   * Opens the live session for the note on screen, if the socket is up. Called from the
+   * editor rather than from openNote, because the identity lives in the session store and
+   * the editor is where the two already meet.
+   */
+  startEditing: (identity: Identity, self: { userId: number; name: string }) => Promise<void>;
+  stopEditing: () => void;
   /** Replays every body written while the network was gone. */
   flushOutbox: () => Promise<void>;
   rename: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file', name: string) => Promise<void>;
@@ -147,6 +169,21 @@ interface WorkspaceState {
 
 const emptyTree: ws.Tree = { folders: [], notes: [] };
 
+/**
+ * How long a hint waits before it becomes a pull. A move that renames twenty notes arrives
+ * as one frame from the server, but a reconnect or two writers can still produce several.
+ */
+const HINT_DEBOUNCE_MS = 200;
+
+/**
+ * The live socket, kept beside the store rather than inside it: it outlives a re-render and
+ * has to be reachable from selectVault, which is not where it was opened.
+ */
+let liveSession: live.LiveSession | null = null;
+
+/** The editing session for the note on screen, for the same reason. */
+let editing: { noteId: number; session: EditingSession } | null = null;
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   vaults: [],
   vaultId: null,
@@ -166,7 +203,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   syncing: false,
   offline: !connectivity.isOnline(),
   lastSyncedAt: null,
+  cursor: 0,
+  live: false,
   queued: 0,
+  collab: null,
+  peers: [],
+  committer: false,
   error: null,
 
   load: async (identity, preferVaultId) => {
@@ -197,8 +239,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       tree: emptyTree,
       trashed: emptyTree,
       index: [],
+      cursor: 0,
       error: null,
     });
+
+    // Hints for the vault being left are of no use here, and the new one has to be followed
+    // before the first change in it happens rather than at the next poll.
+    liveSession?.follow(vaultId);
 
     try {
       const keyring = await ws.loadKeyring(vaultId, identity);
@@ -293,6 +340,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const tree = { folders: pulled.folders, notes: pulled.notes };
       set({
         tree,
+        cursor: pulled.cursor,
         lastSyncedAt: Date.now(),
         expanded: pulled.resynced || get().expanded.size === 0 ? allOpen(pulled.folders) : get().expanded,
       });
@@ -339,17 +387,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
    */
   startPolling: () => {
     let timer: number | undefined;
+    let hint: number | undefined;
 
     const catchUp = () => get().flushOutbox().then(() => get().syncNow());
 
     const tick = () => {
       // With no connection the poll becomes the probe: a server that was down and came back
       // fires no browser event, so the only way to learn about it is to keep asking.
+      //
+      // A live socket slows the poll down but never stops it: the socket is an accelerator,
+      // and a hub that dies must cost latency rather than freeze the tree.
       const delay = document.hidden
         ? sync.POLL_HIDDEN_MS
-        : connectivity.isOnline()
-          ? sync.POLL_ACTIVE_MS
-          : sync.POLL_OFFLINE_MS;
+        : !connectivity.isOnline()
+          ? sync.POLL_OFFLINE_MS
+          : get().live
+            ? sync.POLL_LIVE_MS
+            : sync.POLL_ACTIVE_MS;
 
       timer = window.setTimeout(() => {
         void catchUp();
@@ -368,6 +422,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (online) void catchUp();
     });
 
+    liveSession = live.connect({
+      changed: (vaultId, changeSeq) => {
+        // A hint about a vault this tab is not showing, or about a sequence it has already
+        // read, is nothing to do — the second case is the common one, since a write is
+        // announced to its own author as well.
+        if (get().vaultId !== vaultId || changeSeq <= get().cursor) return;
+
+        // Debounced: a burst that arrives as several frames should still cost one pull.
+        window.clearTimeout(hint);
+        hint = window.setTimeout(() => void catchUp(), HINT_DEBOUNCE_MS);
+      },
+      live: (up) => {
+        set({ live: up });
+
+        // A reconnect lost the room with the socket. Re-opening asks for whatever arrived
+        // while this tab was away, from the sequence it already holds.
+        if (up) editing?.session.join();
+      },
+      frame: (frame) => void editing?.session.receive(frame),
+    });
+
+    const vaultId = get().vaultId;
+    if (vaultId !== null) liveSession.follow(vaultId);
+
     set({ offline: !connectivity.isOnline() });
 
     tick();
@@ -375,8 +453,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     return () => {
       window.clearTimeout(timer);
+      window.clearTimeout(hint);
       document.removeEventListener('visibilitychange', onVisible);
       unwatch();
+      liveSession?.close();
+      liveSession = null;
+      set({ live: false });
     };
   },
 
@@ -463,7 +545,95 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  closeNote: () => set({ open: null }),
+  closeNote: () => {
+    get().stopEditing();
+    set({ open: null });
+  },
+
+  startEditing: async (identity, self) => {
+    const { open, keyring, vaultId } = get();
+
+    // No socket means no session, and the note stays on the path it has always had: type,
+    // debounce, PUT. That is also what happens when the hub is down.
+    if (!open || !keyring || vaultId === null || liveSession === null || open.locked) return;
+    if (editing?.noteId === open.note.id) return;
+
+    get().stopEditing();
+
+    const scope = ws.scopeOfNode(open.note);
+    const key = keyring.get(scope.id, scope.version);
+    if (!key) return;
+
+    // Public keys of everyone who might have written an update, so a signature can be
+    // checked before the update is merged. A member this list does not know produces
+    // 'unknown-author', which is not applied either.
+    const authors = new Map<number, Uint8Array>();
+
+    try {
+      const { members } = await collab.listMembers(vaultId);
+
+      for (const member of members) authors.set(member.user_id, b64ToBytes(member.public_key));
+    } catch {
+      // Without the member list nothing verifies, so nothing is applied. Better than
+      // merging text nobody can attribute.
+    }
+
+    const session = createSession({
+      note: open.note,
+      ref: ws.ref(open.note.vaultId, 'file', open.note.clientId, scope),
+      scope: { keyScopeId: scope.id, keyVersion: scope.version },
+      key,
+      identity,
+      self,
+      body: open.body,
+      contentSeq: open.contentSeq,
+      canEdit: open.note.permission !== 'view' && open.note.permission !== 'comment',
+      send: (frame) => liveSession?.send(frame),
+      authorKey: (userId) => authors.get(userId) ?? null,
+      commit: (text, folded) => commitBody(get, set, open.note.id, text, folded, identity),
+      onBinding: (binding) => set({ collab: binding }),
+      onText: (text) => {
+        const current = get().open;
+        if (!current || current.note.id !== open.note.id) return;
+
+        // The text is the room's, so this is not an unsaved change: it feeds the title, the
+        // search index and the wikilinks, and the committer's timer decides when it lands.
+        set({ open: { ...current, body: text, dirty: false, conflict: false } });
+      },
+      onPeers: (peers, committer) => set({ peers, committer }),
+      onNotice: (notice) => {
+        if (notice.kind === 'reseed') {
+          // The document was replaced under this room — an offline body replayed, an older
+          // client, or a re-key. Whatever had not been written back is gone from the shared
+          // copy, and saying so is better than letting a sentence quietly disappear.
+          const current = get().open;
+          if (current) set({ open: { ...current, conflict: true } });
+
+          return;
+        }
+
+        if (notice.kind === 'unverified') {
+          set({ error: 'An edit arrived that could not be verified and was not applied.' });
+        }
+      },
+    });
+
+    editing = { noteId: open.note.id, session };
+    session.join();
+  },
+
+  stopEditing: () => {
+    if (!editing) return;
+
+    const closing = editing;
+    editing = null;
+
+    // Whatever the room holds beyond the last commit belongs in the body before the tab
+    // stops speaking for it.
+    void closing.session.flush().finally(() => closing.session.close());
+
+    set({ collab: null, peers: [], committer: false });
+  },
 
   openInBackground: (note) => {
     const { tabs, open } = get();
@@ -486,6 +656,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   saveNote: async (identity) => {
     const { open, keyring, tree } = get();
     if (!open || !keyring || !open.dirty || open.locked) return;
+
+    // With a live session the body is written back by the committer on its own schedule.
+    // A second writer here would race the same If-Match and lose, turning every save into
+    // a conflict banner.
+    if (editing?.noteId === open.note.id) return;
 
     set({ saving: true });
 
@@ -820,6 +995,61 @@ type Setter = (partial: Partial<WorkspaceState>) => void;
 
 /** The drain in flight, if any. See `flushOutbox`. */
 let flushing: Promise<void> | null = null;
+
+/**
+ * Writes back what the live document holds.
+ *
+ * Only the committer calls this, and only for the note it is committing, so the optimistic
+ * lock behaves exactly as it does for a solitary writer: the sequence this tab last saw,
+ * against the row the server holds. The difference is what travels beside the body — the
+ * document state and the sequence it covers, which is what tells the server this write came
+ * *through* the session rather than around it.
+ */
+async function commitBody(
+  get: () => WorkspaceState,
+  set: Setter,
+  noteId: number,
+  text: string,
+  folded: ws.CRDTCommit,
+  identity: Identity,
+): Promise<void> {
+  const { open, keyring, tree } = get();
+  if (!open || !keyring || open.note.id !== noteId || open.locked) return;
+
+  set({ saving: true });
+
+  try {
+    const sealed = await ws.sealNote(open.note, text, open.contentSeq, keyring, identity);
+    const contentSeq = await ws.sendNote(open.note.id, ws.withCommit(sealed, folded), open.contentSeq);
+
+    const current = get().open;
+    if (current && current.note.id === noteId) {
+      set({ open: { ...current, contentSeq, dirty: false, queued: false, conflict: false } });
+    }
+
+    await cache
+      .writeBodies([
+        {
+          vaultId: open.note.vaultId,
+          id: noteId,
+          content: sealed.content,
+          contentNonce: sealed.content_nonce,
+          contentSeq,
+        },
+      ])
+      .catch(() => undefined);
+
+    const { resolved } = resolveWikilinks(text, tree.notes, noteId);
+    await graphApi.setLinks(noteId, resolved).catch(() => undefined);
+  } catch (cause) {
+    // A refused write-back leaves the document as the truth, which is where it already was.
+    // The next commit tries again; a conflict is the room being replaced, and the reseed
+    // frame is what says so.
+    report(set, cause);
+  } finally {
+    set({ saving: false });
+  }
+}
 
 /**
  * Sends every body this device wrote with no network, oldest attempt included.

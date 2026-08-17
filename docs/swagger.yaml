@@ -2131,6 +2131,31 @@ definitions:
         maxItems: 32
         minItems: 12
         type: array
+      crdt_epoch:
+        description: |-
+          The live document this body was folded from, present only when the write comes from
+          a live editing session. Absent means the body moved without the document knowing, so
+          the document is invalidated and the next session re-seeds from what was just
+          written. A client that knows nothing about live editing therefore behaves exactly as
+          it did before, which is the point of these being optional.
+        minimum: 1
+        type: integer
+      crdt_snapshot:
+        items:
+          format: byte
+          type: integer
+        maxItems: 8388608
+        type: array
+      crdt_snapshot_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      crdt_upto_seq:
+        minimum: 0
+        type: integer
       key_scope_id:
         description: |-
           The scope and version the body was sealed under. content_seq alone does not cover
@@ -4153,6 +4178,16 @@ paths:
       summary: Readiness probe
       tags:
       - system
+  /realtime:
+    get:
+      responses:
+        "101":
+          description: switching protocols
+          schema:
+            type: string
+      summary: Live editing socket
+      tags:
+      - realtime
 schemes:
 - http
 - https

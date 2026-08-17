@@ -11,6 +11,7 @@ import { tip } from '@/ui/Tooltip';
 import { contextOf } from './context';
 import { MarkdownEditor, type LinkWhere } from './MarkdownEditor';
 import { editorMenu, tableMenu } from './menu';
+import { Peers } from './Peers';
 import styles from './editor.module.css';
 
 /** Long enough that typing does not turn into one request per keystroke. */
@@ -23,8 +24,12 @@ export function Editor() {
     tabs,
     tree,
     index,
+    collab,
+    peers,
     editBody,
     saveNote,
+    startEditing,
+    stopEditing,
     rename,
     setIcon,
     openNote,
@@ -33,6 +38,7 @@ export function Editor() {
     saveAsCopy,
   } = useWorkspace();
   const identity = useSession((state) => state.identity);
+  const user = useSession((state) => state.user);
   const [title, setTitle] = useState(open?.note.name ?? '');
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -58,7 +64,20 @@ export function Editor() {
     setTitle(open?.note.name ?? '');
   }, [open?.note.id, open?.note.name]);
 
-  // Debounced autosave, plus an explicit ⌘S for people who do not trust one.
+  // The live session for the note on screen. It is opened here rather than in openNote
+  // because the identity lives in the session store, and this is where the two meet.
+  const noteId = open?.note.id;
+  useEffect(() => {
+    if (noteId === undefined || !identity || !user) return;
+
+    void startEditing(identity, { userId: user.id, name: user.display_name });
+
+    return () => stopEditing();
+  }, [noteId, identity, user, startEditing, stopEditing]);
+
+  // Debounced autosave, plus an explicit ⌘S for people who do not trust one. With a live
+  // session both are no-ops: the committer writes the body back on its own schedule, and
+  // saveNote steps aside rather than racing it.
   useEffect(() => {
     if (!open?.dirty) return;
 
@@ -237,6 +256,7 @@ export function Editor() {
                 <span>{saving ? 'ENCRYPTING…' : 'UNSAVED'}</span>
               </>
             ) : null}
+            <Peers peers={peers} selfId={user?.id} />
           </div>
 
           {open.locked ? (
@@ -252,6 +272,7 @@ export function Editor() {
               className={styles.body}
               docId={note.id}
               value={open.body}
+              collab={collab ?? undefined}
               readOnly={readOnly}
               context={context}
               placeholder={

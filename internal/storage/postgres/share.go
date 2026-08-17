@@ -32,7 +32,7 @@ func (r *VaultRepository) CreateShareLink(
 
 	var linkID int64
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		err := tx.QueryRow(ctx, insert,
 			in.FileID, in.TokenHash, in.Meta.Ciphertext, in.Meta.Nonce,
 			in.Content.Ciphertext, in.Content.Nonce, in.ContentSeq, actorID, in.ExpiresAt,
@@ -117,7 +117,7 @@ func (r *VaultRepository) ShareLinks(ctx context.Context, fileID int64) ([]vault
 }
 
 func (r *VaultRepository) RevokeShareLink(ctx context.Context, linkID, actorID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		const revoke = `
 			UPDATE share_links SET revoked_at = now()
 			 WHERE id = $1 AND revoked_at IS NULL
