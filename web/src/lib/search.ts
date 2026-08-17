@@ -40,6 +40,10 @@ export function extractTags(body: string): string[] {
 
 const TAG_SHAPE = /^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u;
 
+// Meta is one ciphertext the server caps at 8 KiB. A note that cannot be saved because of
+// its tag list would be the worst way to find that out, so the list is bounded well short.
+export const MAX_TAGS = 24;
+
 /**
  * One spelling for both sources: `#Draft` written into a body and "Draft" chosen in the
  * panel have to become the same tag, or one note would answer to two of them.

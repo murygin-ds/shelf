@@ -27,12 +27,19 @@ export function VaultSwitcher({
   onNewVault,
   onMembers,
   onSecurity,
+  onExport,
+  onImport,
 }: {
   onNewVault: () => void;
   /** Who the open vault is shared with, and the keys behind it: both belong to the vault,
       so they hang off the control that names it rather than off the account beside it. */
   onMembers: () => void;
   onSecurity: () => void;
+  /** Reading the open vault out as an archive. */
+  onExport: () => void;
+  /** Reading one back in. It creates a vault, so it sits beside “New vault” rather than
+      among the verbs that act on the one already open. */
+  onImport: () => void;
 }) {
   const { identity } = useSession();
   const { vaults, vaultId, loading, selectVault, setVaultIcon, setVaultLabel, removeVault } =
@@ -271,6 +278,24 @@ export function VaultSwitcher({
                   Keys &amp; history
                 </button>
 
+                {/* A locked vault has nothing readable to write out. */}
+                {!vault.locked ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.action}
+                    onClick={() => {
+                      setOpen(false);
+                      onExport();
+                    }}
+                  >
+                    <span className={styles.actionIcon}>
+                      <Icon name="box" size={13} />
+                    </span>
+                    Export vault…
+                  </button>
+                ) : null}
+
                 <div className={styles.divider} />
               </>
             ) : null}
@@ -288,6 +313,21 @@ export function VaultSwitcher({
                 <Icon name="plus" size={13} />
               </span>
               New vault
+            </button>
+
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.action}
+              onClick={() => {
+                setOpen(false);
+                onImport();
+              }}
+            >
+              <span className={styles.actionIcon}>
+                <Icon name="inbox" size={13} />
+              </span>
+              Import vault…
             </button>
 
             <button
