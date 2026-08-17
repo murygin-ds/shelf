@@ -1,4 +1,11 @@
-import { type ReactElement, type ReactNode, useCallback, useEffect, useState } from 'react';
+import {
+  type MouseEvent as ReactMouseEvent,
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from 'react';
 
 import { Icon, type IconName } from './Icon';
 import { clampToViewport } from './position';
@@ -34,6 +41,10 @@ export interface MenuPanel {
 }
 
 export type MenuEntry = MenuItem | MenuSubmenu | MenuPanel;
+
+/** What the keyboard hints call the modifier key on this platform. */
+export const MOD =
+  typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.userAgent) ? '⌘' : 'Ctrl+';
 
 /** Everything the menu needs from the event that opened it, React's or the DOM's. */
 export interface MenuEvent {
@@ -121,11 +132,24 @@ function ContextMenu({ request, onClose }: { request: Request; onClose: () => vo
 
   return (
     <>
-      <div className={styles.backdrop} onClick={onClose} onContextMenu={(e) => e.preventDefault()} />
+      <div className={styles.backdrop} onClick={onClose} onContextMenu={swallow(onClose)} />
 
       <Panel items={request.items} x={x} y={y} onClose={onClose} />
     </>
   );
+}
+
+/**
+ * The right button over the menu itself. The stop matters as much as the prevent: without it
+ * the event reaches the window-level fallback, which would answer by opening a second menu
+ * on top of this one.
+ */
+function swallow(then?: () => void) {
+  return (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    then?.();
+  };
 }
 
 interface Placement {
@@ -157,7 +181,12 @@ function Panel({ items, x, y, onClose }: Placement & { onClose: () => void }) {
 
   return (
     <>
-      <div className={styles.menu} style={{ left: x, top: y, width: WIDTH }} role="menu">
+      <div
+        className={styles.menu}
+        style={{ left: x, top: y, width: WIDTH }}
+        role="menu"
+        onContextMenu={swallow()}
+      >
         {items.map((entry, index) => (
           <div key={index} className={entry.separated ? styles.grouped : undefined}>
             {entry.kind === 'panel' ? (

@@ -1,7 +1,7 @@
 import type { EditorState, TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 
-import type { MenuEntry } from '@/ui/ContextMenu';
+import { MOD, type MenuEntry } from '@/ui/ContextMenu';
 
 import {
   MARKERS,
@@ -32,8 +32,6 @@ import { wikilinkAt } from './wikilink';
  * keeping cut/copy/paste, since taking those away would leave the reader worse off than
  * before.
  */
-
-const MOD = typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.userAgent) ? '⌘' : 'Ctrl+';
 
 export interface LinkTarget {
   target: string;

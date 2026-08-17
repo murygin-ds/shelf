@@ -197,8 +197,16 @@ export function MarkdownEditor({
           },
 
           contextmenu: (event, instance) => {
-            const at = instance.posAtCoords({ x: event.clientX, y: event.clientY });
-            if (at === null) return false;
+            const coords = { x: event.clientX, y: event.clientY };
+
+            // In its precise mode `posAtCoords` answers null for a line whose range touches
+            // the edge of the rendered viewport — an empty document, and the blank last line
+            // every note carries while it is being written. Those are the two places the
+            // menu was silently missing, so the estimate stands in, and the caret behind it.
+            const at =
+              instance.posAtCoords(coords) ??
+              instance.posAtCoords(coords, false) ??
+              instance.state.selection.main.head;
 
             // A right-click away from the selection moves the caret first, so the menu acts
             // on what was clicked rather than on what happened to be selected before.
