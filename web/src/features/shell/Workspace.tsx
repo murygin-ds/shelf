@@ -17,6 +17,7 @@ import { tip } from '@/ui/Tooltip';
 
 import { CommandPalette } from './CommandPalette';
 import { VaultSwitcher } from './VaultSwitcher';
+import { useShellHistory } from './history';
 import styles from './shell.module.css';
 
 export function Workspace() {
@@ -43,9 +44,11 @@ export function Workspace() {
   const [securityOpen, setSecurityOpen] = useState(false);
   const { ask, dialog } = useNamePrompt();
 
+  const restoredVaultId = useShellHistory(identity);
+
   useEffect(() => {
-    if (identity) void load(identity);
-  }, [identity, load]);
+    if (identity) void load(identity, restoredVaultId ?? undefined);
+  }, [identity, load, restoredVaultId]);
 
   // One poller for the whole shell, torn down on unmount so a remount cannot stack timers.
   useEffect(() => {

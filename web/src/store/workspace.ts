@@ -57,7 +57,11 @@ interface WorkspaceState {
   queued: number;
   error: string | null;
 
-  load: (identity: Identity) => Promise<void>;
+  /**
+   * Reads the vault list and opens one. `preferVaultId` is the vault a restored URL names;
+   * without it, or when that vault is gone, the first one opens.
+   */
+  load: (identity: Identity, preferVaultId?: number) => Promise<void>;
   selectVault: (vaultId: number, identity: Identity) => Promise<void>;
   createVault: (name: string, identity: Identity) => Promise<void>;
   /**
@@ -71,6 +75,8 @@ interface WorkspaceState {
   addFolder: (parentId: number | null, name: string) => Promise<void>;
   addNote: (folderId: number | null, title: string) => Promise<void>;
   openNote: (note: ws.NoteNode) => Promise<void>;
+  /** Takes the editor off the note without touching the tab strip, unlike `closeTab`. */
+  closeNote: () => void;
   editBody: (body: string) => void;
   saveNote: (identity?: Identity) => Promise<void>;
   /** Replays every body written while the network was gone. */
@@ -150,15 +156,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   queued: 0,
   error: null,
 
-  load: async (identity) => {
+  load: async (identity, preferVaultId) => {
     set({ loading: true, error: null });
 
     try {
       const vaults = await ws.listVaults(identity);
       set({ vaults, loaded: true });
 
-      const first = vaults[0];
-      if (first && get().vaultId === null) await get().selectVault(first.id, identity);
+      const wanted = vaults.find((vault) => vault.id === preferVaultId) ?? vaults[0];
+      if (wanted && get().vaultId === null) await get().selectVault(wanted.id, identity);
     } catch (cause) {
       report(set, cause);
     } finally {
@@ -419,6 +425,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       report(set, cause);
     }
   },
+
+  closeNote: () => set({ open: null }),
 
   openInBackground: (note) => {
     const { tabs, open } = get();
