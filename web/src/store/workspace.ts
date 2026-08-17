@@ -25,7 +25,7 @@ export interface OpenNote {
   conflict: boolean;
 }
 
-export type View = 'editor' | 'search' | 'graph' | 'trash';
+export type View = 'editor' | 'search' | 'graph' | 'trash' | 'profile';
 
 // MAX_TABS bounds the strip. Past a dozen the labels are unreadable and the strip stops
 // being a way back to anything.

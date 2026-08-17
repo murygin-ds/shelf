@@ -8,6 +8,7 @@ const places: Place[] = [
   { vaultId: 3, view: 'editor', noteId: 17, query: '' },
   { vaultId: 3, view: 'graph', noteId: null, query: '' },
   { vaultId: 3, view: 'trash', noteId: null, query: '' },
+  { vaultId: 3, view: 'profile', noteId: null, query: '' },
   { vaultId: 3, view: 'search', noteId: null, query: 'key rotation' },
   { vaultId: 3, view: 'search', noteId: null, query: '' },
 ];

@@ -28,6 +28,8 @@ export function pathOf(place: Place): string {
       return `${root}/graph`;
     case 'trash':
       return `${root}/trash`;
+    case 'profile':
+      return `${root}/profile`;
     default:
       return place.noteId === null ? root || '/' : `${root}/n/${place.noteId}`;
   }
@@ -46,6 +48,8 @@ export function placeOf(pathname: string, search: string): Place {
       return { vaultId, view: 'graph', noteId: null, query: '' };
     case 'trash':
       return { vaultId, view: 'trash', noteId: null, query: '' };
+    case 'profile':
+      return { vaultId, view: 'profile', noteId: null, query: '' };
     case 'n':
       return { vaultId, view: 'editor', noteId: idOf(rest[1]), query: '' };
     default:

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 
 import type { FolderNode, NoteNode } from '@/api/workspace';
 import { allTags } from '@/lib/search';
-import { useSession } from '@/store/session';
 import { type TreeRow, treeRows, useWorkspace } from '@/store/workspace';
 import { type MenuItem, useContextMenu } from '@/ui/ContextMenu';
 import { Icon, type IconName } from '@/ui/Icon';
@@ -21,7 +20,6 @@ export function Sidebar({
   onOpenPalette: () => void;
   onOpenPermissions: (folderId: number) => void;
 }) {
-  const { user } = useSession();
   const {
     vaults,
     vaultId,
@@ -46,11 +44,6 @@ export function Sidebar({
   const vault = vaults.find((v) => v.id === vaultId);
   const rows = treeRows(tree, expanded);
   const tags = useMemo(() => allTags(index).slice(0, 8), [index]);
-  const initials = (user?.display_name ?? '?')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
 
   const { ask, dialog } = useNamePrompt();
   const { open: openMenu, menu } = useContextMenu();
@@ -332,16 +325,6 @@ export function Sidebar({
             </div>
           </>
         ) : null}
-      </div>
-
-      <div className={styles.footer}>
-        <span className={styles.footerAvatar}>{initials}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className={styles.footerName}>{user?.display_name}</div>
-          <div className={styles.footerState}>
-            {(vault?.role ?? 'member').toUpperCase()} · KEY UNLOCKED
-          </div>
-        </div>
       </div>
 
       {picker ? <IconPicker target={picker} onClose={() => setPicker(null)} /> : null}
