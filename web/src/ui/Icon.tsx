@@ -48,7 +48,20 @@ export type IconName =
   | 'x'
   | 'arrow'
   | 'trash'
-  | 'box';
+  | 'box'
+  // The editor's own verbs. Kept out of ICON_NAMES: nobody wants "cut" as a note icon.
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'case'
+  | 'text'
+  | 'list'
+  | 'quote'
+  | 'table'
+  | 'rule'
+  | 'cut'
+  | 'copy'
+  | 'paste';
 
 const stroke = {
   fill: 'none',
@@ -225,6 +238,55 @@ export function IconSprite() {
         <symbol id="i-box" {...stroke}>
           <rect x="4" y="4.5" width="16" height="15" rx="2.5" />
           <path d="M4 9.6h16" />
+        </symbol>
+        <symbol id="i-bold" {...stroke}>
+          <path d="M8 5.5h5.2a3.25 3.25 0 0 1 0 6.5H8z" />
+          <path d="M8 12h6a3.5 3.5 0 0 1 0 7H8z" />
+        </symbol>
+        <symbol id="i-italic" {...stroke}>
+          <path d="M15 5.5h-4.5M13.5 18.5H9M14 5.5l-3.5 13" />
+        </symbol>
+        <symbol id="i-strike" {...stroke}>
+          <path d="M4.5 12h15" />
+          <path d="M16 7.6A4.6 4.6 0 0 0 8.4 9.4c0 1.2.9 2 2.4 2.6M7.8 16.6a4.7 4.7 0 0 0 7.3-.9" />
+        </symbol>
+        <symbol id="i-case" {...stroke}>
+          <path d="M3.5 17.5l4-10.5 4 10.5M5 14h5" />
+          <circle cx="17" cy="14.4" r="3.1" />
+          <path d="M20.1 11.3v6.2" />
+        </symbol>
+        <symbol id="i-text" {...stroke}>
+          <path d="M5.5 6.5h13M12 6.5v11M9 17.5h6" />
+        </symbol>
+        <symbol id="i-list" {...stroke}>
+          <path d="M9.5 7h10M9.5 12h10M9.5 17h10" />
+          <circle cx="5.2" cy="7" r="1" fill="currentColor" stroke="none" />
+          <circle cx="5.2" cy="12" r="1" fill="currentColor" stroke="none" />
+          <circle cx="5.2" cy="17" r="1" fill="currentColor" stroke="none" />
+        </symbol>
+        <symbol id="i-quote" {...stroke}>
+          <path d="M5.5 6v12" />
+          <path d="M10 8.5h9M10 12h9M10 15.5h5.5" />
+        </symbol>
+        <symbol id="i-table" {...stroke}>
+          <rect x="4" y="5" width="16" height="14" rx="2" />
+          <path d="M4 9.8h16M11.4 9.8V19" />
+        </symbol>
+        <symbol id="i-rule" {...stroke}>
+          <path d="M4.5 12h15" />
+        </symbol>
+        <symbol id="i-cut" {...stroke}>
+          <circle cx="7" cy="17.2" r="2.6" />
+          <circle cx="17" cy="17.2" r="2.6" />
+          <path d="M8.8 15.3L18.2 4.5M15.2 15.3L5.8 4.5" />
+        </symbol>
+        <symbol id="i-copy" {...stroke}>
+          <rect x="9" y="9" width="10.5" height="10.5" rx="2" />
+          <path d="M5.5 15V6.5a2 2 0 0 1 2-2H15" />
+        </symbol>
+        <symbol id="i-paste" {...stroke}>
+          <path d="M9.5 5H7a1.8 1.8 0 0 0-1.8 1.8v11.4A1.8 1.8 0 0 0 7 20h10a1.8 1.8 0 0 0 1.8-1.8V6.8A1.8 1.8 0 0 0 17 5h-2.5" />
+          <rect x="9.3" y="3.2" width="5.4" height="3.6" rx="1" />
         </symbol>
         <symbol id="i-eye" {...stroke}>
           <path d="M2.8 12S6.5 6.6 12 6.6 21.2 12 21.2 12 17.5 17.4 12 17.4 2.8 12 2.8 12z" />

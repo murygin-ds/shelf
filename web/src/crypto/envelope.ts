@@ -59,6 +59,12 @@ export function isLocked(value: unknown): value is Locked {
 export interface EntityMeta {
   name: string;
   icon?: string;
+  /**
+   * Tags chosen for the note, as opposed to the `#tag` written into its body. Optional, so
+   * a note saved before this existed still opens — and so a note with none is sealed to the
+   * same bytes it was before.
+   */
+  tags?: string[];
 }
 
 export async function encryptMeta(key: CryptoKey, meta: EntityMeta, ref: EntityRef): Promise<Sealed> {

@@ -1,24 +1,55 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { allTags } from '@/lib/search';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
 import { useContextMenu } from '@/ui/ContextMenu';
 import { tip } from '@/ui/Tooltip';
 
-import { MarkdownEditor } from './MarkdownEditor';
+import { contextOf } from './context';
+import { MarkdownEditor, type LinkWhere } from './MarkdownEditor';
+import { editorMenu, tableMenu } from './menu';
 import styles from './editor.module.css';
 
 /** Long enough that typing does not turn into one request per keystroke. */
 const AUTOSAVE_MS = 1200;
 
 export function Editor() {
-  const { open, saving, tabs, editBody, saveNote, rename, openNote, closeTab, saveAsCopy } =
-    useWorkspace();
+  const {
+    open,
+    saving,
+    tabs,
+    tree,
+    index,
+    editBody,
+    saveNote,
+    rename,
+    openNote,
+    openInBackground,
+    closeTab,
+    saveAsCopy,
+  } = useWorkspace();
   const identity = useSession((state) => state.identity);
   const [title, setTitle] = useState(open?.note.name ?? '');
   const timer = useRef<number | undefined>(undefined);
   const { open: openMenu, menu } = useContextMenu();
+
+  // Keyed on a cheap signature rather than on the array: the poller hands out a new
+  // `tree.notes` every eight seconds with the same contents in it, and reconfiguring the
+  // editor on each of those would be work for nothing.
+  const signature = tree.notes.map((note) => `${note.id}:${note.name}`).join('|');
+  // A tag can hold no whitespace, so joining them is a signature and a value at once.
+  const tags = allTags(index).join(' ');
+
+  const context = useMemo(
+    () =>
+      contextOf(
+        tree.notes.map((note) => ({ id: note.id, name: note.name })),
+        tags ? tags.split(' ') : [],
+      ),
+    [signature, tags],
+  );
 
   useEffect(() => {
     setTitle(open?.note.name ?? '');
@@ -64,6 +95,24 @@ export function Editor() {
 
   const note = open.note;
   const readOnly = open.locked || note.permission === 'view' || note.permission === 'comment';
+
+  /**
+   * Resolved here rather than in the editor, and by the same rule the graph uses: titles are
+   * encrypted, so only a holder of the key can turn one into a note — and when two notes
+   * share a title the older one wins, so the same body always leads to the same place.
+   */
+  const openLink = (target: string, where: LinkWhere) => {
+    const wanted = target.trim().toLowerCase();
+
+    const found = tree.notes
+      .filter((candidate) => candidate.name.trim().toLowerCase() === wanted)
+      .sort((a, b) => a.id - b.id)[0];
+
+    if (!found) return;
+
+    if (where === 'tab') openInBackground(found);
+    else void openNote(found);
+  };
 
   const commitTitle = () => {
     const next = title.trim();
@@ -189,6 +238,7 @@ export function Editor() {
               docId={note.id}
               value={open.body}
               readOnly={readOnly}
+              context={context}
               placeholder={
                 readOnly
                   ? 'This note is empty.'
@@ -196,6 +246,11 @@ export function Editor() {
               }
               onChange={editBody}
               onBlur={() => void saveNote(identity ?? undefined)}
+              onOpenLink={openLink}
+              onContextMenu={(event, view, pos) =>
+                openMenu(event, editorMenu(view, pos, (link) => openLink(link.target, link.where)))
+              }
+              onTableMenu={(event, ref) => openMenu(event, tableMenu(ref))}
             />
           )}
 

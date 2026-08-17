@@ -9,7 +9,7 @@ import * as ws from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
-import type { IndexedNote } from '@/lib/search';
+import { normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
 import * as sync from '@/sync/engine';
 
@@ -30,6 +30,10 @@ export type View = 'editor' | 'search' | 'graph' | 'trash';
 // MAX_TABS bounds the strip. Past a dozen the labels are unreadable and the strip stops
 // being a way back to anything.
 const MAX_TABS = 12;
+
+// Meta is one ciphertext the server caps at 8 KiB. A note that cannot be saved because of
+// its tag list would be the worst way to find that out, so the list is bounded well short.
+const MAX_TAGS = 24;
 
 interface WorkspaceState {
   vaults: ws.Vault[];
@@ -77,6 +81,11 @@ interface WorkspaceState {
     kind: 'folder' | 'file',
     icon: string | undefined,
   ) => Promise<void>;
+  /**
+   * The note's own tags, as opposed to the `#tag` written into its body. They ride the same
+   * encrypted meta as its name, so the server learns nothing from them.
+   */
+  setTags: (note: ws.NoteNode, tags: readonly string[]) => Promise<void>;
   /** Only the open vault: its scope key is the one the loaded keyring holds. */
   setVaultIcon: (icon: string | undefined) => Promise<void>;
   /**
@@ -97,6 +106,11 @@ interface WorkspaceState {
    * a list of places to go back to, which is what a tab strip is.
    */
   tabs: ws.NoteNode[];
+  /**
+   * Puts a note in the strip without taking the reader off the one they are on. Reads no
+   * body: a tab is a `NoteNode` and a promise to come back, not a loaded document.
+   */
+  openInBackground: (note: ws.NoteNode) => void;
   closeTab: (noteId: number) => void;
   purge: (id: number, kind: 'folder' | 'file') => Promise<void>;
   setView: (view: View) => void;
@@ -387,7 +401,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // that reorders itself under the pointer is unusable.
       const tabs = get().tabs.some((tab) => tab.id === note.id)
         ? get().tabs.map((tab) => (tab.id === note.id ? note : tab))
-        : [...get().tabs, note].slice(-MAX_TABS);
+        : fit([...get().tabs, note], note.id);
 
       set({
         view: 'editor',
@@ -404,6 +418,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } catch (cause) {
       report(set, cause);
     }
+  },
+
+  openInBackground: (note) => {
+    const { tabs, open } = get();
+
+    if (tabs.some((tab) => tab.id === note.id)) {
+      set({ tabs: tabs.map((tab) => (tab.id === note.id ? note : tab)) });
+      return;
+    }
+
+    set({ tabs: fit([...tabs, note], open?.note.id) });
   },
 
   editBody: (body) => {
@@ -479,7 +504,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   rename: async (node, kind, name) => {
     await withKeyring(get, set, async (keyring) => {
-      await ws.renameNode(node, kind, name, node.icon, keyring);
+      await ws.writeMeta(node, kind, { name }, keyring);
       await get().syncNow();
 
       const open = get().open;
@@ -489,9 +514,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  setTags: async (note, tags) => {
+    await withKeyring(get, set, async (keyring) => {
+      const clean = [...new Set(tags.flatMap((tag) => normalizeTag(tag) ?? []))].slice(0, MAX_TAGS);
+
+      await ws.writeMeta(note, 'file', { tags: clean }, keyring);
+      await get().syncNow();
+
+      const open = get().open;
+      if (open && open.note.id === note.id) {
+        set({ open: { ...open, note: { ...open.note, tags: clean } } });
+      }
+    });
+  },
+
   setIcon: async (node, kind, icon) => {
     await withKeyring(get, set, async (keyring) => {
-      await ws.renameNode(node, kind, node.name, icon, keyring);
+      await ws.writeMeta(node, kind, { icon }, keyring);
       await get().syncNow();
 
       const open = get().open;
@@ -771,6 +810,19 @@ async function withKeyring(
 
 function allOpen(folders: ws.FolderNode[]): Set<number> {
   return new Set(folders.map((folder) => folder.id));
+}
+
+/**
+ * Trims the strip back to MAX_TABS, oldest first but never the note on screen: dropping that
+ * one leaves the editor showing a note the strip no longer lists, and no way back to it.
+ */
+function fit(tabs: ws.NoteNode[], keep: number | undefined): ws.NoteNode[] {
+  if (tabs.length <= MAX_TABS) return tabs;
+
+  const oldest = tabs.findIndex((tab) => tab.id !== keep);
+  if (oldest < 0) return tabs.slice(-MAX_TABS);
+
+  return fit([...tabs.slice(0, oldest), ...tabs.slice(oldest + 1)], keep);
 }
 
 /**

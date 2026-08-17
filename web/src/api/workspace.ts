@@ -84,6 +84,8 @@ export interface Node {
   keyScopeClientId: string;
   name: string;
   icon: string | undefined;
+  /** Always an array, empty for a node with none and for one this reader cannot open. */
+  tags: string[];
   locked: boolean;
   permission: Permission;
   keyScopeId: number;
@@ -180,7 +182,7 @@ export async function createVault(
   const scopeClientId = crypto.randomUUID();
   const key = await generateKey();
 
-  const sealedMeta = await encryptMeta(key, meta(name, emoji), vaultRef(clientId, scopeClientId, 1));
+  const sealedMeta = await encryptMeta(key, buildMeta(name, emoji), vaultRef(clientId, scopeClientId, 1));
 
   const box = await seal(
     splitPublicBlob(identity.publicBlob).seal,
@@ -326,7 +328,7 @@ export async function updateVaultMeta(
 
   const sealed = await encryptMeta(
     requireKey(keyring, scope),
-    meta(name, icon),
+    buildMeta(name, icon),
     vaultRef(vault.clientId, vault.keyScopeClientId, vault.keyVersion),
   );
 
@@ -405,6 +407,7 @@ async function openNode(dto: NodeDto, entity: EntityType, keyring: ScopeKeyring)
     keyScopeClientId: dto.key_scope_client_id,
     name: locked ? LOCKED_NAME : opened.name,
     icon: locked ? undefined : opened.icon,
+    tags: locked ? [] : (opened.tags ?? []),
     locked,
     permission: dto.permission,
     keyScopeId: scope.id,
@@ -426,7 +429,7 @@ export async function createFolder(
   const clientId = crypto.randomUUID();
   const key = requireKey(keyring, scope);
 
-  const sealed = await encryptMeta(key, meta(name), ref(vaultId, 'folder', clientId, scope));
+  const sealed = await encryptMeta(key, buildMeta(name), ref(vaultId, 'folder', clientId, scope));
 
   const dto = await api.post<FolderDto>(`/vaults/${vaultId}/folders`, {
     client_id: clientId,
@@ -451,7 +454,7 @@ export async function createNote(
   const key = requireKey(keyring, scope);
   const slot = ref(vaultId, 'file', clientId, scope);
 
-  const sealedMeta = await encryptMeta(key, meta(title), slot);
+  const sealedMeta = await encryptMeta(key, buildMeta(title), slot);
   const sealedBody = await encryptContent(key, '', slot);
 
   const dto = await api.post<FileDto>(`/vaults/${vaultId}/files`, {
@@ -468,11 +471,23 @@ export async function createNote(
   return openNote(dto, keyring);
 }
 
-export async function renameNode(
+export interface MetaPatch {
+  name?: string;
+  icon?: string | undefined;
+  tags?: readonly string[];
+}
+
+/**
+ * Rewrites a node's meta.
+ *
+ * A patch rather than a full set of fields, because meta is a single ciphertext: everything
+ * not passed has to be carried over, and a caller that forgets a field does not fail — it
+ * erases it. Taking a patch is what makes forgetting impossible.
+ */
+export async function writeMeta(
   node: FolderNode | NoteNode,
   kind: 'folder' | 'file',
-  name: string,
-  icon: string | undefined,
+  patch: MetaPatch,
   keyring: ScopeKeyring,
 ): Promise<void> {
   const scope = scopeOfNode(node);
@@ -480,7 +495,13 @@ export async function renameNode(
 
   const sealed = await encryptMeta(
     key,
-    meta(name, icon),
+    buildMeta(
+      patch.name ?? node.name,
+      // `undefined` is meaningful here — it means "drop the icon" — so the key's presence
+      // is what decides, not its value.
+      'icon' in patch ? patch.icon : node.icon,
+      patch.tags ?? node.tags,
+    ),
     ref(node.vaultId, kind, node.clientId, scope),
   );
 
@@ -601,8 +622,23 @@ export const restoreNote = (id: number) => api.post<void>(`/files/${id}/restore`
 export const purgeFolder = (id: number) => api.delete<void>(`/folders/${id}/purge`);
 export const purgeNote = (id: number) => api.delete<void>(`/files/${id}/purge`);
 
-function meta(name: string, icon?: string | undefined): EntityMeta {
-  return icon === undefined ? { name } : { name, icon };
+/**
+ * Exported because the re-key path builds meta too, and a second copy of this is exactly how
+ * a field ends up silently dropped: re-sealing a note without its tags overwrites the only
+ * ciphertext that held them.
+ */
+export function buildMeta(
+  name: string,
+  icon?: string | undefined,
+  tags?: readonly string[],
+): EntityMeta {
+  return {
+    name,
+    ...(icon === undefined ? {} : { icon }),
+    // An empty list is left out rather than written as `[]`, so a note that never had tags
+    // seals to the same bytes it always did.
+    ...(tags && tags.length ? { tags: [...tags] } : {}),
+  };
 }
 
 function requireKey(keyring: ScopeKeyring, scope: Scope): CryptoKey {

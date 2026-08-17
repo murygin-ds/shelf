@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+} from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import {
   Annotation,
   Compartment,
@@ -16,7 +21,13 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 
+import { tagSource, wikilinkSource } from './complete';
+import { vaultContext, type VaultContext } from './context';
+import { formatKeymap, wrapOnType } from './format';
+import { codeColours, noteLanguage } from './language';
 import { editorTheme, livePreview } from './livepreview';
+import { tableGrid, tableMenu, type TableCellRef } from './table';
+import { wikilinkAt } from './wikilink';
 
 /**
  * Marks a document swap this component performed — a body that arrived from the server
@@ -28,6 +39,9 @@ const External = Annotation.define<boolean>();
 
 const editable = new Compartment();
 const undoStack = new Compartment();
+const vault = new Compartment();
+
+export type LinkWhere = 'here' | 'tab';
 
 export interface MarkdownEditorProps {
   /** The body as the store holds it. Deliberately not a controlled value — see below. */
@@ -36,8 +50,14 @@ export interface MarkdownEditorProps {
   docId: number;
   readOnly: boolean;
   placeholder: string;
+  /** The notes and tags around this one, for resolving links and for completion. */
+  context: VaultContext;
   onChange: (body: string) => void;
   onBlur: () => void;
+  onOpenLink: (target: string, where: LinkWhere) => void;
+  onContextMenu: (event: MouseEvent, view: EditorView, pos: number) => void;
+  /** The right button inside a rendered table, which has its own verbs. */
+  onTableMenu: (event: MouseEvent, ref: TableCellRef) => void;
   className?: string | undefined;
 }
 
@@ -46,8 +66,12 @@ export function MarkdownEditor({
   docId,
   readOnly,
   placeholder,
+  context,
   onChange,
   onBlur,
+  onOpenLink,
+  onContextMenu,
+  onTableMenu,
   className,
 }: MarkdownEditorProps) {
   const host = useRef<HTMLDivElement | null>(null);
@@ -57,8 +81,28 @@ export function MarkdownEditor({
   // new callback identities. Reading them through a ref keeps the editor out of every
   // dependency array, which is what stops an unrelated re-render from resetting the
   // document under the caret.
-  const latest = useRef({ value, readOnly, placeholder, onChange, onBlur });
-  latest.current = { value, readOnly, placeholder, onChange, onBlur };
+  const latest = useRef({
+    value,
+    readOnly,
+    placeholder,
+    context,
+    onChange,
+    onBlur,
+    onOpenLink,
+    onContextMenu,
+    onTableMenu,
+  });
+  latest.current = {
+    value,
+    readOnly,
+    placeholder,
+    context,
+    onChange,
+    onBlur,
+    onOpenLink,
+    onContextMenu,
+    onTableMenu,
+  };
 
   /** A body that arrived while an IME held the document, waiting for the composition to end. */
   const deferred = useRef<string | null>(null);
@@ -90,19 +134,80 @@ export function MarkdownEditor({
       doc,
       extensions: [
         undoStack.of(history()),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown({ base: markdownLanguage }),
+        // Ours first: ⌘B and the wrapping markers have to win over whatever the defaults
+        // would otherwise do with the same key.
+        wrapOnType,
+        closeBrackets(),
+        autocompletion({ override: [wikilinkSource, tagSource] }),
+        keymap.of([
+          ...formatKeymap,
+          ...closeBracketsKeymap,
+          // Before the defaults, or the arrow keys move the caret out from under the open
+          // list and Escape reaches `simplifySelection` instead of closing it.
+          ...completionKeymap,
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
+        noteLanguage,
+        codeColours,
         livePreview,
+        tableGrid,
+        // Read through the ref, so the handler never has to be reconfigured.
+        tableMenu.of((event, ref) => latest.current.onTableMenu(event, ref)),
         editorTheme,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ spellcheck: 'false', 'aria-label': 'Note body' }),
         editable.of(gate(latest.current.readOnly, latest.current.placeholder)),
+        vault.of(vaultContext.of(latest.current.context)),
         EditorView.domEventHandlers({
           // A microtask rather than a synchronous call: the composed text is applied after
           // the event, and dispatching from inside an update is not allowed.
           compositionend: () => {
             queueMicrotask(drain);
             return false;
+          },
+
+          // Middle-click opens a link in another tab. The mousedown has to be swallowed as
+          // well, or the browser starts its own autoscroll on the way to the click.
+          mousedown: (event, instance) => {
+            if (event.button !== 1) return false;
+
+            const link = linkUnder(instance, event);
+            if (!link) return false;
+
+            event.preventDefault();
+            latest.current.onOpenLink(link.target, 'tab');
+
+            return true;
+          },
+
+          click: (event, instance) => {
+            if (event.button !== 0) return false;
+
+            // A drag that ended on a link is a text selection, not a request to leave.
+            if (!instance.state.selection.main.empty) return false;
+
+            const link = linkUnder(instance, event);
+            if (!link) return false;
+
+            event.preventDefault();
+            latest.current.onOpenLink(link.target, event.metaKey || event.ctrlKey ? 'tab' : 'here');
+
+            return true;
+          },
+
+          contextmenu: (event, instance) => {
+            const at = instance.posAtCoords({ x: event.clientX, y: event.clientY });
+            if (at === null) return false;
+
+            // A right-click away from the selection moves the caret first, so the menu acts
+            // on what was clicked rather than on what happened to be selected before.
+            const { from, to } = instance.state.selection.main;
+            if (at < from || at > to) instance.dispatch({ selection: { anchor: at } });
+
+            latest.current.onContextMenu(event, instance, at);
+
+            return true;
           },
         }),
         EditorView.updateListener.of(listen),
@@ -170,7 +275,20 @@ export function MarkdownEditor({
     view.current?.dispatch({ effects: editable.reconfigure(gate(readOnly, placeholder)) });
   }, [readOnly, placeholder]);
 
+  // Through a facet rather than a ref: whether a link resolves decides how it is drawn, and
+  // a decoration only changes in response to a transaction. A renamed note would otherwise
+  // keep looking unresolved until the next keystroke.
+  useEffect(() => {
+    view.current?.dispatch({ effects: vault.reconfigure(vaultContext.of(context)) });
+  }, [context]);
+
   return <div ref={host} className={className} />;
+}
+
+function linkUnder(instance: EditorView, event: MouseEvent) {
+  const at = instance.posAtCoords({ x: event.clientX, y: event.clientY });
+
+  return at === null ? null : wikilinkAt(instance.state, at);
 }
 
 /**

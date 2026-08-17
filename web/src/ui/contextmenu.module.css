@@ -76,3 +76,21 @@
 .itemDanger .itemIcon {
   color: var(--danger);
 }
+
+.itemArrow {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  color: var(--text-faint);
+}
+
+.itemHint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.panel {
+  padding: 4px 2px 2px;
+}
