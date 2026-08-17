@@ -55,70 +55,72 @@ export function ProfileView() {
       </div>
 
       <div className={styles.body}>
-        <div className={styles.identity}>
-          <span className={styles.avatar}>{initials}</span>
-          <div className={styles.identityText}>
-            <div className={styles.name}>{name}</div>
-            <div className={styles.login}>{user?.login}</div>
+        <div className={styles.inner}>
+          <div className={styles.identity}>
+            <span className={styles.avatar}>{initials}</span>
+            <div className={styles.identityText}>
+              <div className={styles.name}>{name}</div>
+              <div className={styles.login}>{user?.login}</div>
+            </div>
           </div>
-        </div>
 
-        <div className={styles.section}>ACCOUNT</div>
-        <DisplayNameForm current={name} />
-        <dl className={styles.facts}>
-          <Fact label="Login" value={user?.login ?? '—'} />
-          <Fact
-            label="Member since"
-            value={user ? new Date(user.created_at).toLocaleDateString() : '—'}
-          />
-          <Fact
-            label="Vaults"
-            value={`${owned} own${joined ? ` · ${joined} shared with you` : ''}`}
-          />
-        </dl>
+          <div className={styles.section}>ACCOUNT</div>
+          <DisplayNameForm current={name} />
+          <dl className={styles.facts}>
+            <Fact label="Login" value={user?.login ?? '—'} />
+            <Fact
+              label="Member since"
+              value={user ? new Date(user.created_at).toLocaleDateString() : '—'}
+            />
+            <Fact
+              label="Vaults"
+              value={`${owned} own${joined ? ` · ${joined} shared with you` : ''}`}
+            />
+          </dl>
 
-        <div className={styles.section}>KEYS</div>
-        <dl className={styles.facts}>
-          <Fact
-            label="This device"
-            value={status === 'unlocked' ? 'Key unlocked' : 'Key locked'}
-          />
-          <div className={styles.fact}>
-            <dt className={styles.factLabel}>Key fingerprint</dt>
-            <dd className={styles.factValue}>
-              {/* The server hands out public keys, so it can hand out its own. Comparing this
-                  with somebody out of band is what closes that gap — hence a copy button. */}
-              <span className={styles.fingerprint}>{identity?.fingerprint ?? '—'}</span>
-              {identity ? (
-                <button type="button" className={styles.copy} onClick={copyFingerprint}>
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              ) : null}
-            </dd>
+          <div className={styles.section}>KEYS</div>
+          <dl className={styles.facts}>
+            <Fact
+              label="This device"
+              value={status === 'unlocked' ? 'Key unlocked' : 'Key locked'}
+            />
+            <div className={styles.fact}>
+              <dt className={styles.factLabel}>Key fingerprint</dt>
+              <dd className={styles.factValue}>
+                {/* The server hands out public keys, so it can hand out its own. Comparing this
+                    with somebody out of band is what closes that gap — hence a copy button. */}
+                <span className={styles.fingerprint}>{identity?.fingerprint ?? '—'}</span>
+                {identity ? (
+                  <button type="button" className={styles.copy} onClick={copyFingerprint}>
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                ) : null}
+              </dd>
+            </div>
+          </dl>
+
+          <p className={styles.note}>
+            Your passphrase never leaves this device: it unwraps the master key here, and the
+            server only ever holds the wrapped copy.
+          </p>
+
+          <div className={styles.actions}>
+            <button type="button" className={styles.action} onClick={lock}>
+              <Icon name="lock" size={13} />
+              Lock keys
+            </button>
+            <button type="button" className={styles.action} onClick={() => void signOut()}>
+              <Icon name="arrow" size={13} />
+              Sign out
+            </button>
           </div>
-        </dl>
 
-        <p className={styles.note}>
-          Your passphrase never leaves this device: it unwraps the master key here, and the
-          server only ever holds the wrapped copy.
-        </p>
+          <div className={styles.section}>PASSPHRASE</div>
+          <PassphraseForm />
 
-        <div className={styles.actions}>
-          <button type="button" className={styles.action} onClick={lock}>
-            <Icon name="lock" size={13} />
-            Lock keys
-          </button>
-          <button type="button" className={styles.action} onClick={() => void signOut()}>
-            <Icon name="arrow" size={13} />
-            Sign out
-          </button>
+          <div className={styles.section}>DANGER ZONE</div>
+          <DangerZone login={user?.login ?? ''} />
         </div>
-
-        <div className={styles.section}>PASSPHRASE</div>
-        <PassphraseForm />
-
-        <div className={styles.section}>DANGER ZONE</div>
-        <DangerZone login={user?.login ?? ''} />
       </div>
     </div>
   );
