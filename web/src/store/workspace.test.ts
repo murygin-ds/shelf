@@ -1,0 +1,153 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { CRDTCommit, NoteNode } from '@/api/workspace';
+import { generateKey } from '@/crypto/aead';
+import { generateIdentity } from '@/crypto/identity';
+import type { Identity } from '@/crypto/identity';
+import { ScopeKeyring } from '@/crypto/keyring';
+
+import { commitBody } from './workspace';
+
+/**
+ * The write-back a live session performs.
+ *
+ * The commit that matters most is the last one, and it lands after the note has closed —
+ * `stopEditing` flushes and the editor moves on without waiting. A write-back that read the
+ * note off the store would find `open` already null and drop it, leaving `files.content`
+ * behind the document for search, revisions and offline reading.
+ */
+
+const SCOPE = { id: 3, clientId: 'ba5eba11-0000-4000-8000-000000000001', version: 2 };
+
+let sent: Array<{ path: string; ifMatch?: string | undefined; body: Record<string, unknown> }> = [];
+let sequence = 0;
+
+beforeEach(() => {
+  sent = [];
+  sequence = 4;
+
+  vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+    const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+    // The links are written on the same trip, to `/files/88/links`, and answer nothing the
+    // caller reads; only the body write moves the sequence.
+    if (!String(url).endsWith('/files/88/content')) {
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }
+
+    sent.push({
+      path: String(url),
+      ifMatch: (init.headers as Record<string, string> | undefined)?.['If-Match'],
+      body,
+    });
+
+    sequence += 1;
+
+    return Promise.resolve(
+      new Response(JSON.stringify({ content_seq: sequence }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function note(): NoteNode {
+  return {
+    id: 88,
+    clientId: '8f14e45f-ceea-467a-9f6b-1d2c3b4a5e60',
+    vaultId: 12,
+    keyScopeClientId: SCOPE.clientId,
+    keyScopeId: SCOPE.id,
+    keyVersion: SCOPE.version,
+    name: 'Roadmap',
+    locked: false,
+    permission: 'edit',
+  } as unknown as NoteNode;
+}
+
+function folded(): CRDTCommit {
+  return {
+    epoch: 1,
+    uptoSeq: 17,
+    snapshot: { ciphertext: Uint8Array.of(1, 2, 3), nonce: Uint8Array.of(4, 5, 6) },
+  };
+}
+
+async function identity(): Promise<Identity> {
+  return (await generateIdentity(await generateKey())).identity;
+}
+
+/** A store with nothing open, which is what a commit on the way out meets. */
+async function store(open: unknown = null) {
+  const ring = new ScopeKeyring();
+  ring.add(SCOPE.id, SCOPE.version, await generateKey());
+
+  const state = { keyring: ring, tree: { folders: [], notes: [] }, open, saving: false };
+  const writes: Array<Record<string, unknown>> = [];
+
+  return {
+    state,
+    writes,
+    // The store's own types are private to the module; the seams commitBody takes are the
+    // only thing this test needs from them.
+    get: (() => state) as unknown as Parameters<typeof commitBody>[0],
+    set: ((partial: Record<string, unknown>) => {
+      writes.push(partial);
+      Object.assign(state, partial);
+    }) as unknown as Parameters<typeof commitBody>[1],
+  };
+}
+
+describe('the live write-back', () => {
+  it('writes the body after the note has been closed', async () => {
+    const { get, set } = await store();
+    const target = { note: note(), contentSeq: 4 };
+
+    await commitBody(get, set, target, 'ship on tuesday', folded(), await identity());
+
+    expect(sent[0]?.path).toContain('/files/88');
+    expect(sent[0]?.ifMatch).toBe('4');
+
+    // The document state travels beside the body: it is what tells the server this write
+    // came through the session rather than around it, so the log is folded and not dropped.
+    expect(sent[0]?.body).toMatchObject({ crdt_epoch: 1, crdt_upto_seq: 17 });
+  });
+
+  it('locks the next commit against the sequence the last one returned', async () => {
+    const { get, set } = await store();
+    const target = { note: note(), contentSeq: 4 };
+    const signer = await identity();
+
+    await commitBody(get, set, target, 'first', folded(), signer);
+    await commitBody(get, set, target, 'second', folded(), signer);
+
+    expect(target.contentSeq).toBe(6);
+    expect(sent.map((write) => write.ifMatch)).toEqual(['4', '5']);
+  });
+
+  it('stamps the new sequence on the note only while it is the one on screen', async () => {
+    const open = { note: note(), body: 'ship on tuesday', contentSeq: 4, dirty: true };
+    const { get, set, writes } = await store(open);
+
+    await commitBody(get, set, { note: note(), contentSeq: 4 }, 'ship on tuesday', folded(), await identity());
+
+    expect(writes.some((write) => write.open)).toBe(true);
+    expect((get() as unknown as { open: { contentSeq: number; dirty: boolean } }).open).toMatchObject({
+      contentSeq: 5,
+      dirty: false,
+    });
+
+    // Another note took the editor while the write was in flight: stamping this sequence on
+    // it would corrupt a lock that belongs to a different row.
+    const other = await store({ note: { ...note(), id: 91 }, contentSeq: 2 });
+
+    await commitBody(other.get, other.set, { note: note(), contentSeq: 5 }, 'later', folded(), await identity());
+
+    expect(other.writes.some((write) => write.open)).toBe(false);
+  });
+});

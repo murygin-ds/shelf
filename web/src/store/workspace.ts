@@ -181,8 +181,34 @@ const HINT_DEBOUNCE_MS = 200;
  */
 let liveSession: live.LiveSession | null = null;
 
+/**
+ * What a write-back needs to know about the note it speaks for.
+ *
+ * It travels with the session rather than being read from `open`, because the last commit of
+ * a session lands after the note was closed — that is what the commit on the way out is —
+ * and the sequence it has to carry cannot be looked up once the editor has moved on.
+ */
+interface CommitTarget {
+  note: ws.NoteNode;
+  contentSeq: number;
+}
+
 /** The editing session for the note on screen, for the same reason. */
-let editing: { noteId: number; session: EditingSession } | null = null;
+let editing: { target: CommitTarget; session: EditingSession } | null = null;
+
+/**
+ * The session that has stopped and is still writing back. The next one waits for it: its
+ * write moves the sequence a new session has to start from, and a session that starts behind
+ * is refused on every commit it ever makes.
+ */
+let settling: Promise<void> = Promise.resolve();
+
+/**
+ * Counts the sessions asked for, so a start suspended on a round trip can tell that it is no
+ * longer the one wanted. StrictMode asks twice on its own, and without this the first answer
+ * leaves a room open that nothing closes.
+ */
+let generation = 0;
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   vaults: [],
@@ -556,13 +582,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // No socket means no session, and the note stays on the path it has always had: type,
     // debounce, PUT. That is also what happens when the hub is down.
     if (!open || !keyring || vaultId === null || liveSession === null || open.locked) return;
-    if (editing?.noteId === open.note.id) return;
+    if (editing?.target.note.id === open.note.id) return;
 
     get().stopEditing();
 
     const scope = ws.scopeOfNode(open.note);
     const key = keyring.get(scope.id, scope.version);
     if (!key) return;
+
+    const mine = ++generation;
 
     // Public keys of everyone who might have written an update, so a signature can be
     // checked before the update is merged. A member this list does not know produces
@@ -578,23 +606,35 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // merging text nobody can attribute.
     }
 
+    await settling;
+
+    // Both waits are round trips, and the note on screen may have moved under them — or this
+    // start may have been superseded by a later one. A session opened now would be a room
+    // nothing closes, holding a sequence for a note the editor no longer shows.
+    const onScreen = get().open;
+    if (mine !== generation || !onScreen || onScreen.note.id !== open.note.id) return;
+
+    // The sequence comes from the store rather than from `open` above: the session that just
+    // stopped writes on its way out, and that write is what moved it.
+    const target: CommitTarget = { note: onScreen.note, contentSeq: onScreen.contentSeq };
+
     const session = createSession({
-      note: open.note,
-      ref: ws.ref(open.note.vaultId, 'file', open.note.clientId, scope),
+      note: target.note,
+      ref: ws.ref(target.note.vaultId, 'file', target.note.clientId, scope),
       scope: { keyScopeId: scope.id, keyVersion: scope.version },
       key,
       identity,
       self,
-      body: open.body,
-      contentSeq: open.contentSeq,
-      canEdit: open.note.permission !== 'view' && open.note.permission !== 'comment',
+      body: onScreen.body,
+      contentSeq: target.contentSeq,
+      canEdit: target.note.permission !== 'view' && target.note.permission !== 'comment',
       send: (frame) => liveSession?.send(frame),
       authorKey: (userId) => authors.get(userId) ?? null,
-      commit: (text, folded) => commitBody(get, set, open.note.id, text, folded, identity),
+      commit: (text, folded) => commitBody(get, set, target, text, folded, identity),
       onBinding: (binding) => set({ collab: binding }),
       onText: (text) => {
         const current = get().open;
-        if (!current || current.note.id !== open.note.id) return;
+        if (!current || current.note.id !== target.note.id) return;
 
         // The text is the room's, so this is not an unsaved change: it feeds the title, the
         // search index and the wikilinks, and the committer's timer decides when it lands.
@@ -618,19 +658,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       },
     });
 
-    editing = { noteId: open.note.id, session };
+    editing = { target, session };
     session.join();
   },
 
   stopEditing: () => {
+    // Even with no session up: a start may be suspended on its round trips, and it has to
+    // learn that what it was asked for is no longer wanted.
+    generation += 1;
+
     if (!editing) return;
 
     const closing = editing;
     editing = null;
 
     // Whatever the room holds beyond the last commit belongs in the body before the tab
-    // stops speaking for it.
-    void closing.session.flush().finally(() => closing.session.close());
+    // stops speaking for it. The write outlives this call, and the next session waits for it
+    // rather than starting on a sequence it is about to move.
+    settling = closing.session
+      .flush()
+      .catch(() => undefined)
+      .finally(() => closing.session.close());
 
     set({ collab: null, peers: [], committer: false });
   },
@@ -660,7 +708,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // With a live session the body is written back by the committer on its own schedule.
     // A second writer here would race the same If-Match and lose, turning every save into
     // a conflict banner.
-    if (editing?.noteId === open.note.id) return;
+    if (editing?.target.note.id === open.note.id) return;
 
     set({ saving: true });
 
@@ -1004,34 +1052,48 @@ let flushing: Promise<void> | null = null;
  * against the row the server holds. The difference is what travels beside the body — the
  * document state and the sequence it covers, which is what tells the server this write came
  * *through* the session rather than around it.
+ *
+ * The note comes from the session rather than from `open`, because the commit that matters
+ * most is the one on the way out: it is scheduled while the note is on screen and lands after
+ * it has closed. Reading the store then would find another note, or none, and drop the write
+ * — leaving the body behind the document until somebody opened the note again.
+ *
+ * Exported for the test that pins exactly that: the store cannot be driven into the state
+ * from the outside, because the live session it needs is opened by `watch`.
  */
-async function commitBody(
+export async function commitBody(
   get: () => WorkspaceState,
   set: Setter,
-  noteId: number,
+  target: CommitTarget,
   text: string,
   folded: ws.CRDTCommit,
   identity: Identity,
 ): Promise<void> {
-  const { open, keyring, tree } = get();
-  if (!open || !keyring || open.note.id !== noteId || open.locked) return;
+  const { keyring, tree } = get();
+  if (!keyring) return;
+
+  const { note } = target;
 
   set({ saving: true });
 
   try {
-    const sealed = await ws.sealNote(open.note, text, open.contentSeq, keyring, identity);
-    const contentSeq = await ws.sendNote(open.note.id, ws.withCommit(sealed, folded), open.contentSeq);
+    const sealed = await ws.sealNote(note, text, target.contentSeq, keyring, identity);
+    const contentSeq = await ws.sendNote(note.id, ws.withCommit(sealed, folded), target.contentSeq);
+
+    // The next commit of this session locks against what this one wrote, whether or not the
+    // note is still open.
+    target.contentSeq = contentSeq;
 
     const current = get().open;
-    if (current && current.note.id === noteId) {
+    if (current && current.note.id === note.id) {
       set({ open: { ...current, contentSeq, dirty: false, queued: false, conflict: false } });
     }
 
     await cache
       .writeBodies([
         {
-          vaultId: open.note.vaultId,
-          id: noteId,
+          vaultId: note.vaultId,
+          id: note.id,
           content: sealed.content,
           contentNonce: sealed.content_nonce,
           contentSeq,
@@ -1039,8 +1101,8 @@ async function commitBody(
       ])
       .catch(() => undefined);
 
-    const { resolved } = resolveWikilinks(text, tree.notes, noteId);
-    await graphApi.setLinks(noteId, resolved).catch(() => undefined);
+    const { resolved } = resolveWikilinks(text, tree.notes, note.id);
+    await graphApi.setLinks(note.id, resolved).catch(() => undefined);
   } catch (cause) {
     // A refused write-back leaves the document as the truth, which is where it already was.
     // The next commit tries again; a conflict is the room being replaced, and the reseed
