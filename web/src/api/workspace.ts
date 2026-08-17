@@ -148,7 +148,7 @@ export const LOCKED_NAME = '••••••';
 const WRAP_ALGORITHM = 'ecdh-p256-hkdf-a256gcm';
 
 /** The scope a node in the tree is sealed under. */
-function scopeOfNode(node: Node): Scope {
+export function scopeOfNode(node: Node): Scope {
   return { id: node.keyScopeId, clientId: node.keyScopeClientId, version: node.keyVersion };
 }
 
@@ -157,7 +157,7 @@ function scopeOf(dto: { key_scope_id: number; key_scope_client_id: string; key_v
   return { id: dto.key_scope_id, clientId: dto.key_scope_client_id, version: dto.key_version };
 }
 
-function ref(
+export function ref(
   vaultId: number,
   entity: EntityType,
   clientId: string,
@@ -550,6 +550,34 @@ export interface NotePayload {
   key_scope_id: number;
   key_version: number;
   signature?: B64;
+  /**
+   * The live document this body was folded from, present only when a live session is
+   * writing back what it holds. Without these the server treats the write as one made
+   * around the document and replaces it — which is exactly right for an offline body
+   * replayed from the outbox, or for a client that knows nothing about live editing.
+   */
+  crdt_epoch?: number;
+  crdt_upto_seq?: number;
+  crdt_snapshot?: B64;
+  crdt_snapshot_nonce?: B64;
+}
+
+/** What a live session adds to a body write. */
+export interface CRDTCommit {
+  epoch: number;
+  uptoSeq: number;
+  snapshot: { ciphertext: Uint8Array; nonce: Uint8Array };
+}
+
+/** Adds the live-document half to a sealed body. */
+export function withCommit(payload: NotePayload, commit: CRDTCommit): NotePayload {
+  return {
+    ...payload,
+    crdt_epoch: commit.epoch,
+    crdt_upto_seq: commit.uptoSeq,
+    crdt_snapshot: bytesToB64(commit.snapshot.ciphertext),
+    crdt_snapshot_nonce: bytesToB64(commit.snapshot.nonce),
+  };
 }
 
 /**

@@ -16,11 +16,18 @@ import (
 
 // AccessRepository implements the storage of membership, grants and invites.
 type AccessRepository struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	announce Announcer
 }
 
-func NewAccessRepository(pool *pgxpool.Pool) *AccessRepository {
-	return &AccessRepository{pool: pool}
+// NewAccessRepository builds the repository. A nil announcer means nothing is told about a
+// change, which is what the tests and any non-serving caller want.
+func NewAccessRepository(pool *pgxpool.Pool, announce Announcer) *AccessRepository {
+	return &AccessRepository{pool: pool, announce: announce}
+}
+
+func (r *AccessRepository) inTx(ctx context.Context, fn func(*txn) error) error {
+	return inTx(ctx, r.pool, r.announce, fn)
 }
 
 // Members reads the vault's member table, including how many top-level folders each one
@@ -93,7 +100,7 @@ func (r *AccessRepository) Membership(ctx context.Context, vaultID, userID int64
 // SetRole changes the floor a member starts from. It also bumps access_seq, which is what
 // tells that member's clients their cached view is no longer authoritative.
 func (r *AccessRepository) SetRole(ctx context.Context, vaultID, userID int64, role vault.Role, actorID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		seq, err := nextSeq(ctx, tx, vaultID)
 		if err != nil {
 			return err
@@ -129,7 +136,7 @@ func (r *AccessRepository) SetRole(ctx context.Context, vaultID, userID int64, r
 func (r *AccessRepository) RemoveMember(ctx context.Context, vaultID, userID, actorID int64) ([]int64, error) {
 	var scopes []int64
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		// Both paths to a scope count. A member who read a folder only through a group still
 		// holds that group's private key, and reporting nothing to rotate would make the
 		// removal look complete when it is not.
@@ -341,7 +348,7 @@ func (r *AccessRepository) PutGrant(
 ) (*access.Grant, error) {
 	var granted *access.Grant
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		const upsert = `
 			INSERT INTO grants (vault_id, scope_type, scope_ref_id, subject_type, subject_id,
 			                    permission, created_by)
@@ -393,7 +400,7 @@ func (r *AccessRepository) PutGrant(
 }
 
 func (r *AccessRepository) DeleteGrant(ctx context.Context, vaultID, grantID, actorID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		const query = `
 			DELETE FROM grants WHERE id = $1 AND vault_id = $2
 			RETURNING subject_type, subject_id`
@@ -453,7 +460,7 @@ func insertKeyGrants(
 
 // bumpAccess marks the affected members' cached view as stale. A group grant touches
 // everyone in the group, which is exactly who needs to hear about it.
-func bumpAccess(ctx context.Context, tx pgx.Tx, vaultID int64, subject vault.Subject) error {
+func bumpAccess(ctx context.Context, tx *txn, vaultID int64, subject vault.Subject) error {
 	seq, err := nextSeq(ctx, tx, vaultID)
 	if err != nil {
 		return err

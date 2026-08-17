@@ -20,6 +20,7 @@ type Deps struct {
 	Graph     GraphRepository
 	Revisions RevisionRepository
 	Shares    ShareRepository
+	CRDT      CRDTStore
 	Logger    *zap.Logger
 }
 
@@ -36,6 +37,7 @@ type Service struct {
 	graph     GraphRepository
 	revisions RevisionRepository
 	shares    ShareRepository
+	crdt      CRDTStore
 	log       *zap.Logger
 }
 
@@ -51,6 +53,7 @@ func NewService(deps Deps) *Service {
 		graph:     deps.Graph,
 		revisions: deps.Revisions,
 		shares:    deps.Shares,
+		crdt:      deps.CRDT,
 		log:       deps.Logger,
 	}
 }
@@ -373,6 +376,10 @@ func (s *Service) UpdateContent(ctx context.Context, userID, fileID int64, in Co
 		return nil, ErrSignatureInvalid
 	}
 
+	if in.CRDT != nil && len(in.CRDT.Snapshot.Ciphertext) > MaxSnapshotBytes {
+		return nil, ErrUpdateTooLarge
+	}
+
 	if _, err := s.fileFor(ctx, userID, fileID, PermEdit); err != nil {
 		return nil, err
 	}
@@ -438,6 +445,20 @@ func (s *Service) PurgeFile(ctx context.Context, userID, fileID int64) error {
 	}
 
 	return nil
+}
+
+// Member resolves what a caller may do in a vault before any grant narrows it.
+//
+// Exported for the live relay, which has to make the same check the REST handlers make:
+// a second implementation of the access model is a second place for it to drift.
+func (s *Service) Member(ctx context.Context, userID, vaultID int64) (*Membership, error) {
+	return s.member(ctx, vaultID, userID)
+}
+
+// Ref resolves a note for a caller who needs at least the given permission, without
+// reading its body. Exported for the same reason as Member.
+func (s *Service) Ref(ctx context.Context, userID, fileID int64, least Permission) (*Ref, error) {
+	return s.fileFor(ctx, userID, fileID, least)
 }
 
 func (s *Service) member(ctx context.Context, vaultID, userID int64) (*Membership, error) {
@@ -530,6 +551,9 @@ func translate(err error, op string) error {
 		errors.Is(err, ErrRekeyBatch),
 		errors.Is(err, ErrLinkBatch),
 		errors.Is(err, ErrSignatureInvalid),
+		errors.Is(err, ErrEpochMismatch),
+		errors.Is(err, ErrCompactRequired),
+		errors.Is(err, ErrUpdateTooLarge),
 		errors.Is(err, ErrShareExpiry):
 		return err
 	default:

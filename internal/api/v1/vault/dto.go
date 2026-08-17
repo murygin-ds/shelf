@@ -76,6 +76,30 @@ type updateContentRequest struct {
 	// this exact slot. Optional so an older client still writes, but a body without one is
 	// stored as unsigned and the history says so rather than implying authorship.
 	Signature []byte `binding:"omitempty,len=64" json:"signature,omitempty" format:"byte"`
+	// The live document this body was folded from, present only when the write comes from
+	// a live editing session. Absent means the body moved without the document knowing, so
+	// the document is invalidated and the next session re-seeds from what was just
+	// written. A client that knows nothing about live editing therefore behaves exactly as
+	// it did before, which is the point of these being optional.
+	CRDTEpoch         int32  `binding:"omitempty,min=1"                 json:"crdt_epoch,omitempty"`
+	CRDTUpToSeq       int64  `binding:"omitempty,min=0"                 json:"crdt_upto_seq,omitempty"`
+	CRDTSnapshot      []byte `binding:"omitempty,max=8388608"           json:"crdt_snapshot,omitempty" format:"byte"`
+	CRDTSnapshotNonce []byte `binding:"omitempty,min=12,max=32"     json:"crdt_snapshot_nonce,omitempty" format:"byte"`
+}
+
+// crdtCommit reads the live-document half of a content write. All four fields travel
+// together or not at all: a snapshot without an epoch names no document, and an epoch
+// without a snapshot would prune a log into nothing.
+func (r updateContentRequest) crdtCommit() *vault.CRDTCommit {
+	if r.CRDTEpoch == 0 || len(r.CRDTSnapshot) == 0 || len(r.CRDTSnapshotNonce) == 0 {
+		return nil
+	}
+
+	return &vault.CRDTCommit{
+		Epoch:    r.CRDTEpoch,
+		UpToSeq:  r.CRDTUpToSeq,
+		Snapshot: vault.Blob{Ciphertext: r.CRDTSnapshot, Nonce: r.CRDTSnapshotNonce},
+	}
 }
 
 type moveRequest struct {

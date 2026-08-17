@@ -279,6 +279,26 @@ type ContentUpdate struct {
 	// The server cannot check that it is right — that needs the author's public key and a
 	// reason to trust it — but it refuses one that could never verify.
 	Signature []byte
+	// CRDT is present when the write is a live session committing what its document holds.
+	// Absent means the body moved around the document, which invalidates it: see
+	// CRDTCommit and the reconciliation in the storage layer.
+	CRDT *CRDTCommit
+}
+
+// CRDTCommit is the live document this body was folded from.
+//
+// It is what tells a write made *through* the document apart from one made *around* it —
+// an offline body replayed from the outbox, or a client too old to speak the socket. The
+// first folds the log away; the second invalidates the document so the next session starts
+// from what was just written.
+type CRDTCommit struct {
+	Epoch int32
+	// UpToSeq is the last update the snapshot covers. Everything at or below it is pruned.
+	UpToSeq int64
+	// Snapshot is the whole document state, sealed like a body. It is not the text: it
+	// carries the CRDT's own structure, which is why a document cannot be rebuilt from the
+	// body alone.
+	Snapshot Blob
 }
 
 // Move relocates a node within its vault.

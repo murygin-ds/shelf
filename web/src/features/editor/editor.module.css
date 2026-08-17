@@ -113,6 +113,70 @@
   color: var(--ok);
 }
 
+/* Who else is in the note. Pushed to the end of the meta line so it reads as a state of
+   the note rather than as another fact about it. */
+.peers {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.peer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  /* Against a coloured disc, not against the page: the hue is per person and the text has
+     to stay readable on all of them. */
+  color: #10101a;
+  cursor: default;
+}
+
+/* Remote carets, drawn by yCollab. The name tag only appears while the caret is moving,
+   which is what keeps a room of four from covering the text in labels. */
+.body :global(.cm-ySelectionCaret) {
+  position: relative;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  box-sizing: border-box;
+}
+
+.body :global(.cm-ySelectionInfo) {
+  position: absolute;
+  top: -1.05em;
+  left: -1px;
+  padding: 1px 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #10101a;
+  border-radius: 3px 3px 3px 0;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+.body :global(.cm-ySelectionCaret:hover) > :global(.cm-ySelectionInfo),
+.body :global(.cm-ySelectionCaretDot:hover) + :global(.cm-ySelectionInfo) {
+  opacity: 1;
+}
+
+.body :global(.cm-ySelectionInfo.cm-ySelectionInfoVisible) {
+  opacity: 1;
+}
+
 .body {
   margin-top: 28px;
 }

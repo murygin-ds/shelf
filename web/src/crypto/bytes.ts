@@ -112,6 +112,16 @@ export function group(value: string, size: number, separator = '-'): string {
 export const PAD_BLOCK = 4096;
 
 /**
+ * The block for one live-editing update.
+ *
+ * A body is padded to 4 KiB so its stored size says nothing about the text. An update is a
+ * keystroke or two, sent several times a second, and rounding each one to 4 KiB would cost
+ * two hundred times the traffic for a property nothing else in the session preserves — the
+ * timing of the frames already gives away that somebody is typing.
+ */
+export const PAD_UPDATE_BLOCK = 256;
+
+/**
  * Prefixes the payload with its length and pads the result to a block boundary.
  * Without this the server learns the size of every note it stores.
  */

@@ -119,6 +119,45 @@ rows are unreadable. Committing also closes every public link on the affected no
 Rotation protects future reads. It cannot un-read what somebody already read, and the UI
 says so rather than implying otherwise.
 
+## Live editing
+
+Two people in one note do not take turns. Their edits merge, each sees the other's caret
+and selection with a name on it, and the note header says who else is here.
+
+The merge happens in the browsers. A server that cannot read the text cannot transform one
+edit against another, so the operational transform every collaborative editor is built on
+is simply unavailable — what runs instead is a CRDT, and what the server does is relay
+sealed updates and refuse the ones from somebody who may not write.
+
+**Updates are sealed and signed like bodies.** A batch of keystrokes is encrypted under the
+note's scope key and signed with the author's ECDSA key, and a reader checks the signature
+*before* merging. Refusing a reader's frames on the socket is the server behaving itself;
+the signature is what holds when it does not — `view`, `comment` and `edit` are one key, so
+without it any reader could produce text that decrypts for everybody.
+
+**One client writes the body back.** The document is the truth while a session is live, but
+`files.content` is what search, revisions, public links and offline reading are built on. So
+the server names a committer — the longest standing connection that may write — and it
+commits the folded document two seconds after the room falls quiet, and at least every
+fifteen. The server cannot do this itself for the usual reason, which is why the body lags
+the document between commits.
+
+**A body written around the document invalidates it.** An offline write replayed from the
+outbox, a tab too old to speak the socket, a re-key: each moves the text out from under the
+session, so the document's epoch rises, its log is dropped, and the open tabs are told to
+start again from what was just written. Unsent local edits do not survive that, and the
+conflict banner says so rather than letting a sentence disappear quietly.
+
+**Carets are encrypted, names are not.** Where somebody's caret is gives away the length of
+the document and the place they are working in, so it travels sealed under the same key as
+the text. Who is in the room does not: the server already holds the membership and the
+display names, and it states them itself — which also means the list is trustworthy rather
+than whatever a client claims to be.
+
+The socket is an accelerator, never the only channel. Polling continues at a slower cadence
+while it is up, so a hub that dies costs latency and nothing else. `realtime.enabled: false`
+turns the whole thing off and leaves the app exactly as it was.
+
 ## What the server learns
 
 Not the notes. It does learn, and cannot help learning:
@@ -133,6 +172,12 @@ Not the notes. It does learn, and cannot help learning:
 - **Display names and login addresses**, because members have to be able to find and
   address each other, and **the email hint on an invite**, so an invitation can say who it
   was meant for.
+- **The rhythm and rough volume of typing**, per author, while a note is being edited
+  together. Updates are relayed as they happen and padded to 256 bytes rather than 4 KiB —
+  padding a keystroke to a body's block would multiply the traffic of a session two
+  hundredfold. Live collaboration and hiding that somebody is typing are not compatible.
+- **Who is editing what, at the same time**, which is a sharper version of "who works with
+  whom" than the timestamps alone give.
 
 It does not learn: note titles, bodies, folder names, icons, tags, search queries, the
 text of any link that did not resolve, or the private label a member keeps on a vault —
@@ -161,12 +206,13 @@ internal/
     middleware/         request id, logging, recovery, CORS, body limit, auth, rate limit
     request/            binding, id and If-Match helpers
     response/           response and error helpers
-    v1/{auth,vault,access}/   handlers and DTOs per feature
+    v1/{auth,vault,access,realtime}/   handlers and DTOs per feature
   auth/                registration, login, sessions, tokens, Argon2id
   vault/               the domain: permissions, scopes, sync, re-key, graph, revisions,
                        sharing, audit. No SQL and no HTTP.
     accesscases/        the permission truth table both implementations are held to
   access/              members, grants, invites
+  realtime/            the live editing socket: hub, connections, rooms, frames
   config/ logger/ ratelimit/
   storage/postgres/    pgxpool and the repositories, including the permission CTE
   web/                 go:embed of the built frontend
@@ -174,7 +220,8 @@ web/src/
   crypto/              kdf, aead, sealed box, identity, keyring, envelope, signatures
   api/                 one module per resource; every []byte field typed as base64
   db/                  IndexedDB cache — ciphertext only
-  sync/                delta pull, hydration, the local search index
+  sync/                delta pull, hydration, the local search index, the live socket
+  collab/              the shared document: room, carets, per-person colours
   store/               zustand: session and workspace
   lib/                 wikilink resolution, the search index, passphrase strength
   ui/                  icons and the shared primitives
@@ -290,6 +337,7 @@ oracle for what exists. 403 is reserved for "you can see this, but not do that".
 | Graph         | `PUT /files/{id}/links`, `GET /files/{id}/backlinks`, `GET /vaults/{id}/graph`                                                              |
 | History       | `GET /files/{id}/revisions`, `GET /files/{id}/revisions/{revision_id}`                                                                     |
 | Sharing       | `POST/GET /files/{id}/share-links`, `DELETE /share-links/{id}`, `POST /public/share/lookup` (anonymous)                                     |
+| Realtime      | `GET /realtime` — the live editing socket. Frames are described below, not in swagger, which documents bodies and a socket has none          |
 
 The sync endpoint is what the rest rests on. Cursors are per-vault change sequences rather
 than timestamps: two rows committed in one transaction share a `now()`, and a cursor by time
@@ -300,6 +348,27 @@ to it.
 
 Neither anonymous endpoint takes a secret in the URL. Both take the digest of one in a POST
 body — a token in a path lands in every access log, including this service's own.
+
+### The socket
+
+`GET /api/v1/realtime` carries JSON frames, `[]byte` fields base64 like everywhere else. It
+authenticates in its first frame rather than in a header, for the reason just given: a
+browser cannot set `Authorization` on a websocket, and a token in the query string would
+land in the access log the paragraph above is about.
+
+| Direction | Frames |
+|-----------|--------|
+| To server | `auth` (must be first, and again to renew before the 15-minute token expires), `subscribe`, `open`, `seed`, `update`, `awareness`, `close` |
+| From server | `ready`, `subscribed`, `changed`, `doc`, `absent`, `update`, `awareness`, `presence`, `ack`, `reseed`, `error` |
+
+`changed` is the whole of the tree's liveness: it carries a vault id and a change sequence,
+and the client pulls the delta through `/vaults/{id}/sync` as it always did. Pushing the
+rows themselves would mean a second way to apply a change, kept in agreement with the first.
+
+Writing needs `edit` and reading needs `view`, checked through the same resolver the REST
+handlers use. A reader's `update` is refused and not relayed; their `awareness` is relayed,
+because somebody who cannot write still has a caret and the presence list would otherwise
+be lying about who is here.
 
 ## Configuration
 

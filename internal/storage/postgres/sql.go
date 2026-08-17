@@ -105,8 +105,49 @@ const fileReturning = `id, client_id, vault_id, folder_id,
 	updated_seq, updated_by, deleted_at, created_at, updated_at,
 	content, content_nonce, octet_length(content)`
 
+// Announcer is told what a transaction did, once that transaction committed. A nil
+// Announcer is silence, which is what the tests and the migrations run with.
+type Announcer interface {
+	VaultChanged(vaultID, changeSeq int64)
+	// NoteInvalidated means the live document behind a note was replaced, so anybody
+	// editing it holds updates that can no longer be merged into what is stored.
+	NoteInvalidated(fileID int64)
+}
+
+// txn is a transaction that remembers what it moved.
+//
+// It embeds pgx.Tx, so everything written against a transaction keeps working; the only
+// thing it adds is the record nextSeq and the live-document reconciliation leave behind.
+type txn struct {
+	pgx.Tx
+
+	touched     map[int64]int64
+	invalidated []int64
+}
+
+// invalidate records that a note's live document was replaced by this transaction.
+func (t *txn) invalidate(fileID int64) {
+	t.invalidated = append(t.invalidated, fileID)
+}
+
+// touch records the highest sequence this transaction allocated for a vault. A transaction
+// that writes twice announces once, at the sequence a reader has to catch up to.
+func (t *txn) touch(vaultID, seq int64) {
+	if t.touched == nil {
+		t.touched = make(map[int64]int64, 1)
+	}
+
+	if seq > t.touched[vaultID] {
+		t.touched[vaultID] = seq
+	}
+}
+
 // inTx runs fn inside a transaction, rolling back on any error.
-func inTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) error {
+//
+// What it moved is announced after the commit and never before: a listener woken inside
+// the transaction would read the state the write is still about to replace, and a rolled
+// back transaction would announce a change that never happened.
+func inTx(ctx context.Context, pool *pgxpool.Pool, announce Announcer, fn func(*txn) error) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -114,7 +155,9 @@ func inTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) error 
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := fn(tx); err != nil {
+	wrapped := &txn{Tx: tx}
+
+	if err := fn(wrapped); err != nil {
 		return err
 	}
 
@@ -122,16 +165,31 @@ func inTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) error 
 		return fmt.Errorf("commit tx: %w", err)
 	}
 
+	if announce != nil {
+		for vaultID, seq := range wrapped.touched {
+			announce.VaultChanged(vaultID, seq)
+		}
+
+		for _, fileID := range wrapped.invalidated {
+			announce.NoteInvalidated(fileID)
+		}
+	}
+
 	return nil
 }
 
 // nextSeq allocates the vault's next change sequence. Calling it inside the same
 // transaction as the write is what keeps the sync cursor gap-free.
-func nextSeq(ctx context.Context, tx pgx.Tx, vaultID int64) (int64, error) {
+//
+// It takes *txn rather than pgx.Tx so that a write cannot allocate a sequence without the
+// announcement following it — the compiler is what keeps the two together.
+func nextSeq(ctx context.Context, tx *txn, vaultID int64) (int64, error) {
 	var seq int64
 	if err := tx.QueryRow(ctx, `SELECT next_vault_seq($1)`, vaultID).Scan(&seq); err != nil {
 		return 0, fmt.Errorf("allocate change sequence: %w", err)
 	}
+
+	tx.touch(vaultID, seq)
 
 	return seq, nil
 }

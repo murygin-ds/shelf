@@ -6,8 +6,12 @@ import {
   aad,
   decryptContent,
   decryptMeta,
+  decryptPresence,
+  decryptUpdate,
   encryptContent,
   encryptMeta,
+  encryptPresence,
+  encryptUpdate,
   type EntityRef,
   isLocked,
   sealInfo,
@@ -26,7 +30,7 @@ import {
 import { deriveAccountKeys, deriveRecoveryKeys, newSalt, normalizeRecoveryCode } from './kdf';
 import { generateRecoveryCode, isRecoveryCodeShaped, renderRecoveryKit } from './recovery';
 import { open, seal } from './sealedbox';
-import { checkAuthorship, signRevision, SIGNATURE_LENGTH } from './signature';
+import { checkAuthorship, checkUpdate, signRevision, signUpdate, SIGNATURE_LENGTH } from './signature';
 
 // Argon2id at production parameters costs ~64 MiB and a few hundred ms per call.
 const KDF_TIMEOUT = 30_000;
@@ -450,5 +454,110 @@ describe('author signatures', () => {
     expect(await checkAuthorship(author.publicBlob, null, REF, 4, SEALED)).toBe('unsigned');
     expect(await checkAuthorship(null, new Uint8Array(SIGNATURE_LENGTH), REF, 4, SEALED))
       .toBe('unknown-author');
+  });
+});
+
+describe('live editing', () => {
+  const UPDATE = Uint8Array.of(1, 2, 3, 4, 5);
+
+  it('opens an update sealed for the same document', async () => {
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    expect(equal(await decryptUpdate(key, sealed, REF, 4) as Uint8Array, UPDATE)).toBe(true);
+  });
+
+  // The epoch is the document's identity. An update from a document that has been replaced
+  // would merge into text it was never written against, so it must not even decrypt.
+  it('refuses an update carried into another epoch', async () => {
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    expect(isLocked(await decryptUpdate(key, sealed, REF, 5))).toBe(true);
+  });
+
+  it('refuses an update moved to another note', async () => {
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    const moved: EntityRef = { ...REF, entityId: '00000000-0000-4000-8000-000000000000' };
+
+    expect(isLocked(await decryptUpdate(key, sealed, moved, 4))).toBe(true);
+  });
+
+  // An update is a keystroke, not a document: padding each one to a body's block would cost
+  // two hundred times the traffic of a typing session.
+  it('pads an update to far less than a body', async () => {
+    const key = await generateKey();
+    const update = await encryptUpdate(key, UPDATE, REF, 4);
+    const body = await encryptContent(key, 'hello', REF);
+
+    expect(update.ciphertext.length).toBeLessThan(PAD_BLOCK);
+    expect(body.ciphertext.length).toBeGreaterThanOrEqual(PAD_BLOCK);
+  });
+
+  it('opens a caret position sealed for the same note', async () => {
+    const key = await generateKey();
+    const sealed = await encryptPresence(key, UPDATE, REF);
+
+    expect(equal(await decryptPresence(key, sealed, REF) as Uint8Array, UPDATE)).toBe(true);
+
+    const moved: EntityRef = { ...REF, scopeClientId: OTHER_SCOPE };
+    expect(isLocked(await decryptPresence(key, sealed, moved))).toBe(true);
+  });
+
+  it('proves who wrote an update', async () => {
+    const author = await generateIdentity(await generateMasterKey());
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    const signature = await signUpdate(author.identity, REF, 4, sealed);
+
+    expect(await checkUpdate(author.publicBlob, signature, REF, 4, sealed)).toBe('valid');
+  });
+
+  // Refusing a reader's frames on the socket is the server behaving. This is the part that
+  // holds when it does not: view, comment and edit are one key, so without a signature any
+  // reader could produce text that decrypts for everybody.
+  it('refuses an update signed by somebody else', async () => {
+    const author = await generateIdentity(await generateMasterKey());
+    const impostor = await generateIdentity(await generateMasterKey());
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    const signature = await signUpdate(impostor.identity, REF, 4, sealed);
+
+    expect(await checkUpdate(author.publicBlob, signature, REF, 4, sealed)).toBe('invalid');
+  });
+
+  it('refuses a signature replayed into another epoch', async () => {
+    const author = await generateIdentity(await generateMasterKey());
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    const signature = await signUpdate(author.identity, REF, 4, sealed);
+
+    expect(await checkUpdate(author.publicBlob, signature, REF, 5, sealed)).toBe('invalid');
+  });
+
+  it('refuses a tampered ciphertext', async () => {
+    const author = await generateIdentity(await generateMasterKey());
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    const signature = await signUpdate(author.identity, REF, 4, sealed);
+
+    const tampered = { ...sealed, ciphertext: Uint8Array.from(sealed.ciphertext) };
+    tampered.ciphertext.set([(tampered.ciphertext[0] ?? 0) ^ 0xff], 0);
+
+    expect(await checkUpdate(author.publicBlob, signature, REF, 4, tampered)).toBe('invalid');
+  });
+
+  it('calls an unsigned update unsigned rather than forged', async () => {
+    const author = await generateIdentity(await generateMasterKey());
+    const key = await generateKey();
+    const sealed = await encryptUpdate(key, UPDATE, REF, 4);
+
+    expect(await checkUpdate(author.publicBlob, null, REF, 4, sealed)).toBe('unsigned');
   });
 });

@@ -20,7 +20,9 @@ export default defineConfig({
     // Same-origin in dev, so CORS never enters the picture and the cookie-less
     // bearer flow behaves exactly as it does behind the embedded build.
     proxy: {
-      '/api': { target: 'http://localhost:8080', changeOrigin: false },
+      // ws so the realtime socket upgrades through the dev server; without it the handshake
+      // is answered by Vite rather than proxied, and only in dev.
+      '/api': { target: 'http://localhost:8080', changeOrigin: false, ws: true },
     },
   },
   test: {

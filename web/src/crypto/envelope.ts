@@ -1,7 +1,7 @@
 import { decrypt, encrypt, type Sealed } from './aead';
-import { fromUtf8, pad, unpad, utf8 } from './bytes';
+import { fromUtf8, pad, PAD_UPDATE_BLOCK, unpad, utf8 } from './bytes';
 
-export type EntityType = 'vault' | 'folder' | 'file' | 'group' | 'revision';
+export type EntityType = 'vault' | 'folder' | 'file' | 'group' | 'revision' | 'crdt' | 'presence';
 
 /**
  * Identifies the exact slot a ciphertext belongs to.
@@ -27,6 +27,31 @@ export interface EntityRef {
 export function aad(ref: EntityRef): Uint8Array {
   return utf8(
     `shelf/v1|${ref.vaultId}|${ref.entity}|${ref.entityId}|${ref.scopeClientId}|${ref.keyVersion}`,
+  );
+}
+
+/**
+ * Additional data for one live-editing update.
+ *
+ * It is `aad` with the epoch added, and the epoch is what makes it a different slot: an
+ * update carried into another epoch would merge into text it was never written against.
+ * A separate function rather than a parameter on `aad`, because every ciphertext already
+ * written is bound to that exact string and changing it would make all of it unreadable.
+ */
+export function crdtAad(ref: EntityRef, epoch: number): Uint8Array {
+  return utf8(
+    `shelf/crdt/v1|${ref.vaultId}|${ref.entityId}|${ref.scopeClientId}|${ref.keyVersion}|${epoch}`,
+  );
+}
+
+/**
+ * Additional data for a caret position. No epoch: awareness describes where somebody is
+ * right now and is replaced several times a second, so binding it to a document version
+ * would only make it expire faster than it is rewritten.
+ */
+export function presenceAad(ref: EntityRef): Uint8Array {
+  return utf8(
+    `shelf/presence/v1|${ref.vaultId}|${ref.entityId}|${ref.scopeClientId}|${ref.keyVersion}`,
   );
 }
 
@@ -98,6 +123,61 @@ export async function decryptContent(
 
   try {
     return fromUtf8(unpad(await decrypt(key, sealed, aad(ref))));
+  } catch {
+    return LOCKED;
+  }
+}
+
+/**
+ * Seals one live-editing update.
+ *
+ * Padded to a far smaller block than a body: an update is a few bytes of a keystroke, and
+ * rounding each one up to 4 KiB would multiply the traffic of a typing session by two
+ * hundred. What that leaves visible is the rhythm and rough volume of somebody's typing,
+ * which is inherent to relaying edits as they happen and is documented rather than denied.
+ */
+export async function encryptUpdate(
+  key: CryptoKey,
+  update: Uint8Array,
+  ref: EntityRef,
+  epoch: number,
+): Promise<Sealed> {
+  return encrypt(key, pad(update, PAD_UPDATE_BLOCK), crdtAad(ref, epoch));
+}
+
+export async function decryptUpdate(
+  key: CryptoKey | undefined,
+  sealed: Sealed,
+  ref: EntityRef,
+  epoch: number,
+): Promise<Uint8Array | Locked> {
+  if (!key) return LOCKED;
+
+  try {
+    return unpad(await decrypt(key, sealed, crdtAad(ref, epoch)));
+  } catch {
+    return LOCKED;
+  }
+}
+
+/** Seals a caret position. Same padding as an update, and for the same reason. */
+export async function encryptPresence(
+  key: CryptoKey,
+  state: Uint8Array,
+  ref: EntityRef,
+): Promise<Sealed> {
+  return encrypt(key, pad(state, PAD_UPDATE_BLOCK), presenceAad(ref));
+}
+
+export async function decryptPresence(
+  key: CryptoKey | undefined,
+  sealed: Sealed,
+  ref: EntityRef,
+): Promise<Uint8Array | Locked> {
+  if (!key) return LOCKED;
+
+  try {
+    return unpad(await decrypt(key, sealed, presenceAad(ref)));
   } catch {
     return LOCKED;
   }

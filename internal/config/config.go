@@ -51,6 +51,7 @@ type Config struct {
 	HTTP     HTTP     `mapstructure:"http"`
 	Postgres Postgres `mapstructure:"postgres"`
 	Auth     Auth     `mapstructure:"auth"`
+	Realtime Realtime `mapstructure:"realtime"`
 	Log      Log      `mapstructure:"log"`
 }
 
@@ -189,6 +190,29 @@ type Argon2 struct {
 	KeyLength uint32 `mapstructure:"key_length"  validate:"required,min=16"`
 }
 
+// Realtime holds the parameters of the live editing socket
+type Realtime struct {
+	// Enabled turns the socket off entirely. The clients fall back to polling, which is
+	// why the endpoint can be disabled without breaking anything but the latency
+	Enabled bool `mapstructure:"enabled"`
+	// AuthDeadline bounds how long a connection may stay silent before naming itself
+	AuthDeadline time.Duration `mapstructure:"auth_deadline"  validate:"required"`
+	// ReauthGrace is how long a connection keeps reading after its access token expired.
+	// Writes stop immediately; trusting the socket indefinitely would undo the short TTL
+	ReauthGrace time.Duration `mapstructure:"reauth_grace"   validate:"required"`
+	// PingInterval is the keepalive period. Idle sockets die to intermediaries otherwise
+	PingInterval time.Duration `mapstructure:"ping_interval"  validate:"required"`
+	// MaxConnsPerUser bounds the goroutines one account can occupy
+	MaxConnsPerUser int `mapstructure:"max_conns_per_user" validate:"required,min=1"`
+	// MaxFrameBytes caps one inbound frame. Snapshots travel over REST, not here
+	MaxFrameBytes int64 `mapstructure:"max_frame_bytes"    validate:"required,min=4096"`
+	// SendQueue is the outbound backlog one connection may accumulate before it is
+	// closed. A reader too slow to keep up is dropped rather than grown into memory
+	SendQueue int `mapstructure:"send_queue"         validate:"required,min=16"`
+	// UpdateRate throttles document updates per connection
+	UpdateRate Rule `mapstructure:"update_rate"`
+}
+
 // Log holds the logging parameters
 type Log struct {
 	Level  string `mapstructure:"level"  validate:"required,oneof=debug info warn error"`
@@ -321,6 +345,18 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.rate_limit.share_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.register_ip.limit", 20)
 	v.SetDefault("auth.rate_limit.register_ip.window", time.Hour)
+
+	v.SetDefault("realtime.enabled", true)
+	v.SetDefault("realtime.auth_deadline", 5*time.Second)
+	v.SetDefault("realtime.reauth_grace", time.Minute)
+	v.SetDefault("realtime.ping_interval", 30*time.Second)
+	v.SetDefault("realtime.max_conns_per_user", 8)
+	v.SetDefault("realtime.max_frame_bytes", 64*1024)
+	v.SetDefault("realtime.send_queue", 256)
+	// Updates are batched client-side, so ordinary typing produces about four frames a
+	// second. The limit is what a stuck loop hits, not what a fast typist hits.
+	v.SetDefault("realtime.update_rate.limit", 60)
+	v.SetDefault("realtime.update_rate.window", 10*time.Second)
 
 	v.SetDefault("log.level", "debug")
 	v.SetDefault("log.format", "console")

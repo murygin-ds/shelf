@@ -279,7 +279,7 @@ func resolved(t *testing.T, pool *pgxpool.Pool, fileID, userID int64) vault.Perm
 		t.Fatalf("the fixture never created note %d", fileID)
 	}
 
-	repo := NewVaultRepository(pool)
+	repo := NewVaultRepository(pool, nil)
 
 	ref, err := repo.FileRef(context.Background(), fileID, userID)
 	if err != nil {

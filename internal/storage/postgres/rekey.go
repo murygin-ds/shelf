@@ -26,7 +26,7 @@ const rekeyColumns = `id, vault_id, scope_type, scope_ref_id,
 func (r *VaultRepository) StartRekey(ctx context.Context, in vault.NewRekey) (*vault.RekeyPlan, error) {
 	var plan *vault.RekeyPlan
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		// An abandoned job must not lock the node forever.
 		const reap = `
 			UPDATE key_rekeys SET status = 'aborted'
@@ -315,7 +315,7 @@ func (r *VaultRepository) Rekey(ctx context.Context, rekeyID int64) (*vault.Reke
 }
 
 func (r *VaultRepository) StageRekeyItems(ctx context.Context, rekeyID int64, items []vault.RekeyItem) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		const upsert = `
 			INSERT INTO key_rekey_items (rekey_id, entity_type, entity_id, meta, meta_nonce, content, content_nonce)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -353,7 +353,7 @@ func (r *VaultRepository) CommitRekey(
 ) (*vault.KeyScope, error) {
 	var scope *vault.KeyScope
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		const claim = `
 			UPDATE key_rekeys SET status = 'committed'
 			 WHERE id = $1 AND status = 'staging' AND expires_at > now()
@@ -450,6 +450,27 @@ func (r *VaultRepository) CommitRekey(
 				if _, err := tx.Exec(ctx, detach, job.ScopeRefID); err != nil {
 					return fmt.Errorf("detach folder inheritance: %w", err)
 				}
+			}
+		}
+
+		// A live document does not survive a rotation. Its log is sealed under the old key,
+		// and an editor holding only the new one could not merge it — while keeping the old
+		// ciphertext current is the one thing rotation exists to prevent. The bodies were
+		// rewritten under the new key a few statements ago, so the next session seeds from
+		// those; the open tabs are told to re-seed. It is the same strictness with which
+		// this commit closes the public links of the notes it touched.
+		if len(files) > 0 {
+			for _, query := range []string{
+				`DELETE FROM file_crdt_updates WHERE file_id = ANY($1)`,
+				`DELETE FROM file_crdt_docs WHERE file_id = ANY($1)`,
+			} {
+				if _, err := tx.Exec(ctx, query, files); err != nil {
+					return fmt.Errorf("drop live documents: %w", err)
+				}
+			}
+
+			for _, fileID := range files {
+				tx.invalidate(fileID)
 			}
 		}
 
@@ -583,7 +604,7 @@ func applyStagedItems(
 }
 
 func (r *VaultRepository) AbortRekey(ctx context.Context, rekeyID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		const query = `UPDATE key_rekeys SET status = 'aborted' WHERE id = $1 AND status = 'staging'`
 
 		tag, err := tx.Exec(ctx, query, rekeyID)
