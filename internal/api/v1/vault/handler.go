@@ -939,6 +939,7 @@ func (h *Handler) UpdateContent(c *gin.Context) {
 		KeyScopeID:  req.KeyScopeID,
 		KeyVersion:  req.KeyVersion,
 		Signature:   req.Signature,
+		CRDT:        req.crdtCommit(),
 	})
 	if err != nil {
 		h.fail(c, "update file content", err)
@@ -1088,6 +1089,15 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 	case errors.Is(err, vault.ErrRekeyBatch):
 		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
 			"a staging batch must hold between 1 and 200 rows")
+	case errors.Is(err, vault.ErrEpochMismatch):
+		response.Fail(c, http.StatusConflict, response.CodeConflict,
+			"this editing session has been replaced")
+	case errors.Is(err, vault.ErrCompactRequired):
+		response.Fail(c, http.StatusConflict, response.CodeConflict,
+			"the editing session needs to be committed before it can take more changes")
+	case errors.Is(err, vault.ErrUpdateTooLarge):
+		response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeTooLarge,
+			"the editing session state is too large")
 	default:
 		middleware.LoggerFrom(c).Error("vault handler failed", zap.String("op", op), zap.Error(err))
 		response.Internal(c)

@@ -131,7 +131,7 @@ func (r *AccessRepository) CreateGroup(
 ) (*access.Group, error) {
 	var groupID int64
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		const insert = `
 			INSERT INTO groups (client_id, vault_id, meta, meta_nonce, public_key, key_version, created_by)
 			VALUES ($1::UUID, $2, $3, $4, $5, $6, $7)
@@ -182,7 +182,7 @@ func (r *AccessRepository) UpdateGroupMeta(ctx context.Context, groupID int64, m
 // DeleteGroup disbands a group. Its permission grants and its key grants go with it: a
 // grant addressed to a group that no longer exists would be a permission nobody can audit.
 func (r *AccessRepository) DeleteGroup(ctx context.Context, groupID, actorID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		var vaultID int64
 
 		const owner = `SELECT vault_id FROM groups WHERE id = $1`
@@ -244,7 +244,7 @@ func (r *AccessRepository) SetGroupMembers(
 	in access.GroupMembership,
 	actorID int64,
 ) (*access.Group, error) {
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		var (
 			vaultID int64
 			version int32

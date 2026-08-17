@@ -6,10 +6,12 @@ import (
 	"shelf/internal/api/middleware"
 	accessapi "shelf/internal/api/v1/access"
 	authapi "shelf/internal/api/v1/auth"
+	realtimeapi "shelf/internal/api/v1/realtime"
 	vaultapi "shelf/internal/api/v1/vault"
 	"shelf/internal/auth"
 	"shelf/internal/config"
 	"shelf/internal/ratelimit"
+	"shelf/internal/realtime"
 	"shelf/internal/storage/postgres"
 	"shelf/internal/vault"
 
@@ -20,13 +22,17 @@ import (
 
 // Deps holds the dependencies of the v1 handlers.
 type Deps struct {
-	Logger *zap.Logger
-	Pool   *pgxpool.Pool
-	Auth   config.Auth
+	Logger   *zap.Logger
+	Pool     *pgxpool.Pool
+	Auth     config.Auth
+	HTTP     config.HTTP
+	Realtime config.Realtime
 }
 
-// Register attaches the v1 routes to the given group (usually /api).
-func Register(rg *gin.RouterGroup, deps Deps) {
+// Register attaches the v1 routes to the given group (usually /api). It returns the live
+// session hub, which the caller has to close: the HTTP server will not do it.
+// The hub is nil when the socket is disabled.
+func Register(rg *gin.RouterGroup, deps Deps) *realtime.Hub {
 	group := rg.Group("/v1")
 
 	// The auth service doubles as the token parser for every protected group, so it is
@@ -34,7 +40,20 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 	authService := auth.NewService(postgres.NewAuthRepository(deps.Pool), deps.Auth, deps.Logger)
 	authapi.NewHandler(authService, authLimits(deps.Auth.RateLimit), deps.Logger).RegisterRoutes(group)
 
-	workspace := postgres.NewVaultRepository(deps.Pool)
+	// The hub is built before the repositories so it can hear about a commit, and told
+	// about the services afterwards, when they exist. A nil announcer is silence: with the
+	// socket off, nothing is announced and the clients keep polling.
+	var (
+		hub       *realtime.Hub
+		announcer postgres.Announcer
+	)
+
+	if deps.Realtime.Enabled {
+		hub = realtime.NewHub(deps.Realtime, deps.Logger)
+		announcer = hub
+	}
+
+	workspace := postgres.NewVaultRepository(deps.Pool, announcer)
 	vaultService := vault.NewService(vault.Deps{
 		Vaults:    workspace,
 		Folders:   workspace,
@@ -46,10 +65,11 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 		Graph:     workspace,
 		Revisions: workspace,
 		Shares:    workspace,
+		CRDT:      workspace,
 		Logger:    deps.Logger,
 	})
 
-	accessRepo := postgres.NewAccessRepository(deps.Pool)
+	accessRepo := postgres.NewAccessRepository(deps.Pool, announcer)
 	accessService := access.NewService(access.Deps{
 		Repo:   accessRepo,
 		Groups: accessRepo,
@@ -64,6 +84,17 @@ func Register(rg *gin.RouterGroup, deps Deps) {
 	workspaceHandler.RegisterPublicRoutes(group)
 	accessapi.NewHandler(accessService, inviteLookupLimit(deps.Auth.RateLimit), deps.Logger).
 		RegisterRoutes(group, protected)
+
+	if hub == nil {
+		return nil
+	}
+
+	// Registered outside the protected group: a browser cannot put an Authorization header
+	// on a websocket, so the token comes in the first frame instead.
+	session := realtime.Session{Tokens: authService, Workspace: vaultService, Users: authService}
+	realtimeapi.NewHandler(hub, session, deps.HTTP, deps.Logger).RegisterRoutes(group)
+
+	return hub
 }
 
 // inviteLookupLimit throttles the anonymous invite lookup. A resolved code hands the

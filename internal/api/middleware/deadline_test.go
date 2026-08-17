@@ -35,6 +35,39 @@ func TestDeadlineReachesTheHandlerContext(t *testing.T) {
 	}
 }
 
+// A websocket lives as long as the tab does. A ceiling on its context would close every
+// session a few seconds in, with nothing in the log to say why.
+func TestSkippedPathKeepsNoDeadline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var (
+		exempt  bool
+		ordinal bool
+	)
+
+	router := gin.New()
+	router.Use(middleware.Deadline(time.Minute, "/api/v1/realtime"))
+	router.GET("/api/v1/realtime", func(c *gin.Context) {
+		_, exempt = c.Request.Context().Deadline()
+		c.Status(http.StatusOK)
+	})
+	router.GET("/api/v1/vaults", func(c *gin.Context) {
+		_, ordinal = c.Request.Context().Deadline()
+		c.Status(http.StatusOK)
+	})
+
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/realtime", nil))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/vaults", nil))
+
+	if exempt {
+		t.Error("the skipped path was given a deadline")
+	}
+
+	if !ordinal {
+		t.Error("an ordinary path lost its deadline")
+	}
+}
+
 // Zero means no deadline, so a deployment that has not set one keeps working rather than
 // cancelling every request instantly.
 func TestNoDeadlineConfiguredLeavesTheContextAlone(t *testing.T) {

@@ -376,6 +376,76 @@ func TestContentWritePassesTheExpectedSequence(t *testing.T) {
 	}
 }
 
+// A write from a live session carries the document it was folded from. Without those
+// fields the write is what it always was, which is what keeps a client that knows nothing
+// about live editing working unchanged.
+func TestContentWriteCarriesTheLiveDocument(t *testing.T) {
+	t.Parallel()
+
+	service := &stubService{file: &vault.File{ID: 1, ContentSeq: 8}}
+	router := newTestRouter(t, service)
+
+	body := validContentBody()
+	body["crdt_epoch"] = 4
+	body["crdt_upto_seq"] = 17
+	body["crdt_snapshot"] = bytes.Repeat([]byte{9}, 64)
+	body["crdt_snapshot_nonce"] = bytes.Repeat([]byte{1}, 12)
+
+	rec := doJSON(t, router, http.MethodPut, "/api/v1/files/1/content",
+		body, map[string]string{"If-Match": "7"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body)
+	}
+
+	commit := service.lastUpdate.CRDT
+	if commit == nil {
+		t.Fatal("the commit was dropped between the request and the service")
+	}
+
+	if commit.Epoch != 4 || commit.UpToSeq != 17 {
+		t.Fatalf("commit names epoch %d up to %d, want 4/17", commit.Epoch, commit.UpToSeq)
+	}
+}
+
+// Half a commit names no document. Taking it would prune a log against an epoch nobody
+// declared, so it is read as no commit at all — which invalidates rather than folds.
+func TestAHalfCommitIsNotACommit(t *testing.T) {
+	t.Parallel()
+
+	service := &stubService{file: &vault.File{ID: 1, ContentSeq: 8}}
+	router := newTestRouter(t, service)
+
+	body := validContentBody()
+	body["crdt_epoch"] = 4
+
+	rec := doJSON(t, router, http.MethodPut, "/api/v1/files/1/content",
+		body, map[string]string{"If-Match": "7"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body)
+	}
+
+	if service.lastUpdate.CRDT != nil {
+		t.Fatal("an epoch with no snapshot was taken as a commit")
+	}
+}
+
+func TestOversizedSnapshotIsRefused(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, &stubService{file: &vault.File{ID: 1}})
+
+	body := validContentBody()
+	body["crdt_epoch"] = 4
+	body["crdt_snapshot"] = bytes.Repeat([]byte{9}, 8*1024*1024+1)
+	body["crdt_snapshot_nonce"] = bytes.Repeat([]byte{1}, 12)
+
+	rec := doJSON(t, router, http.MethodPut, "/api/v1/files/1/content",
+		body, map[string]string{"If-Match": "7"})
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+	}
+}
+
 func TestInvalidIDsAreNotFound(t *testing.T) {
 	t.Parallel()
 

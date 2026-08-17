@@ -41,6 +41,61 @@ export async function signRevision(
   return sign(identity, revisionPayload(ref, contentSeq, sealed));
 }
 
+/**
+ * What the author of a live-editing update signs.
+ *
+ * The epoch takes the place a content sequence holds for a body. A sequence would be
+ * wrong here: Yjs updates are idempotent and commutative, the log's order carries no
+ * meaning, and the client does not know its position before the server assigns one. The
+ * epoch does have to be in there — an update replayed into another epoch would merge into
+ * text it was never written against.
+ */
+export function updatePayload(
+  ref: EntityRef,
+  epoch: number,
+  sealed: { ciphertext: Uint8Array; nonce: Uint8Array },
+): Uint8Array {
+  const header = utf8(
+    `shelf/sig/crdt/v1|${ref.vaultId}|${ref.entityId}|${ref.scopeClientId}|${ref.keyVersion}|${epoch}|`,
+  );
+
+  return concat(header, sealed.nonce, sealed.ciphertext);
+}
+
+/**
+ * Signs one update. Without it a reader could inject text that decrypts for everybody and
+ * no reader could tell it from the author's — the socket refusing their frames is the
+ * server behaving, and this is the part that holds when it does not.
+ */
+export async function signUpdate(
+  identity: Identity,
+  ref: EntityRef,
+  epoch: number,
+  sealed: { ciphertext: Uint8Array; nonce: Uint8Array },
+): Promise<Uint8Array> {
+  return sign(identity, updatePayload(ref, epoch, sealed));
+}
+
+/** Checks an update before it is merged. Anything but `valid` must not be applied. */
+export async function checkUpdate(
+  authorPublicBlob: Uint8Array | null,
+  signature: Uint8Array | null,
+  ref: EntityRef,
+  epoch: number,
+  sealed: { ciphertext: Uint8Array; nonce: Uint8Array },
+): Promise<Authorship> {
+  if (!signature || signature.length !== SIGNATURE_LENGTH) return 'unsigned';
+  if (!authorPublicBlob || authorPublicBlob.length === 0) return 'unknown-author';
+
+  try {
+    const ok = await verify(authorPublicBlob, signature, updatePayload(ref, epoch, sealed));
+
+    return ok ? 'valid' : 'invalid';
+  } catch {
+    return 'unknown-author';
+  }
+}
+
 /** How a stored revision's authorship checks out, or fails to. */
 export type Authorship = 'valid' | 'invalid' | 'unsigned' | 'unknown-author';
 

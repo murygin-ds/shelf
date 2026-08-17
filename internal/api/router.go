@@ -6,6 +6,7 @@ import (
 
 	"shelf/internal/api/middleware"
 	v1 "shelf/internal/api/v1"
+	realtimeapi "shelf/internal/api/v1/realtime"
 	"shelf/internal/config"
 	"shelf/internal/web"
 
@@ -39,8 +40,25 @@ const (
 // router, so an unmatched request under them is a genuine 404 and not a page.
 var serverPrefixes = []string{pathAPI, pathHealth, pathReady, pathSwagger}
 
-// NewRouter builds a gin.Engine with all middleware and routes.
-func NewRouter(deps Deps) (*gin.Engine, error) {
+// Router is the engine together with what the HTTP server cannot shut down on its own.
+//
+// http.Server.Shutdown neither closes hijacked connections nor waits for them, so the live
+// sockets have to be closed by hand — and something has to hold them until then.
+type Router struct {
+	*gin.Engine
+
+	closers []func()
+}
+
+// Close releases what NewRouter opened. Safe to call once, before the server shuts down.
+func (r *Router) Close() {
+	for _, closer := range r.closers {
+		closer()
+	}
+}
+
+// NewRouter builds the router with all middleware and routes.
+func NewRouter(deps Deps) (*Router, error) {
 	if deps.Config.App.IsLocal() {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -61,7 +79,9 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 		middleware.SecurityHeaders(),
 		middleware.CORS(deps.Config.HTTP),
 		middleware.MaxBody(deps.Config.HTTP.MaxBodyBytes),
-		middleware.Deadline(deps.Config.HTTP.HandlerTimeout),
+		// The socket outlives any ceiling that makes sense for a request, so it is exempt
+		// rather than given a longer one.
+		middleware.Deadline(deps.Config.HTTP.HandlerTimeout, pathAPI+"/v1"+realtimeapi.Path),
 	)
 
 	spa, err := web.NewSPA(deps.Config.HTTP.StaticCacheMaxAge)
@@ -86,11 +106,18 @@ func NewRouter(deps Deps) (*gin.Engine, error) {
 	}
 
 	api := engine.Group(pathAPI)
-	v1.Register(api, v1.Deps{
-		Logger: deps.Logger,
-		Pool:   deps.Pool,
-		Auth:   deps.Config.Auth,
+	hub := v1.Register(api, v1.Deps{
+		Logger:   deps.Logger,
+		Pool:     deps.Pool,
+		Auth:     deps.Config.Auth,
+		HTTP:     deps.Config.HTTP,
+		Realtime: deps.Config.Realtime,
 	})
 
-	return engine, nil
+	router := &Router{Engine: engine}
+	if hub != nil {
+		router.closers = append(router.closers, hub.Close)
+	}
+
+	return router, nil
 }

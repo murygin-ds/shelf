@@ -13,7 +13,7 @@ import (
 func (r *VaultRepository) CreateFile(ctx context.Context, in vault.NewFile, actorID int64) (*vault.File, error) {
 	var created *vault.File
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		seq, err := nextSeq(ctx, tx, in.VaultID)
 		if err != nil {
 			return err
@@ -125,7 +125,7 @@ func (r *VaultRepository) UpdateFileMeta(
 	in vault.MetaUpdate,
 	actorID int64,
 ) (*vault.File, error) {
-	return r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx pgx.Tx, seq int64) (*vault.File, error) {
+	return r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx *txn, seq int64) (*vault.File, error) {
 		const update = `
 			UPDATE files SET meta = $2, meta_nonce = $3, updated_seq = $4, updated_by = $5
 			 WHERE id = $1
@@ -144,7 +144,7 @@ func (r *VaultRepository) UpdateFileContent(
 	in vault.ContentUpdate,
 	actorID int64,
 ) (*vault.File, error) {
-	return r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx pgx.Tx, seq int64) (*vault.File, error) {
+	return r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx *txn, seq int64) (*vault.File, error) {
 		const update = `
 			UPDATE files
 			   SET content = $2, content_nonce = $3, content_seq = content_seq + 1,
@@ -172,8 +172,75 @@ func (r *VaultRepository) UpdateFileContent(
 			return nil, err
 		}
 
+		if err := reconcileCRDT(ctx, tx, file, in.CRDT); err != nil {
+			return nil, err
+		}
+
 		return file, nil
 	})
+}
+
+// reconcileCRDT settles the live document against the body that was just written, in the
+// same transaction as the write.
+//
+// Two cases, and the difference between them is whether the writer was speaking for the
+// document. A commit from a live session folds the log into the snapshot it brought and
+// prunes what that snapshot covers. Any other write — an offline body replayed from the
+// outbox, a client too old to speak the socket — moved the body around the document, so
+// the document is invalidated: its epoch rises, its log is dropped, and the next session
+// seeds afresh from what was just written. Doing this anywhere but here would leave a
+// window in which the body has moved and the document does not know.
+func reconcileCRDT(ctx context.Context, tx *txn, file *vault.File, commit *vault.CRDTCommit) error {
+	if commit == nil {
+		const invalidate = `
+			UPDATE file_crdt_docs
+			   SET epoch = epoch + 1, snapshot = NULL, snapshot_nonce = NULL, snapshot_seq = 0,
+			       last_seq = 0, committed_seq = $2, pending_count = 0, pending_bytes = 0
+			 WHERE file_id = $1`
+
+		tag, err := tx.Exec(ctx, invalidate, file.ID, file.ContentSeq)
+		if err != nil {
+			return fmt.Errorf("invalidate live document: %w", err)
+		}
+
+		if _, err := tx.Exec(ctx, `DELETE FROM file_crdt_updates WHERE file_id = $1`, file.ID); err != nil {
+			return fmt.Errorf("drop live updates: %w", err)
+		}
+
+		// Only when there was a document to invalidate: every ordinary write goes through
+		// here, and announcing one for a note nobody is editing is noise.
+		if tag.RowsAffected() > 0 {
+			tx.invalidate(file.ID)
+		}
+
+		return nil
+	}
+
+	const fold = `
+		UPDATE file_crdt_docs
+		   SET committed_seq = $2, snapshot = $3, snapshot_nonce = $4, snapshot_seq = $5,
+		       pending_count = 0, pending_bytes = 0
+		 WHERE file_id = $1 AND epoch = $6`
+
+	tag, err := tx.Exec(ctx, fold, file.ID, file.ContentSeq,
+		commit.Snapshot.Ciphertext, commit.Snapshot.Nonce, commit.UpToSeq, commit.Epoch)
+	if err != nil {
+		return fmt.Errorf("fold live document: %w", err)
+	}
+
+	// Nothing matched, so the document this commit speaks for has already been replaced.
+	// The body it carries was folded from a document nobody holds any more.
+	if tag.RowsAffected() == 0 {
+		return vault.ErrEpochMismatch
+	}
+
+	const prune = `DELETE FROM file_crdt_updates WHERE file_id = $1 AND epoch = $2 AND seq <= $3`
+
+	if _, err := tx.Exec(ctx, prune, file.ID, commit.Epoch, commit.UpToSeq); err != nil {
+		return fmt.Errorf("prune live updates: %w", err)
+	}
+
+	return nil
 }
 
 func (r *VaultRepository) MoveFile(
@@ -182,7 +249,7 @@ func (r *VaultRepository) MoveFile(
 	in vault.Move,
 	actorID int64,
 ) (*vault.File, error) {
-	return r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx pgx.Tx, seq int64) (*vault.File, error) {
+	return r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx *txn, seq int64) (*vault.File, error) {
 		const update = `
 			UPDATE files SET folder_id = $2, updated_seq = $3, updated_by = $4
 			 WHERE id = $1
@@ -193,7 +260,7 @@ func (r *VaultRepository) MoveFile(
 }
 
 func (r *VaultRepository) SetFileDeleted(ctx context.Context, fileID int64, deleted bool, actorID int64) error {
-	_, err := r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx pgx.Tx, seq int64) (*vault.File, error) {
+	_, err := r.updateFile(ctx, fileID, actorID, func(ctx context.Context, tx *txn, seq int64) (*vault.File, error) {
 		const update = `
 			UPDATE files SET deleted_at = CASE WHEN $2 THEN now() ELSE NULL END,
 			                 updated_seq = $3, updated_by = $4
@@ -209,7 +276,7 @@ func (r *VaultRepository) SetFileDeleted(ctx context.Context, fileID int64, dele
 // PurgeFile destroys a note for good, leaving a tombstone so a client that was offline at
 // the time still learns the note is gone rather than keeping it forever.
 func (r *VaultRepository) PurgeFile(ctx context.Context, fileID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		vaultID, err := fileVaultTx(ctx, tx, fileID)
 		if err != nil {
 			return err
@@ -276,11 +343,11 @@ func (r *VaultRepository) FileRef(ctx context.Context, fileID, userID int64) (*v
 func (r *VaultRepository) updateFile(
 	ctx context.Context,
 	fileID, actorID int64,
-	write func(ctx context.Context, tx pgx.Tx, seq int64) (*vault.File, error),
+	write func(ctx context.Context, tx *txn, seq int64) (*vault.File, error),
 ) (*vault.File, error) {
 	var updated *vault.File
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		vaultID, err := fileVaultTx(ctx, tx, fileID)
 		if err != nil {
 			return err

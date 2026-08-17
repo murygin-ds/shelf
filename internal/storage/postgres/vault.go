@@ -15,11 +15,18 @@ const vaultColumns = `id, client_id, owner_id, meta, meta_nonce, change_seq, cre
 
 // VaultRepository implements the storage interfaces of the vault domain.
 type VaultRepository struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	announce Announcer
 }
 
-func NewVaultRepository(pool *pgxpool.Pool) *VaultRepository {
-	return &VaultRepository{pool: pool}
+// NewVaultRepository builds the repository. A nil announcer means nothing is told about a
+// change, which is what the tests and any non-serving caller want.
+func NewVaultRepository(pool *pgxpool.Pool, announce Announcer) *VaultRepository {
+	return &VaultRepository{pool: pool, announce: announce}
+}
+
+func (r *VaultRepository) inTx(ctx context.Context, fn func(*txn) error) error {
+	return inTx(ctx, r.pool, r.announce, fn)
 }
 
 // CreateVault writes the vault, its key scope, the owner membership and the owner's key
@@ -28,7 +35,7 @@ func NewVaultRepository(pool *pgxpool.Pool) *VaultRepository {
 func (r *VaultRepository) CreateVault(ctx context.Context, in vault.NewVault) (*vault.Vault, error) {
 	var created *vault.Vault
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		const insertVault = `
 			INSERT INTO vaults (client_id, owner_id, meta, meta_nonce)
 			VALUES ($1, $2, $3, $4)

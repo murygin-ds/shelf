@@ -20,6 +20,9 @@ import {
   placeholder as showPlaceholder,
   type ViewUpdate,
 } from '@codemirror/view';
+import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
+import type { Awareness } from 'y-protocols/awareness';
+import type { Text as YText, UndoManager as YUndoManager } from 'yjs';
 
 import { tagSource, wikilinkSource } from './complete';
 import { vaultContext, type VaultContext } from './context';
@@ -43,11 +46,27 @@ const vault = new Compartment();
 
 export type LinkWhere = 'here' | 'tab';
 
+/**
+ * The live document behind this note, when one is up.
+ *
+ * With it the editor stops being the owner of the text: the Y.Text is, and the store hears
+ * about changes from the room rather than from here. It also stops keeping its own undo
+ * history — a local one would let ⌘Z take back somebody else's sentence — and hands that
+ * to Y.UndoManager, which only ever undoes what this client wrote.
+ */
+export interface CollabBinding {
+  text: YText;
+  awareness: Awareness;
+  undoManager: YUndoManager;
+}
+
 export interface MarkdownEditorProps {
   /** The body as the store holds it. Deliberately not a controlled value — see below. */
   value: string;
   /** A change here means a different note: new document, and no undo history carried over. */
   docId: number;
+  /** Present while a live editing session is up. Absent is the old, solitary behaviour. */
+  collab?: CollabBinding | undefined;
   readOnly: boolean;
   placeholder: string;
   /** The notes and tags around this one, for resolving links and for completion. */
@@ -64,6 +83,7 @@ export interface MarkdownEditorProps {
 export function MarkdownEditor({
   value,
   docId,
+  collab,
   readOnly,
   placeholder,
   context,
@@ -83,6 +103,7 @@ export function MarkdownEditor({
   // document under the caret.
   const latest = useRef({
     value,
+    collab,
     readOnly,
     placeholder,
     context,
@@ -94,6 +115,7 @@ export function MarkdownEditor({
   });
   latest.current = {
     value,
+    collab,
     readOnly,
     placeholder,
     context,
@@ -108,7 +130,16 @@ export function MarkdownEditor({
   const deferred = useRef<string | null>(null);
 
   const stateFor = useCallback((doc: string) => {
+    const room = latest.current.collab;
+
     const listen = (update: ViewUpdate) => {
+      // With a live session the room reports the text, because it also has to report the
+      // edits that arrive from other people — and those never pass through here.
+      if (room) {
+        if (update.focusChanged && !update.view.hasFocus) latest.current.onBlur();
+        return;
+      }
+
       // Only real edits reach the store; without the annotation check our own sync-back
       // would come straight back in as a user edit.
       if (update.docChanged && !update.transactions.some((tr) => tr.annotation(External))) {
@@ -131,9 +162,16 @@ export function MarkdownEditor({
     };
 
     return EditorState.create({
-      doc,
+      // With a room the document comes from the Y.Text, and CodeMirror is told to start
+      // empty: yCollab fills it from the shared state, and seeding it here as well would
+      // insert the body a second time.
+      doc: room ? '' : doc,
       extensions: [
-        undoStack.of(history()),
+        // A shared document has no local history. ⌘Z on one would take back whatever the
+        // stack happened to hold, including somebody else's sentence; Y.UndoManager undoes
+        // only what this client wrote.
+        undoStack.of(room ? [] : history()),
+        room ? yCollab(room.text, room.awareness, { undoManager: room.undoManager }) : [],
         // Ours first: ⌘B and the wrapping markers have to win over whatever the defaults
         // would otherwise do with the same key.
         wrapOnType,
@@ -146,7 +184,7 @@ export function MarkdownEditor({
           // list and Escape reaches `simplifySelection` instead of closing it.
           ...completionKeymap,
           ...defaultKeymap,
-          ...historyKeymap,
+          ...(room ? yUndoManagerKeymap : historyKeymap),
         ]),
         noteLanguage,
         codeColours,
@@ -238,9 +276,10 @@ export function MarkdownEditor({
     };
   }, [stateFor]);
 
-  // A different note. Declared before the value effect on purpose: React runs effects in
-  // order, and a note switch moves docId and value in the same commit — this rebuilds the
-  // state, and the value effect then finds the document already equal and does nothing.
+  // A different note, or a room appearing under the same one. Declared before the value
+  // effect on purpose: React runs effects in order, and a note switch moves docId and value
+  // in the same commit — this rebuilds the state, and the value effect then finds the
+  // document already equal and does nothing.
   const first = useRef(true);
   useEffect(() => {
     if (first.current) {
@@ -256,7 +295,7 @@ export function MarkdownEditor({
     // which `editBody` would then mark dirty and save.
     instance.setState(stateFor(latest.current.value));
     deferred.current = null;
-  }, [docId, stateFor]);
+  }, [docId, collab, stateFor]);
 
   // An external body. The dependency is the STRING: the store hands out a new `open` object
   // on nearly every tick with the body unchanged, and keying on the object would throw away
@@ -264,6 +303,10 @@ export function MarkdownEditor({
   useEffect(() => {
     const instance = view.current;
     if (!instance) return;
+
+    // With a room the Y.Text is the document. Writing the store's copy over it would undo
+    // whatever arrived between the two, and every remote edit would fight the write-back.
+    if (collab) return;
 
     // Compared against the document itself, so our own keystroke arriving back through the
     // store is a no-op and the caret never moves.
@@ -277,7 +320,7 @@ export function MarkdownEditor({
     }
 
     swap(instance, value);
-  }, [value]);
+  }, [value, collab]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: editable.reconfigure(gate(readOnly, placeholder)) });

@@ -43,8 +43,18 @@ const REFRESH_LOCK = 'shelf.refresh';
 // lands on the unlock screen rather than the sign-in screen; the master key never
 // persists at all, which is why unlocking always asks for the passphrase again.
 let accessToken: string | null = null;
+let accessExpiresAt = 0;
 let refreshing: Promise<void> | null = null;
 let onSessionLost: (() => void) | null = null;
+
+/**
+ * How long before its expiry an access token is replaced.
+ *
+ * A request that finds its token stale gets a 401 and retries, which costs a round trip and
+ * nothing else. A websocket cannot do that — it has already been accepted — so the socket
+ * asks for a token that will still be valid by the time it arrives.
+ */
+const TOKEN_MARGIN_MS = 60_000;
 
 export function readSession(): Session | null {
   try {
@@ -64,6 +74,7 @@ export function readSession(): Session | null {
 
 export function storeTokens(tokens: Tokens, login: string): void {
   accessToken = tokens.access_token;
+  accessExpiresAt = Date.parse(tokens.access_expires_at);
 
   const session: Session = {
     refreshToken: tokens.refresh_token,
@@ -76,11 +87,26 @@ export function storeTokens(tokens: Tokens, login: string): void {
 
 export function clearSession(): void {
   accessToken = null;
+  accessExpiresAt = 0;
   localStorage.removeItem(SESSION_KEY);
 }
 
 export function hasAccessToken(): boolean {
   return accessToken !== null;
+}
+
+/**
+ * The access token, refreshed first when this tab does not hold one.
+ *
+ * Exposed for the realtime socket, which authenticates in its first frame rather than in a
+ * header — a browser cannot set one on a websocket, and a token in the query string lands
+ * in every access log on the way.
+ */
+export async function socketToken(): Promise<string> {
+  if (accessToken === null || Date.now() >= accessExpiresAt - TOKEN_MARGIN_MS) await refresh();
+  if (accessToken === null) throw new ApiError(401, ErrorCode.Unauthorized, 'session expired');
+
+  return accessToken;
 }
 
 /** Called when the refresh token is gone or rejected and the user has to sign in again. */

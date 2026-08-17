@@ -3142,6 +3142,22 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/realtime": {
+            "get": {
+                "tags": [
+                    "realtime"
+                ],
+                "summary": "Live editing socket",
+                "responses": {
+                    "101": {
+                        "description": "switching protocols",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -6035,6 +6051,32 @@ const docTemplate = `{
                         "type": "integer",
                         "format": "byte"
                     }
+                },
+                "crdt_epoch": {
+                    "description": "The live document this body was folded from, present only when the write comes from\na live editing session. Absent means the body moved without the document knowing, so\nthe document is invalidated and the next session re-seeds from what was just\nwritten. A client that knows nothing about live editing therefore behaves exactly as\nit did before, which is the point of these being optional.",
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "crdt_snapshot": {
+                    "type": "array",
+                    "maxItems": 8388608,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "crdt_snapshot_nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "crdt_upto_seq": {
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "key_scope_id": {
                     "description": "The scope and version the body was sealed under. content_seq alone does not cover\nthem: a re-key rewrites the row without touching that sequence, so a write held up\nacross a rotation would otherwise land ciphertext under a key nobody holds and the\nrow would claim the new version.",

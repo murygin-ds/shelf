@@ -16,12 +16,25 @@ import (
 //
 // The deadline rides on the request context, so every query started from a handler
 // inherits it and pgx cancels the statement when it expires.
-func Deadline(timeout time.Duration) gin.HandlerFunc {
+//
+// skipPaths exempts the endpoints a ceiling makes no sense for. A websocket lives for as
+// long as the tab does, and a deadline on its context would close it mid-session.
+func Deadline(timeout time.Duration, skipPaths ...string) gin.HandlerFunc {
 	if timeout <= 0 {
 		return func(c *gin.Context) { c.Next() }
 	}
 
+	skip := make(map[string]struct{}, len(skipPaths))
+	for _, path := range skipPaths {
+		skip[path] = struct{}{}
+	}
+
 	return func(c *gin.Context) {
+		if _, ok := skip[c.Request.URL.Path]; ok {
+			c.Next()
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 

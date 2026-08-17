@@ -22,7 +22,7 @@ func (r *VaultRepository) CreateFolder(
 ) (*vault.Folder, error) {
 	var created *vault.Folder
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		seq, err := nextSeq(ctx, tx, in.VaultID)
 		if err != nil {
 			return err
@@ -127,7 +127,7 @@ func (r *VaultRepository) UpdateFolderMeta(
 ) (*vault.Folder, error) {
 	var updated *vault.Folder
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		vaultID, err := folderVaultTx(ctx, tx, folderID)
 		if err != nil {
 			return err
@@ -179,7 +179,7 @@ func (r *VaultRepository) MoveFolder(
 ) (*vault.Folder, error) {
 	var moved *vault.Folder
 
-	err := inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	err := r.inTx(ctx, func(tx *txn) error {
 		vaultID, err := folderVaultTx(ctx, tx, folderID)
 		if err != nil {
 			return err
@@ -262,7 +262,7 @@ func (r *VaultRepository) SetFolderDeleted(
 	deleted bool,
 	actorID int64,
 ) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		vaultID, err := folderVaultTx(ctx, tx, folderID)
 		if err != nil {
 			return err
@@ -306,7 +306,7 @@ func (r *VaultRepository) SetFolderDeleted(
 // folder_id takes the descendants and their notes with it, so the tombstones have to be
 // written first: after the delete there is nothing left to enumerate.
 func (r *VaultRepository) PurgeFolder(ctx context.Context, folderID int64) error {
-	return inTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return r.inTx(ctx, func(tx *txn) error {
 		vaultID, err := folderVaultTx(ctx, tx, folderID)
 		if err != nil {
 			return err
