@@ -223,10 +223,12 @@ web/src/
   sync/                delta pull, hydration, the local search index, the live socket
   collab/              the shared document: room, carets, per-person colours
   store/               zustand: session and workspace
-  lib/                 wikilink resolution, the search index, passphrase strength
+  lib/                 wikilink resolution, the search index, passphrase strength, the
+                       archive format and the zip it travels in
   ui/                  icons and the shared primitives
   styles/              the design tokens everything else reads
-  features/            auth, shell, sidebar, editor, search, graph, inspector, access, share
+  features/            auth, shell, sidebar, editor, search, graph, inspector, access, share,
+                       transfer
 configs/               config.yaml
 migrations/            golang-migrate SQL migrations
 docs/                  generated swagger specification
@@ -274,6 +276,26 @@ signature any reader could produce ciphertext that decrypts and no reader could 
 signature covers the slot as well as the bytes, and the reader checks the author's key
 against the member list it already holds rather than against whatever arrived with the
 revision.
+
+### Export and import
+
+A vault leaves as a plain zip — `notes/…/<name>.md` in the folder shape the sidebar shows,
+plus a `shelf.json` — and comes back as a **new** vault. Both run entirely in the browser for
+the usual reason: the server holds ciphertext, so nobody else can build the archive or read it
+back. The dialog says the archive is not encrypted, because from the moment it lands in the
+downloads folder it is exactly as protected as the disk under it.
+
+Two rules make the round trip exact. `shelf.json` is authoritative — names, icons, tags and the
+tree are read from it, never inferred from the paths, which frees a path to be mangled into
+whatever a file system accepts. And a `.md` file holds the body and nothing else: front matter
+would have to be stripped on the way back, and that step eats a note that legitimately starts
+with `---`.
+
+What does not survive is what belongs to the vault rather than to the text: revision history
+and its signatures, members, grants and groups, folders that had a key of their own, and the
+ids themselves. Nothing in an archive is reused as an id on import — the additional data binds
+every ciphertext to its slot, and these slots are new. A node the reader holds no key for is
+left out rather than guessed at, and the report says how many.
 
 ## Authentication
 

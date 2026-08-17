@@ -10,6 +10,8 @@ import { ProfileView } from '@/features/profile/ProfileView';
 import { SearchView } from '@/features/search/SearchView';
 import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
+import { ExportModal } from '@/features/transfer/ExportModal';
+import { ImportModal } from '@/features/transfer/ImportModal';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { summarize } from '@/sync/status';
@@ -46,6 +48,8 @@ export function Workspace() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [permissionsFor, setPermissionsFor] = useState<number | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const { ask, dialog } = useNamePrompt();
 
   const restoredVaultId = useShellHistory(identity);
@@ -137,6 +141,8 @@ export function Workspace() {
           onNewVault={newVault}
           onMembers={() => setMembersOpen(true)}
           onSecurity={() => setSecurityOpen(true)}
+          onExport={() => setExportOpen(true)}
+          onImport={() => setImportOpen(true)}
         />
 
         <div className={styles.breadcrumb}>
@@ -253,6 +259,8 @@ export function Workspace() {
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
       {membersOpen ? <MembersModal onClose={() => setMembersOpen(false)} /> : null}
       {securityOpen ? <SecurityModal onClose={() => setSecurityOpen(false)} /> : null}
+      {exportOpen ? <ExportModal onClose={() => setExportOpen(false)} /> : null}
+      {importOpen ? <ImportModal onClose={() => setImportOpen(false)} /> : null}
       {permissionsFolder ? (
         <PermissionsModal folder={permissionsFolder} onClose={() => setPermissionsFor(null)} />
       ) : null}

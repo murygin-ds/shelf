@@ -5,11 +5,13 @@ import { ErrorCode } from '@/api/types';
 import * as collab from '@/api/collab';
 import * as graphApi from '@/api/graph';
 import * as rekeyApi from '@/api/rekey';
+import * as transfer from '@/api/transfer';
 import * as ws from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
-import { normalizeTag, type IndexedNote } from '@/lib/search';
+import type { ImportPlan } from '@/lib/archive';
+import { MAX_TAGS, normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
 import type { PeerDto } from '@/api/realtime';
 import { createSession, type EditingSession } from '@/collab/session';
@@ -36,10 +38,6 @@ export type View = 'editor' | 'search' | 'graph' | 'trash' | 'profile';
 // MAX_TABS bounds the strip. Past a dozen the labels are unreadable and the strip stops
 // being a way back to anything.
 const MAX_TABS = 12;
-
-// Meta is one ciphertext the server caps at 8 KiB. A note that cannot be saved because of
-// its tag list would be the worst way to find that out, so the list is bounded well short.
-const MAX_TAGS = 24;
 
 // Mirrors the CHECK on folders.depth. Only a guard here: it bounds the walk up a tree the
 // server would have refused to nest any deeper.
@@ -184,6 +182,25 @@ interface WorkspaceState {
     identity: Identity,
     onProgress?: (progress: rekeyApi.RekeyProgress) => void,
   ) => Promise<void>;
+  /**
+   * Reads the open vault out as a plain archive. Everything in it is decrypted here — that is
+   * what makes it readable anywhere, and what the dialog has to say out loud.
+   */
+  exportVault: (
+    onProgress?: (progress: transfer.ExportProgress) => void,
+  ) => Promise<transfer.VaultExport>;
+  /**
+   * Builds a new vault from an archive and moves to it.
+   *
+   * Both actions throw rather than reporting into `error`: the dialog that started them is
+   * still up, and it holds the progress and the failure the banner behind it cannot show.
+   */
+  importVault: (
+    plan: ImportPlan,
+    name: string,
+    identity: Identity,
+    onProgress?: (progress: transfer.ImportProgress) => void,
+  ) => Promise<transfer.ImportReport>;
 }
 
 const emptyTree: ws.Tree = { folders: [], notes: [] };
@@ -960,6 +977,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // rows it protects can be opened again.
     set({ keyring: await ws.loadKeyring(vaultId, identity), vaults: await ws.listVaults(identity) });
     await get().syncNow();
+  },
+
+  exportVault: async (onProgress) => {
+    const { vaultId, vaults, tree, keyring } = get();
+    const vault = vaults.find((v) => v.id === vaultId);
+
+    if (!vault || !keyring) throw new Error('open a vault first');
+
+    return transfer.exportVault(vault, tree, keyring, onProgress);
+  },
+
+  importVault: async (plan, name, identity, onProgress) => {
+    const report = await transfer.importVault(plan, name, identity, onProgress);
+
+    set({ vaults: await ws.listVaults(identity) });
+    await get().selectVault(report.vaultId, identity);
+
+    return report;
   },
 
   flushOutbox: async () => {
