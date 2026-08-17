@@ -19,6 +19,7 @@ var (
 	ErrLoginTaken         = errors.New("login already taken")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserNotFound       = errors.New("user not found")
+	ErrBlankDisplayName   = errors.New("display name must not be blank")
 	ErrSessionNotFound    = errors.New("session not found")
 	// ErrSessionReused means a refresh token was presented again after rotation:
 	// a sign of token theft, so all sessions of the user are revoked.
@@ -163,6 +164,9 @@ type Repository interface {
 	CreateUser(ctx context.Context, in NewUser) (*User, error)
 	UserByLogin(ctx context.Context, login string) (*User, error)
 	UserByID(ctx context.Context, id int64) (*User, error)
+	UpdateDisplayName(ctx context.Context, userID int64, displayName string) (*User, error)
+	// DeleteUser removes the account together with the vaults it owns.
+	DeleteUser(ctx context.Context, userID int64) error
 	// ResetCredentials atomically replaces the authentication data, rotates the
 	// recovery key when needed and revokes all sessions of the user.
 	ResetCredentials(ctx context.Context, userID int64, in Credentials) error

@@ -29,6 +29,8 @@ type Service interface {
 	Logout(ctx context.Context, refreshToken string) error
 	LogoutAll(ctx context.Context, userID int64) error
 	User(ctx context.Context, userID int64) (*auth.User, error)
+	UpdateDisplayName(ctx context.Context, userID int64, displayName string) (*auth.User, error)
+	DeleteAccount(ctx context.Context, userID int64, authHash []byte) error
 	Sessions(ctx context.Context, userID int64) ([]auth.Session, error)
 	RevokeSession(ctx context.Context, userID, sessionID int64) error
 	ChangePassword(ctx context.Context, userID int64, currentAuthHash []byte, in auth.CredentialsInput, meta auth.ClientMeta) (auth.TokenPair, error)
@@ -98,6 +100,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 	protected := group.Group("", middleware.Auth(h.service))
 	protected.GET("/me", h.Me)
+	protected.PATCH("/me", h.UpdateProfile)
+	protected.DELETE("/me", h.DeleteAccount)
 	protected.GET("/keys", h.Keys)
 	protected.POST("/password", h.ChangePassword)
 	protected.POST("/logout-all", h.LogoutAll)
@@ -329,6 +333,85 @@ func (h *Handler) Me(c *gin.Context) {
 	}
 
 	response.OK(c, user(found))
+}
+
+// UpdateProfile godoc
+//
+//	@Summary		Profile change
+//	@Description	Changes the display name — the only account field the server can read.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			request	body		updateProfileRequest	true	"New profile data"
+//	@Success		200		{object}	UserResponse
+//	@Failure		401		{object}	response.ErrorResponse
+//	@Failure		422		{object}	response.ErrorResponse
+//	@Router			/api/v1/auth/me [patch]
+func (h *Handler) UpdateProfile(c *gin.Context) {
+	userID, ok := middleware.UserIDFrom(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		return
+	}
+
+	var req updateProfileRequest
+	if !bind(c, &req) {
+		return
+	}
+
+	updated, err := h.service.UpdateDisplayName(c.Request.Context(), userID, req.DisplayName)
+	if err != nil {
+		if errors.Is(err, auth.ErrBlankDisplayName) {
+			response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation, "display name must not be blank")
+			return
+		}
+
+		h.fail(c, "update profile", err)
+
+		return
+	}
+
+	response.OK(c, user(updated))
+}
+
+// DeleteAccount godoc
+//
+//	@Summary		Account deletion
+//	@Description	Destroys the account, the vaults it owns and every session it holds. The password is asked for again as auth_hash: an access token alone is not enough for something nothing can undo.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			request	body	deleteAccountRequest	true	"Password proof"
+//	@Success		204
+//	@Failure		401	{object}	response.ErrorResponse
+//	@Failure		422	{object}	response.ErrorResponse
+//	@Router			/api/v1/auth/me [delete]
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	userID, ok := middleware.UserIDFrom(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		return
+	}
+
+	var req deleteAccountRequest
+	if !bind(c, &req) {
+		return
+	}
+
+	if err := h.service.DeleteAccount(c.Request.Context(), userID, req.AuthHash); err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "password is invalid")
+			return
+		}
+
+		h.fail(c, "delete account", err)
+
+		return
+	}
+
+	response.NoContent(c)
 }
 
 // Keys godoc

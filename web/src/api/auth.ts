@@ -113,6 +113,27 @@ export async function unlock(passphrase: string): Promise<UnlockedSession> {
   return { user: await api.get<User>('/auth/me'), ...opened };
 }
 
+/** The display name is the one account field the server can read, so the only one it can change. */
+export function updateDisplayName(displayName: string): Promise<User> {
+  return api.patch<User>('/auth/me', { display_name: displayName });
+}
+
+/**
+ * Destroys the account, the vaults it owns and every session it holds.
+ *
+ * The passphrase is proved again rather than the open session taken at its word: an access
+ * token says a browser was signed in at some point, which is not the same as the owner
+ * asking for the one thing here that nothing undoes.
+ */
+export async function deleteAccount(passphrase: string): Promise<void> {
+  const keys = await api.get<Keys>('/auth/keys');
+  const account = await deriveAccountKeys(passphrase, b64ToBytes(keys.kdf_salt), keys.kdf_params);
+
+  await api.delete<void>('/auth/me', { body: { auth_hash: bytesToB64(account.authHash) } });
+
+  clearSession();
+}
+
 export async function signOut(): Promise<void> {
   const session = readSession();
 

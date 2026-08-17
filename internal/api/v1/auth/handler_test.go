@@ -26,6 +26,7 @@ type stubService struct {
 	registerErr error
 	loginErr    error
 	recoveryErr error
+	deleteErr   error
 	user        *auth.User
 }
 
@@ -73,6 +74,19 @@ func (s *stubService) Logout(context.Context, string) error { return nil }
 func (s *stubService) LogoutAll(context.Context, int64) error { return nil }
 
 func (s *stubService) User(context.Context, int64) (*auth.User, error) { return s.user, nil }
+
+func (s *stubService) UpdateDisplayName(_ context.Context, _ int64, displayName string) (*auth.User, error) {
+	if strings.TrimSpace(displayName) == "" {
+		return nil, auth.ErrBlankDisplayName
+	}
+
+	renamed := *s.user
+	renamed.DisplayName = displayName
+
+	return &renamed, nil
+}
+
+func (s *stubService) DeleteAccount(context.Context, int64, []byte) error { return s.deleteErr }
 
 func (s *stubService) Sessions(context.Context, int64) ([]auth.Session, error) { return nil, nil }
 
@@ -525,4 +539,107 @@ func TestProtectedRoutesRequireToken(t *testing.T) {
 	if body.Login != "dmitry" {
 		t.Errorf("login = %q, want %q", body.Login, "dmitry")
 	}
+}
+
+func TestUpdateProfileEndpoint(t *testing.T) {
+	t.Parallel()
+
+	service := newStubService(t)
+	router := newTestRouter(t, service)
+
+	access, _, err := service.tokens.IssueAccess(1, 1, time.Now())
+	if err != nil {
+		t.Fatalf("IssueAccess() error = %v", err)
+	}
+
+	rec := doJSON(t, router, http.MethodPatch, "/api/v1/auth/me",
+		map[string]any{"display_name": "Dmitry M."}, access)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body)
+	}
+
+	var body handler.UserResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if body.DisplayName != "Dmitry M." {
+		t.Errorf("display_name = %q, want %q", body.DisplayName, "Dmitry M.")
+	}
+
+	invalid := map[string]any{
+		"blank":    map[string]any{"display_name": "   "},
+		"missing":  map[string]any{},
+		"overlong": map[string]any{"display_name": strings.Repeat("a", 129)},
+	}
+
+	for name, payload := range invalid {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := doJSON(t, router, http.MethodPatch, "/api/v1/auth/me", payload, access)
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+			}
+		})
+	}
+}
+
+func TestDeleteAccountEndpoint(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{"auth_hash": bytes.Repeat([]byte{1}, 32)}
+
+	t.Run("password proof is required", func(t *testing.T) {
+		t.Parallel()
+
+		service := newStubService(t)
+		router := newTestRouter(t, service)
+
+		access, _, err := service.tokens.IssueAccess(1, 1, time.Now())
+		if err != nil {
+			t.Fatalf("IssueAccess() error = %v", err)
+		}
+
+		if rec := doJSON(t, router, http.MethodDelete, "/api/v1/auth/me", map[string]any{}, access); rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status without auth_hash = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+		}
+
+		if rec := doJSON(t, router, http.MethodDelete, "/api/v1/auth/me", body, ""); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status without a token = %d, want %d", rec.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("a wrong password is refused", func(t *testing.T) {
+		t.Parallel()
+
+		service := newStubService(t)
+		service.deleteErr = auth.ErrInvalidCredentials
+
+		access, _, err := service.tokens.IssueAccess(1, 1, time.Now())
+		if err != nil {
+			t.Fatalf("IssueAccess() error = %v", err)
+		}
+
+		rec := doJSON(t, newTestRouter(t, service), http.MethodDelete, "/api/v1/auth/me", body, access)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body)
+		}
+	})
+
+	t.Run("the account goes", func(t *testing.T) {
+		t.Parallel()
+
+		service := newStubService(t)
+
+		access, _, err := service.tokens.IssueAccess(1, 1, time.Now())
+		if err != nil {
+			t.Fatalf("IssueAccess() error = %v", err)
+		}
+
+		rec := doJSON(t, newTestRouter(t, service), http.MethodDelete, "/api/v1/auth/me", body, access)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusNoContent, rec.Body)
+		}
+	})
 }

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { generateKey } from '@/crypto/aead';
+import { DEFAULT_KDF_PARAMS } from '@/crypto/kdf';
 import { ScopeKeyring } from '@/crypto/keyring';
 
+import { deleteAccount, updateDisplayName } from './auth';
 import { createFolder, createNote, type NoteNode, writeNote } from './workspace';
 
 /**
@@ -137,5 +139,65 @@ describe('request bodies match the server DTOs', () => {
 
     // 4 KiB of padding plus the GCM tag. A one-character note and a full page look alike.
     expect(ciphertext.length).toBeGreaterThanOrEqual(4096);
+  });
+});
+
+describe('account requests', () => {
+  it('sends the display name the profile endpoint asks for', async () => {
+    await updateDisplayName('Dmitry M.');
+
+    expect(sent[0]).toMatchObject({ method: 'PATCH', body: { display_name: 'Dmitry M.' } });
+  });
+
+  it('proves the passphrase before it asks for a deletion', async () => {
+    // The stored session is dropped on the way out, and this environment has no storage.
+    const store: Record<string, string> = {};
+
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => {
+        store[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+    });
+
+    vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+      sent.push({
+        path: String(url),
+        method: init.method ?? 'GET',
+        body: init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+        headers: (init.headers ?? {}) as Record<string, string>,
+      });
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            kdf_salt: btoa('0123456789abcdef'),
+            kdf_params: DEFAULT_KDF_PARAMS,
+            wrapped_master_key: '',
+            master_key_nonce: '',
+            public_key: '',
+            wrapped_private_key: '',
+            private_key_nonce: '',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    });
+
+    await deleteAccount('correct horse battery staple');
+
+    const [keys, deletion] = sent;
+
+    // The salt has to come from the account before anything can be derived with it.
+    expect(keys).toMatchObject({ method: 'GET' });
+    expect(keys?.path).toContain('/auth/keys');
+    expect(deletion).toMatchObject({ method: 'DELETE' });
+    expect(deletion?.path).toContain('/auth/me');
+    expect(typeof deletion?.body.auth_hash).toBe('string');
+    // The passphrase itself never travels.
+    expect(JSON.stringify(deletion?.body)).not.toContain('correct horse');
   });
 });

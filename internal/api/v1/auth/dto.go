@@ -115,6 +115,17 @@ func (r changePasswordRequest) toDomain() auth.CredentialsInput {
 	return credentials(r.AuthHash, r.KDFSalt, r.KDFParams, r.WrappedMasterKey, r.MasterKeyNonce, r.Recovery)
 }
 
+// updateProfileRequest changes the account data the server is able to read at all.
+type updateProfileRequest struct {
+	DisplayName string `binding:"required,min=1,max=128" json:"display_name" example:"Dmitry Murygin"`
+}
+
+// deleteAccountRequest proves the password before the account is destroyed. It is the same
+// auth_hash the login sends: the password itself never reaches the server.
+type deleteAccountRequest struct {
+	AuthHash []byte `binding:"required,min=16,max=128" json:"auth_hash" format:"byte"`
+}
+
 // recoveryStartRequest proves ownership of the recovery code.
 type recoveryStartRequest struct {
 	Login string `binding:"required,min=3,max=64"   json:"login"              example:"dmitry"`
