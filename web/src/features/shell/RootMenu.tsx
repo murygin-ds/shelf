@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import { isReadOnly } from '@/store/prefs';
 import { useWorkspace } from '@/store/workspace';
 import { MOD, type MenuEntry, useContextMenu } from '@/ui/ContextMenu';
 import { useNamePrompt } from '@/ui/NamePrompt';
@@ -178,23 +179,28 @@ function appItems(
   if (vaultId === null) return [];
 
   return [
-    {
-      label: 'New note',
-      icon: 'plus',
-      separated,
-      onSelect: () =>
-        void ask('Note title', 'Untitled').then((title) => {
-          if (title) void addNote(null, title);
-        }),
-    },
-    {
-      label: 'New folder',
-      icon: 'folder',
-      onSelect: () =>
-        void ask('Folder name', 'New folder').then((name) => {
-          if (name) void addFolder(null, name);
-        }),
-    },
+    // The two that write are dropped in read-only, and what is left is where to look.
+    ...(isReadOnly()
+      ? []
+      : ([
+          {
+            label: 'New note',
+            icon: 'plus',
+            separated,
+            onSelect: () =>
+              void ask('Note title', 'Untitled').then((title) => {
+                if (title) void addNote(null, title);
+              }),
+          },
+          {
+            label: 'New folder',
+            icon: 'folder',
+            onSelect: () =>
+              void ask('Folder name', 'New folder').then((name) => {
+                if (name) void addFolder(null, name);
+              }),
+          },
+        ] as MenuEntry[])),
     { label: 'Search', icon: 'search', separated: true, onSelect: () => setView('search') },
     { label: 'Graph', icon: 'graph', onSelect: () => setView('graph') },
     { label: 'Trash', icon: 'trash', onSelect: () => setView('trash') },

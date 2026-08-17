@@ -6,7 +6,8 @@ import { generateIdentity } from '@/crypto/identity';
 import type { Identity } from '@/crypto/identity';
 import { ScopeKeyring } from '@/crypto/keyring';
 
-import { commitBody, movable, reorderTabs, treeRows } from './workspace';
+import { usePrefs } from './prefs';
+import { commitBody, movable, reorderTabs, treeRows, useWorkspace } from './workspace';
 
 /**
  * The write-back a live session performs.
@@ -286,5 +287,112 @@ describe('the live write-back', () => {
     await commitBody(other.get, other.set, { note: note(), contentSeq: 5 }, 'later', folded(), await identity());
 
     expect(other.writes.some((write) => write.open)).toBe(false);
+  });
+});
+
+/**
+ * The mode is enforced here rather than only in the shell.
+ *
+ * Hiding the buttons is what makes it legible, but a menu entry nobody remembered to hide, a
+ * ⌘S, an autosave timer armed before it went on and a drain triggered by the network coming
+ * back all arrive at the store — so this is the place that has to answer for it.
+ */
+describe('read-only mode', () => {
+  const VAULT = {
+    id: 12,
+    keyScopeId: SCOPE.id,
+    keyScopeClientId: SCOPE.clientId,
+    keyVersion: SCOPE.version,
+    role: 'owner',
+  } as unknown as Vault;
+
+  let requested: string[] = [];
+
+  async function withVault(open: unknown = null) {
+    const ring = new ScopeKeyring();
+    ring.add(SCOPE.id, SCOPE.version, await generateKey());
+
+    useWorkspace.setState({
+      vaultId: VAULT.id,
+      vaults: [VAULT],
+      keyring: ring,
+      tree: { folders: [], notes: [note()] },
+      open: open as never,
+    });
+
+    return useWorkspace.getState();
+  }
+
+  beforeEach(() => {
+    requested = [];
+
+    vi.stubGlobal('fetch', (url: string) => {
+      requested.push(String(url));
+
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    });
+  });
+
+  afterEach(() => {
+    // Put back by hand rather than through `reset`, which also drops the IndexedDB caches
+    // and there is no IndexedDB here.
+    usePrefs.setState({ readOnly: false });
+    useWorkspace.setState({ vaultId: null, vaults: [], keyring: null, open: null });
+  });
+
+  it('sends nothing for a verb that writes, whoever called it', async () => {
+    const store = await withVault({
+      note: note(),
+      body: 'ship on tuesday',
+      contentSeq: 4,
+      locked: false,
+      dirty: true,
+      conflict: false,
+    });
+
+    usePrefs.setState({ readOnly: true });
+
+    await store.addNote(null, 'Untitled');
+    await store.addFolder(null, 'New folder');
+    await store.rename(note(), 'file', 'Renamed');
+    await store.setTags(note(), ['ops']);
+    await store.setIcon(note(), 'file', 'star');
+    await store.move(note(), 'file', null);
+    await store.saveNote();
+    await store.saveAsCopy();
+    await store.trash(note(), 'file');
+    await store.restore(88, 'file');
+    await store.purge(88, 'file');
+    await store.flushOutbox();
+
+    expect(requested).toEqual([]);
+  });
+
+  it('leaves the open note as it was read, so nothing is even unsaved', async () => {
+    const store = await withVault({
+      note: note(),
+      body: 'ship on tuesday',
+      contentSeq: 4,
+      locked: false,
+      dirty: false,
+      conflict: false,
+    });
+
+    usePrefs.setState({ readOnly: true });
+    store.editBody('ship on wednesday');
+
+    expect(useWorkspace.getState().open).toMatchObject({ body: 'ship on tuesday', dirty: false });
+  });
+
+  it('writes again as soon as it is off', async () => {
+    const store = await withVault();
+
+    usePrefs.setState({ readOnly: true });
+    await store.addFolder(null, 'Refused');
+
+    usePrefs.setState({ readOnly: false });
+    await store.addFolder(null, 'Allowed');
+
+    expect(requested.length).toBe(1);
   });
 });

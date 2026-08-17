@@ -74,7 +74,8 @@ export interface MarkdownEditorProps {
   onChange: (body: string) => void;
   onBlur: () => void;
   onOpenLink: (target: string, where: LinkWhere) => void;
-  onContextMenu: (event: MouseEvent, view: EditorView, pos: number) => void;
+  /** False when it has nothing to offer, which hands the event back to the platform menu. */
+  onContextMenu: (event: MouseEvent, view: EditorView, pos: number) => boolean;
   /** The right button inside a rendered table, which has its own verbs. */
   onTableMenu: (event: MouseEvent, ref: TableCellRef) => void;
   className?: string | undefined;
@@ -253,9 +254,7 @@ export function MarkdownEditor({
             const { from, to } = instance.state.selection.main;
             if (at < from || at > to) instance.dispatch({ selection: { anchor: at } });
 
-            latest.current.onContextMenu(event, instance, at);
-
-            return true;
+            return latest.current.onContextMenu(event, instance, at);
           },
         }),
         EditorView.updateListener.of(listen),

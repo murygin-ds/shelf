@@ -13,6 +13,7 @@ import * as cache from '@/db/cache';
 import type { ImportPlan } from '@/lib/archive';
 import { MAX_TAGS, normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
+import { isReadOnly } from '@/store/prefs';
 import type { PeerDto } from '@/api/realtime';
 import { createSession, type EditingSession } from '@/collab/session';
 import { b64ToBytes } from '@/crypto/bytes';
@@ -333,6 +334,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   createVault: async (name, identity) => {
+    if (isReadOnly()) return;
+
     set({ loading: true, error: null });
 
     try {
@@ -347,6 +350,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   removeVault: async (vaultId, mode, identity) => {
+    if (isReadOnly()) return;
+
     set({ loading: true, error: null });
 
     try {
@@ -533,7 +538,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   addFolder: async (parentId, name) => {
     const { vaultId, keyring } = get();
-    if (vaultId === null || !keyring) return;
+    if (vaultId === null || !keyring || isReadOnly()) return;
 
     try {
       await ws.createFolder(vaultId, parentId, name, scopeOf(get(), parentId), keyring);
@@ -551,7 +556,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   addNote: async (folderId, title) => {
     const { vaultId, keyring } = get();
-    if (vaultId === null || !keyring) return;
+    if (vaultId === null || !keyring || isReadOnly()) return;
 
     try {
       const note = await ws.createNote(vaultId, folderId, title, scopeOf(get(), folderId), keyring);
@@ -617,7 +622,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     // No socket means no session, and the note stays on the path it has always had: type,
     // debounce, PUT. That is also what happens when the hub is down.
+    //
+    // Read-only stays out of the room entirely rather than joining as a watcher: the server
+    // names the longest standing member who may write as the committer, and a tab that took
+    // that job without writing would leave everybody else's edits in the document with
+    // nothing projecting them back into the body.
     if (!open || !keyring || vaultId === null || liveSession === null || open.locked) return;
+    if (isReadOnly()) return;
     if (editing?.target.note.id === open.note.id) return;
 
     get().stopEditing();
@@ -736,14 +747,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   editBody: (body) => {
     const open = get().open;
-    if (!open) return;
+    if (!open || isReadOnly()) return;
 
     set({ open: { ...open, body, dirty: true, conflict: false } });
   },
 
   saveNote: async (identity) => {
     const { open, keyring, tree } = get();
-    if (!open || !keyring || !open.dirty || open.locked) return;
+    if (!open || !keyring || !open.dirty || open.locked || isReadOnly()) return;
 
     // With a live session the body is written back by the committer on its own schedule.
     // A second writer here would race the same If-Match and lose, turning every save into
@@ -885,7 +896,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setVaultLabel: async (vaultId, label, identity) => {
     const vault = get().vaults.find((candidate) => candidate.id === vaultId);
-    if (!vault) return;
+    if (!vault || isReadOnly()) return;
 
     try {
       await ws.setVaultLabel(vault, label, identity);
@@ -907,6 +918,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   move: async (node, kind, parentId) => {
     const { tree, vaults, vaultId } = get();
 
+    if (isReadOnly()) return;
     if (!movable(tree, vaults.find((vault) => vault.id === vaultId), node, kind, parentId)) return;
 
     try {
@@ -924,6 +936,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   trash: async (node, kind) => {
+    if (isReadOnly()) return;
+
     try {
       await (kind === 'folder' ? ws.trashFolder(node.id) : ws.trashNote(node.id));
 
@@ -943,6 +957,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const { vaultId, vaults, tree, keyring } = get();
     const vault = vaults.find((v) => v.id === vaultId);
 
+    // These two throw rather than returning quietly: a modal is up, it is holding the
+    // progress, and it has somewhere to put the reason.
+    if (isReadOnly()) throw new Error('Read-only mode is on.');
     if (vaultId === null || !vault || !keyring) throw new Error('open a vault first');
 
     const plan = await rekeyApi.startRekey(
@@ -989,6 +1006,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   importVault: async (plan, name, identity, onProgress) => {
+    if (isReadOnly()) throw new Error('Read-only mode is on.');
+
     const report = await transfer.importVault(plan, name, identity, onProgress);
 
     set({ vaults: await ws.listVaults(identity) });
@@ -1018,7 +1037,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   // somewhere: a sibling note, saved under their own name, with nothing overwritten.
   saveAsCopy: async (identity) => {
     const { open, vaultId, keyring } = get();
-    if (!open || vaultId === null || !keyring) return;
+    if (!open || vaultId === null || !keyring || isReadOnly()) return;
 
     set({ saving: true });
 
@@ -1075,6 +1094,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   restore: async (id, kind) => {
+    if (isReadOnly()) return;
+
     try {
       await (kind === 'folder' ? ws.restoreFolder(id) : ws.restoreNote(id));
       await get().loadTrash();
@@ -1085,6 +1106,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   purge: async (id, kind) => {
+    if (isReadOnly()) return;
+
     try {
       await (kind === 'folder' ? ws.purgeFolder(id) : ws.purgeNote(id));
       await get().loadTrash();
@@ -1201,6 +1224,11 @@ async function drain(get: () => WorkspaceState, set: Setter): Promise<void> {
   const { vaultId } = get();
   if (vaultId === null || !connectivity.isOnline()) return;
 
+  // Read-only holds the queue rather than dropping it: these are bodies the user wrote
+  // before the mode went on, they are still in the cache as ciphertext, and they go out on
+  // the first drain after it goes off.
+  if (isReadOnly()) return;
+
   // The queue is read rather than the counter: two tabs share one IndexedDB, and a write
   // parked by the other one is just as much this vault's work.
   const pending = await cache.outbox(vaultId);
@@ -1262,13 +1290,14 @@ async function drain(get: () => WorkspaceState, set: Setter): Promise<void> {
   set({ queued: await cache.outboxSize(vaultId) });
 }
 
+/** Every verb that writes meta goes through here, and none of them run in read-only. */
 async function withKeyring(
   get: () => WorkspaceState,
   set: Setter,
   action: (keyring: ScopeKeyring) => Promise<void>,
 ): Promise<void> {
   const keyring = get().keyring;
-  if (!keyring) return;
+  if (!keyring || isReadOnly()) return;
 
   try {
     await action(keyring);

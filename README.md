@@ -277,6 +277,24 @@ signature covers the slot as well as the bytes, and the reader checks the author
 against the member list it already holds rather than against whatever arrived with the
 revision.
 
+**Read-only mode is a property of the browser, not of the account.** The switch in the
+account menu (`store/prefs.ts`, remembered in `localStorage`) stops this device writing to
+any vault — bodies, the tree, tags and icons, the trash, members, grants, groups, invites,
+public links, re-keys, and creating or importing a vault. The shell drops those verbs so
+they cannot be reached, and every one of them is refused again in the workspace store, which
+is where a stale timer or a keyboard shortcut would otherwise land. Inside the body two
+things do not follow from `EditorView.editable` and are switched off by hand: a table cell is
+a `contenteditable` of its own inside the editor's, so the grid carries the mode in its
+widget and rebuilds when it changes; and Cut and Paste in the right-click menu dispatch
+changes directly rather than through a command that consults `EditorState.readOnly`, so they
+are taken out of the menu instead. Two further consequences are
+worth stating: a note opened in this mode joins no live editing session at all, because the
+server names the longest-standing member who may write as the committer and a tab holding
+that job without writing would strand everybody else's edits in the document; and a body
+queued offline before the mode went on stays queued until it goes off. It is a guard rail
+for the person at the keyboard rather than a permission — the account keeps every role it
+had, and another tab or device writes as before. Somebody who must not write is given `view`.
+
 ### Export and import
 
 A vault leaves as a plain zip — `notes/…/<name>.md` in the folder shape the sidebar shows,

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import type { FolderNode, NoteNode } from '@/api/workspace';
 import { allTags } from '@/lib/search';
+import { usePrefs } from '@/store/prefs';
 import { movable, type TreeRow, treeRows, useWorkspace } from '@/store/workspace';
 import { type MenuItem, useContextMenu } from '@/ui/ContextMenu';
 import { Icon, type IconName } from '@/ui/Icon';
@@ -42,6 +43,8 @@ export function Sidebar({
     move,
     trash,
   } = useWorkspace();
+
+  const readOnly = usePrefs((state) => state.readOnly);
 
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
@@ -111,7 +114,9 @@ export function Sidebar({
    * row leaves the sidebar freely, and a drag that ends out there still has to end.
    */
   const grab = (event: React.PointerEvent, row: TreeRow) => {
-    if (event.button !== 0 || row.node.locked) return;
+    // A row that cannot be moved is not picked up at all: a drag that highlights nothing and
+    // ends nowhere reads as a broken tree rather than as a mode.
+    if (event.button !== 0 || row.node.locked || readOnly) return;
 
     const node = row.node;
     const kind = row.kind === 'folder' ? ('folder' as const) : ('file' as const);
@@ -188,11 +193,19 @@ export function Sidebar({
                   },
                 ]
               : []),
-            { label: 'New folder here', icon: 'folder', onSelect: () => askFolder(node.id) },
-            { label: 'New note here', icon: 'plus', onSelect: () => askNote(node.id) },
+            ...(readOnly
+              ? []
+              : ([
+                  { label: 'New folder here', icon: 'folder', onSelect: () => askFolder(node.id) },
+                  { label: 'New note here', icon: 'plus', onSelect: () => askNote(node.id) },
+                ] as MenuItem[])),
             { label: 'Permissions', icon: 'user', onSelect: () => onOpenPermissions(node.id) },
           ]
         : [{ label: 'Open', icon: 'doc', onSelect: () => void openNote(node as NoteNode) }];
+
+    // In read-only the menu is what is left when every verb that writes is taken out of it,
+    // which for a note is one entry. Showing them greyed would only invite the click.
+    if (readOnly) return head;
 
     return [
       ...head,
@@ -265,30 +278,33 @@ export function Sidebar({
         <div ref={treeRef} className={`${styles.tree} ${dropOn === null ? styles.treeTarget : ''}`}>
           <div className={styles.sectionHead}>
             <span className={styles.sectionTitle}>{vault?.name ?? 'VAULT'}</span>
-            <span className={styles.sectionActions}>
-              <button
-                type="button"
-                className={styles.sectionButton}
-                {...tip('New folder')}
-                onClick={() => askFolder(null)}
-              >
-                <Icon name="folder" size={13} />
-              </button>
-              <button
-                type="button"
-                className={styles.sectionButton}
-                {...tip('New note')}
-                onClick={() => askNote(null)}
-              >
-                <Icon name="plus" size={13} />
-              </button>
-            </span>
+            {readOnly ? null : (
+              <span className={styles.sectionActions}>
+                <button
+                  type="button"
+                  className={styles.sectionButton}
+                  {...tip('New folder')}
+                  onClick={() => askFolder(null)}
+                >
+                  <Icon name="folder" size={13} />
+                </button>
+                <button
+                  type="button"
+                  className={styles.sectionButton}
+                  {...tip('New note')}
+                  onClick={() => askNote(null)}
+                >
+                  <Icon name="plus" size={13} />
+                </button>
+              </span>
+            )}
           </div>
 
           {rows.length === 0 ? (
             <p className={styles.emptyHint}>
-              Nothing here yet. Add a folder or a note — both are encrypted before they leave this
-              device.
+              {readOnly
+                ? 'Nothing here yet, and read-only mode is on — turn it off in the account menu to add anything.'
+                : 'Nothing here yet. Add a folder or a note — both are encrypted before they leave this device.'}
             </p>
           ) : null}
 
@@ -347,7 +363,7 @@ export function Sidebar({
 
                 <button
                   type="button"
-                  {...tip('Change icon')}
+                  {...(readOnly ? {} : tip('Change icon'))}
                   className={[
                     styles.rowIcon,
                     isFolder ? styles.rowIconFolder : '',
@@ -356,9 +372,11 @@ export function Sidebar({
                     .filter(Boolean)
                     .join(' ')}
                   onClick={(event) => {
-                    event.stopPropagation();
-                    if (node.locked) return;
+                    // With no picker behind it the mark is not a control of its own, so the
+                    // press is left to reach the row and open the note.
+                    if (node.locked || readOnly) return;
 
+                    event.stopPropagation();
                     askIcon(event.currentTarget.getBoundingClientRect(), node, kind);
                   }}
                 >
@@ -375,7 +393,7 @@ export function Sidebar({
 
                 {node.locked ? <Icon name="lock" size={11} className={styles.badge} /> : null}
 
-                {!node.locked ? (
+                {!node.locked && !readOnly ? (
                   <span className={styles.rowActions} onClick={(event) => event.stopPropagation()}>
                     {/* Both verbs behind one button: the sidebar is 250px, and a row four
                         levels down has no width left for a strip of five. The rest of what a

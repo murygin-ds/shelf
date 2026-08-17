@@ -4,6 +4,7 @@ import * as audit from '@/api/audit';
 import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
 import type { RekeyProgress } from '@/api/rekey';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { useDismiss } from '@/ui/dismiss';
@@ -24,8 +25,12 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<RekeyProgress | null>(null);
 
+  const readOnly = usePrefs((state) => state.readOnly);
+
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = vault?.role === 'owner' || vault?.role === 'admin';
+  // The history is a read and stays; a rotation re-encrypts every row under the scope.
+  const canRotate = canManage && !readOnly;
   const soloKeys = tree.folders.filter((folder) => folder.ownScope).length;
 
   const load = async (before = 0) => {
@@ -112,7 +117,7 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
                 </span>
               ) : null}
 
-              {canManage ? (
+              {canRotate ? (
                 <button
                   type="button"
                   className={styles.noteAction}
@@ -121,6 +126,10 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
                 >
                   {stale ? 'Rotate key & revoke old copies' : 'Rotate the vault key'}
                 </button>
+              ) : null}
+
+              {canManage && readOnly ? (
+                <span>Read-only mode is on, so the key cannot be rotated from this device.</span>
               ) : null}
 
               {progress ? (

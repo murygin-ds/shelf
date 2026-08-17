@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
 import { isInviteCodeShaped } from '@/crypto/invite';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -22,6 +23,7 @@ export function JoinWithCode() {
   const navigate = useNavigate();
   const { identity, status } = useSession();
   const workspace = useWorkspace();
+  const readOnly = usePrefs((state) => state.readOnly);
 
   const [code, setCode] = useState(() => sessionStorage.getItem(PARKED_CODE) ?? '');
   const [resolved, setResolved] = useState<collab.ResolvedInvite | null>(null);
@@ -60,6 +62,13 @@ export function JoinWithCode() {
     // that can block acceptance says so instead of being ignored.
     if (!identity) {
       setError('Your keys are locked on this device. Unlock them and open this code again.');
+      return;
+    }
+
+    // The shell hides the way here in read-only, but the route is reachable by its URL, and
+    // redeeming a code writes a key grant like any other.
+    if (readOnly) {
+      setError('Read-only mode is on. Turn it off in the account menu to accept this invite.');
       return;
     }
 

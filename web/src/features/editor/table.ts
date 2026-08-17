@@ -207,12 +207,21 @@ class TableWidget extends WidgetType {
   constructor(
     private readonly model: TableModel,
     private readonly source: string,
+    /**
+     * Whether the cells take the caret.
+     *
+     * It has to be part of the widget rather than read at each keystroke: a cell is a
+     * `contenteditable` of its own inside the editor's, so `EditorView.editable` — which is
+     * what read-only drops — says nothing about it. Without this the grid stays writable
+     * while the prose around it has stopped being.
+     */
+    private readonly readOnly: boolean,
   ) {
     super();
   }
 
   override eq(other: TableWidget): boolean {
-    return other.source === this.source;
+    return other.source === this.source && other.readOnly === this.readOnly;
   }
 
   /**
@@ -230,12 +239,15 @@ class TableWidget extends WidgetType {
     table.contentEditable = 'false';
 
     const grid = table.appendChild(document.createElement('table'));
+    const editable = !this.readOnly;
 
     const head = grid.appendChild(document.createElement('thead'));
-    head.appendChild(rowDOM(this.model.header, 'th', this.model.aligns));
+    head.appendChild(rowDOM(this.model.header, 'th', this.model.aligns, editable));
 
     const body = grid.appendChild(document.createElement('tbody'));
-    for (const row of this.model.rows) body.appendChild(rowDOM(row, 'td', this.model.aligns));
+    for (const row of this.model.rows) {
+      body.appendChild(rowDOM(row, 'td', this.model.aligns, editable));
+    }
 
     table.addEventListener('keydown', (event) => onKey(event, view, table));
     table.addEventListener('contextmenu', (event) => onContextMenu(event, view, table));
@@ -267,7 +279,11 @@ class TableWidget extends WidgetType {
       if (cells.length !== texts.length) return false;
 
       cells.forEach((cell, column) => {
-        // Never the focused one: it holds the caret, and rewriting its text moves it.
+        // The one thing that is set even on the focused cell: read-only arriving while the
+        // caret is in a cell is exactly the case that has to take the caret away.
+        cell.contentEditable = String(!this.readOnly);
+
+        // Otherwise never the focused one: it holds the caret, and rewriting its text moves it.
         if (cell === document.activeElement) return;
 
         const text = texts[column] ?? '';
@@ -301,6 +317,8 @@ function modelAt(view: EditorView, table: HTMLElement): { node: SyntaxNode; mode
 }
 
 function rewrite(view: EditorView, table: HTMLElement, change: (model: TableModel) => void): void {
+  if (view.state.readOnly) return;
+
   // Whatever is half-typed in a cell goes in first, or the rewrite would drop it.
   commit(view, table);
 
@@ -353,6 +371,8 @@ export function removeRow(ref: TableCellRef, at: number): void {
  * would still be a paragraph break nobody asked for.
  */
 export function removeTable(ref: TableCellRef): void {
+  if (ref.view.state.readOnly) return;
+
   const found = modelAt(ref.view, ref.table);
   if (!found) return;
 
@@ -371,14 +391,14 @@ export function removeTable(ref: TableCellRef): void {
   });
 }
 
-function rowDOM(cells: string[], tag: 'th' | 'td', aligns: Align[]): HTMLElement {
+function rowDOM(cells: string[], tag: 'th' | 'td', aligns: Align[], editable: boolean): HTMLElement {
   const row = document.createElement('tr');
 
   cells.forEach((text, index) => {
     const cell = row.appendChild(document.createElement(tag));
 
     cell.textContent = text;
-    cell.contentEditable = 'true';
+    cell.contentEditable = String(editable);
     cell.spellcheck = false;
     cell.style.textAlign = aligns[index] ?? 'left';
   });
@@ -396,8 +416,16 @@ function readDOM(table: HTMLElement, aligns: Align[]): TableModel {
   return { header, rows: body, aligns };
 }
 
-/** Writes what the cells say back into the document, as one replacement of the block. */
+/**
+ * Writes what the cells say back into the document, as one replacement of the block.
+ *
+ * This is the only way a grid reaches the document, so it is where read-only is enforced:
+ * `EditorState.readOnly` is consulted by editing commands, and a dispatch of plain changes
+ * is not one of them.
+ */
 function commit(view: EditorView, table: HTMLElement): boolean {
+  if (view.state.readOnly) return false;
+
   const from = view.posAtDOM(table);
   const node = tableAt(view.state, from);
   if (!node) return false;
@@ -438,6 +466,10 @@ function onContextMenu(event: MouseEvent, view: EditorView, table: HTMLElement):
   const cell = (event.target as HTMLElement | null)?.closest('th, td');
   const handler = view.state.facet(tableMenu);
   if (!cell || !handler) return;
+
+  // Every verb this menu has writes. Left alone, the event reaches the editor's own handler
+  // and the body menu opens over the grid, which is the right answer while reading.
+  if (view.state.readOnly) return;
 
   event.preventDefault();
   event.stopPropagation();
@@ -619,7 +651,9 @@ function appendRow(table: HTMLElement, columns: number): void {
   const body = table.querySelector('tbody');
   if (!body) return;
 
-  body.appendChild(rowDOM(Array.from({ length: columns }, () => ''), 'td', []));
+  // Only ever reached from a keystroke inside a cell, which is to say from a grid that
+  // takes the caret in the first place.
+  body.appendChild(rowDOM(Array.from({ length: columns }, () => ''), 'td', [], true));
 }
 
 function build(state: EditorState): DecorationSet {
@@ -642,7 +676,7 @@ function build(state: EditorState): DecorationSet {
       found.push(
         Decoration.replace({
           block: true,
-          widget: new TableWidget(model, state.doc.sliceString(node.from, node.to)),
+          widget: new TableWidget(model, state.doc.sliceString(node.from, node.to), state.readOnly),
         }).range(node.from, node.to),
       );
 
@@ -655,7 +689,11 @@ function build(state: EditorState): DecorationSet {
 
 const grid = StateField.define<DecorationSet>({
   create: (state) => build(state),
-  update: (value, tr) => (tr.docChanged ? build(tr.state) : value),
+  // Rebuilt when the mode changes as well as when the text does: read-only is reconfigured
+  // into a live editor — the note on screen can become unwritable without a keystroke — and
+  // the widgets carry it.
+  update: (value, tr) =>
+    tr.docChanged || tr.startState.readOnly !== tr.state.readOnly ? build(tr.state) : value,
   provide: (field) => EditorView.decorations.from(field),
 });
 

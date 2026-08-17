@@ -6,6 +6,7 @@ import * as groupsApi from '@/api/groups';
 import type { RekeyProgress } from '@/api/rekey';
 import type { Role } from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { useDismiss } from '@/ui/dismiss';
@@ -31,8 +32,12 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   const [progress, setProgress] = useState<RekeyProgress | null>(null);
   const dismiss = useDismiss(onClose);
 
+  const readOnly = usePrefs((state) => state.readOnly);
+
   const vault = vaults.find((v) => v.id === vaultId);
   const canManage = vault?.role === 'owner' || vault?.role === 'admin';
+  // Who is here is a read; changing who is here seals keys and writes grants.
+  const canChange = canManage && !readOnly;
 
   const reload = async () => {
     if (vaultId === null) return;
@@ -52,7 +57,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
   const invite = async (event: FormEvent) => {
     event.preventDefault();
-    if (vaultId === null || !vault || !keyring) return;
+    if (vaultId === null || !vault || !keyring || readOnly) return;
 
     setBusy(true);
     setError(null);
@@ -81,7 +86,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   };
 
   const change = async (userId: number, next: Role) => {
-    if (vaultId === null) return;
+    if (vaultId === null || readOnly) return;
 
     try {
       await collab.setRole(vaultId, userId, next);
@@ -92,7 +97,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   };
 
   const remove = async (userId: number) => {
-    if (vaultId === null) return;
+    if (vaultId === null || readOnly) return;
 
     try {
       const removed = await collab.removeMember(vaultId, userId);
@@ -142,7 +147,14 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className={styles.body}>
-          {canManage ? (
+          {canManage && readOnly ? (
+            <p className={styles.empty}>
+              Read-only mode is on: this is who holds a key, and nothing here can be handed
+              out or taken back from this device.
+            </p>
+          ) : null}
+
+          {canChange ? (
             <form className={styles.row} onSubmit={invite}>
               <span className={styles.input} style={{ display: 'flex', alignItems: 'center', color: 'var(--text-quiet)' }}>
                 A code invite — hand the code over yourself
@@ -189,14 +201,16 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                   {pending.length === 1 ? '' : 's'} still need rotating for that.
                 </span>
 
-                <button
-                  type="button"
-                  className={styles.noteAction}
-                  disabled={busy || !identity}
-                  onClick={() => void rotate()}
-                >
-                  Rotate the vault key
-                </button>
+                {readOnly ? null : (
+                  <button
+                    type="button"
+                    className={styles.noteAction}
+                    disabled={busy || !identity}
+                    onClick={() => void rotate()}
+                  >
+                    Rotate the vault key
+                  </button>
+                )}
 
                 {progress ? (
                   <span className={styles.progress}>
@@ -236,7 +250,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                 </span>
               </span>
 
-              {canManage && member.role !== 'owner' && member.user_id !== user?.id ? (
+              {canChange && member.role !== 'owner' && member.user_id !== user?.id ? (
                 <select
                   className={styles.select}
                   value={member.role}
@@ -262,7 +276,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                 {member.fingerprint}
               </span>
 
-              {canManage && member.role !== 'owner' && member.user_id !== user?.id ? (
+              {canChange && member.role !== 'owner' && member.user_id !== user?.id ? (
                 <button
                   type="button"
                   className={styles.rowAction}
@@ -294,7 +308,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                       {item.role} · expires {new Date(item.expires_at).toLocaleDateString()}
                     </span>
                   </span>
-                  {canManage ? (
+                  {canChange ? (
                     <button
                       type="button"
                       className={styles.rowAction}
@@ -350,6 +364,7 @@ function describe(cause: unknown): string {
 function Groups({ members }: { members: collab.MemberDto[] }) {
   const { vaultId, vaults, keyring } = useWorkspace();
   const identity = useSession((state) => state.identity);
+  const readOnly = usePrefs((state) => state.readOnly);
 
   const [groups, setGroups] = useState<groupsApi.Group[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -376,7 +391,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
   }, [vaultId, keyring]);
 
   const create = async () => {
-    if (vaultId === null || !keyring || !scope) return;
+    if (vaultId === null || !keyring || !scope || readOnly) return;
 
     const name = await ask('Group name', 'Design');
     if (!name) return;
@@ -399,7 +414,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
   };
 
   const toggle = async (group: groupsApi.Group, member: collab.MemberDto) => {
-    if (!identity || !keyring) return;
+    if (!identity || !keyring || readOnly) return;
 
     const inside = group.members.some((existing) => existing.user_id === member.user_id);
 
@@ -421,6 +436,8 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
   };
 
   const disband = async (group: groupsApi.Group) => {
+    if (readOnly) return;
+
     setBusy(true);
     setError(null);
 
@@ -461,40 +478,51 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
               </span>
             </span>
 
-            <select
-              className={styles.select}
-              value=""
-              disabled={busy}
-              onChange={(event) => {
-                const member = members.find((m) => String(m.user_id) === event.target.value);
-                if (member) void toggle(group, member);
-              }}
-            >
-              <option value="">Add or remove…</option>
-              {members.map((member) => (
-                <option key={member.user_id} value={member.user_id}>
-                  {group.members.some((e) => e.user_id === member.user_id) ? '− ' : '+ '}
-                  {member.display_name}
-                </option>
-              ))}
-            </select>
+            {readOnly ? null : (
+              <>
+                <select
+                  className={styles.select}
+                  value=""
+                  disabled={busy}
+                  onChange={(event) => {
+                    const member = members.find((m) => String(m.user_id) === event.target.value);
+                    if (member) void toggle(group, member);
+                  }}
+                >
+                  <option value="">Add or remove…</option>
+                  {members.map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {group.members.some((e) => e.user_id === member.user_id) ? '− ' : '+ '}
+                      {member.display_name}
+                    </option>
+                  ))}
+                </select>
 
-            <button
-              type="button"
-              className={styles.rowAction}
-              {...tip('Disband')}
-              disabled={busy}
-              onClick={() => void disband(group)}
-            >
-              <Icon name="x" size={14} />
-            </button>
+                <button
+                  type="button"
+                  className={styles.rowAction}
+                  {...tip('Disband')}
+                  disabled={busy}
+                  onClick={() => void disband(group)}
+                >
+                  <Icon name="x" size={14} />
+                </button>
+              </>
+            )}
           </div>
         ))
       )}
 
-      <button type="button" className={styles.noteAction} disabled={busy} onClick={() => void create()}>
-        New group
-      </button>
+      {readOnly ? null : (
+        <button
+          type="button"
+          className={styles.noteAction}
+          disabled={busy}
+          onClick={() => void create()}
+        >
+          New group
+        </button>
+      )}
     </>
   );
 }

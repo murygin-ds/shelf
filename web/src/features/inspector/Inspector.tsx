@@ -8,6 +8,7 @@ import * as shareApi from '@/api/share';
 import type { NoteNode } from '@/api/workspace';
 import { allTags, extractTags, normalizeTag } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
+import { usePrefs } from '@/store/prefs';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
 
@@ -164,10 +165,11 @@ function Links({ note }: { note: NoteNode }) {
  */
 function Tags({ note }: { note: NoteNode }) {
   const { open, index, setTags, setQuery } = useWorkspace();
+  const frozen = usePrefs((state) => state.readOnly);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const readOnly = note.permission === 'view' || note.permission === 'comment';
+  const readOnly = frozen || note.permission === 'view' || note.permission === 'comment';
   const body = open?.note.id === note.id ? open.body : '';
 
   // From the body rather than from the index: the index is rebuilt on sync, and a tag just
@@ -406,6 +408,7 @@ function Verdict({ authorship }: { authorship: revisionsApi.RevisionBody['author
 
 function Share({ note }: { note: NoteNode }) {
   const { open } = useWorkspace();
+  const frozen = usePrefs((state) => state.readOnly);
   const [links, setLinks] = useState<shareApi.ShareLinkDto[]>([]);
   const [created, setCreated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -448,7 +451,7 @@ function Share({ note }: { note: NoteNode }) {
   }, [note.id, canShare]);
 
   const publish = async () => {
-    if (!body) return;
+    if (!body || frozen) return;
 
     setBusy(true);
     setError(null);
@@ -465,6 +468,8 @@ function Share({ note }: { note: NoteNode }) {
   };
 
   const revoke = async (linkId: number) => {
+    if (frozen) return;
+
     setBusy(true);
     setError(null);
 
@@ -495,14 +500,24 @@ function Share({ note }: { note: NoteNode }) {
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
-      <button
-        type="button"
-        className={styles.action}
-        disabled={busy || !body}
-        onClick={() => void publish()}
-      >
-        Publish this version
-      </button>
+      {/* Publishing and revoking both write, so read-only leaves the list and takes the
+          verbs. A link that is already live stays live: turning a switch on here does not
+          reach out and close what other people are reading. */}
+      {frozen ? (
+        <div className={styles.hidden}>
+          Read-only mode is on, so this note cannot be published from here and existing links
+          cannot be revoked.
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={styles.action}
+          disabled={busy || !body}
+          onClick={() => void publish()}
+        >
+          Publish this version
+        </button>
+      )}
 
       {created ? (
         <>
@@ -526,7 +541,7 @@ function Share({ note }: { note: NoteNode }) {
             {link.live ? 'Live' : link.revoked_at ? 'Revoked' : 'Expired'} ·{' '}
             {link.view_count} view{link.view_count === 1 ? '' : 's'}
           </span>
-          {link.live ? (
+          {link.live && !frozen ? (
             <button
               type="button"
               className={styles.itemMeta}

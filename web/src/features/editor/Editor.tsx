@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
 import { allTags } from '@/lib/search';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
@@ -43,6 +44,7 @@ export function Editor() {
   } = useWorkspace();
   const identity = useSession((state) => state.identity);
   const user = useSession((state) => state.user);
+  const frozen = usePrefs((state) => state.readOnly);
   const [title, setTitle] = useState(open?.note.name ?? '');
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
@@ -72,14 +74,19 @@ export function Editor() {
 
   // The live session for the note on screen. It is opened here rather than in openNote
   // because the identity lives in the session store, and this is where the two meet.
+  //
+  // Read-only is one of the things that ends it: switching the mode on with a room already
+  // up would leave this tab holding the committer's job. The teardown writes the document
+  // back on the way out, which is the last thing this device writes — refusing that would
+  // strand text that was typed while writing was still allowed.
   const noteId = open?.note.id;
   useEffect(() => {
-    if (noteId === undefined || !identity || !user) return;
+    if (noteId === undefined || !identity || !user || frozen) return;
 
     void startEditing(identity, { userId: user.id, name: user.display_name });
 
     return () => stopEditing();
-  }, [noteId, identity, user, startEditing, stopEditing]);
+  }, [noteId, identity, user, frozen, startEditing, stopEditing]);
 
   // Debounced autosave, plus an explicit ⌘S for people who do not trust one. With a live
   // session both are no-ops: the committer writes the body back on its own schedule, and
@@ -158,7 +165,8 @@ export function Editor() {
   };
 
   const note = open.note;
-  const readOnly = open.locked || note.permission === 'view' || note.permission === 'comment';
+  const readOnly =
+    frozen || open.locked || note.permission === 'view' || note.permission === 'comment';
 
   /**
    * Resolved here rather than in the editor, and by the same rule the graph uses: titles are
@@ -297,7 +305,10 @@ export function Editor() {
               E2E
             </span>
             <span className={styles.metaSeparator}>·</span>
-            <span>{note.permission.toUpperCase()}</span>
+            {/* The mode outranks the permission here: what the reader may do with this note
+                and what this device will do with it are the same line, and in read-only the
+                second one is the answer. */}
+            <span>{frozen ? 'READ ONLY' : note.permission.toUpperCase()}</span>
             {open.dirty ? (
               <>
                 <span className={styles.metaSeparator}>·</span>
@@ -331,9 +342,18 @@ export function Editor() {
               onChange={editBody}
               onBlur={() => void saveNote(identity ?? undefined)}
               onOpenLink={openLink}
-              onContextMenu={(event, view, pos) =>
-                openMenu(event, editorMenu(view, pos, (link) => openLink(link.target, link.where)))
-              }
+              onContextMenu={(event, view, pos) => {
+                const items = editorMenu(view, pos, (link) => openLink(link.target, link.where));
+
+                // Nothing to offer — reading, with no selection and no link under the
+                // pointer. Suppressing the platform menu is only worth doing when something
+                // takes its place, so here it is left alone.
+                if (items.length === 0) return false;
+
+                openMenu(event, items);
+
+                return true;
+              }}
               onTableMenu={(event, ref) => openMenu(event, tableMenu(ref))}
             />
           )}
@@ -352,14 +372,18 @@ export function Editor() {
                   >
                     Discard mine and reload
                   </button>
-                  <button
-                    type="button"
-                    className={styles.conflictButton}
-                    disabled={saving}
-                    onClick={() => void saveAsCopy(identity ?? undefined)}
-                  >
-                    Save mine as a new note
-                  </button>
+                  {/* A conflict cannot arise while read-only is on, but one raised before it
+                      went on is still on screen — and keeping this copy means writing one. */}
+                  {frozen ? null : (
+                    <button
+                      type="button"
+                      className={styles.conflictButton}
+                      disabled={saving}
+                      onClick={() => void saveAsCopy(identity ?? undefined)}
+                    >
+                      Save mine as a new note
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={styles.conflictButton}
