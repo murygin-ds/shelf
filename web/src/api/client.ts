@@ -1,3 +1,5 @@
+import * as connectivity from '@/sync/connectivity';
+
 import { type ErrorEnvelope, ErrorCode, type Tokens } from './types';
 
 const BASE = '/api/v1';
@@ -126,14 +128,23 @@ async function send(method: string, path: string, options: RequestOptions): Prom
   if (!options.anonymous && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   try {
-    return await fetch(BASE + path, {
+    const response = await fetch(BASE + path, {
       method,
       headers,
       body: options.body === undefined ? null : JSON.stringify(options.body),
       ...(options.signal ? { signal: options.signal } : {}),
     });
+
+    // Every request is a probe, including the ones that come back 4xx: an answer of any
+    // shape means the server is there, which is the only thing this records.
+    connectivity.markReachable();
+
+    return response;
   } catch (cause) {
+    // An aborted request says nothing about the network — it was called off from here.
     if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+
+    connectivity.markUnreachable();
 
     throw new OfflineError();
   }

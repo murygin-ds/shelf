@@ -12,6 +12,7 @@ import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
+import { summarize } from '@/sync/status';
 import { Icon } from '@/ui/Icon';
 import { NamePrompt, useNamePrompt } from '@/ui/NamePrompt';
 
@@ -34,7 +35,9 @@ export function Workspace() {
     error,
     offline,
     syncing,
+    saving,
     queued,
+    lastSyncedAt,
     coverage,
     load,
   } = workspace;
@@ -78,6 +81,21 @@ export function Workspace() {
 
     return { words: body ? body.split(/\s+/).length : 0, chars: open?.body.length ?? 0 };
   }, [open?.body]);
+
+  // A poll that finds nothing takes a few dozen milliseconds, and flashing SYNCING at every
+  // one of them every eight seconds reads as trouble rather than as work. Only a sync that
+  // outlasts this is worth saying out loud.
+  const pulling = useHeldTrue(syncing, SYNC_FLICKER_MS);
+
+  const status = summarize({
+    offline,
+    syncing: pulling,
+    saving,
+    dirty: open?.dirty ?? false,
+    queued,
+    lastSyncedAt,
+    now: Date.now(),
+  });
 
   const vault = vaults.find((v) => v.id === vaultId);
   const permissionsFolder =
@@ -127,9 +145,16 @@ export function Workspace() {
               <span>{vault?.name}</span>
               <span className={styles.crumbSeparator}>/</span>
               <span className={styles.crumbCurrent}>{open.note.name}</span>
-              <span className={styles.savedDot} />
+              <span
+                className={styles.savedDot}
+                data-tone={open.dirty ? 'busy' : open.queued ? 'warn' : 'ok'}
+              />
               <span className={styles.savedLabel}>
-                {open.dirty ? 'UNSAVED' : 'SAVED · ENCRYPTED'}
+                {open.dirty
+                  ? 'UNSAVED'
+                  : open.queued
+                    ? 'SAVED HERE · NOT SENT'
+                    : 'SAVED · ENCRYPTED'}
               </span>
             </>
           ) : null}
@@ -219,17 +244,9 @@ export function Workspace() {
             {counted.chars === 1 ? 'CHAR' : 'CHARS'}
           </span>
         ) : null}
-        <span className={styles.statusOk}>
-          <span className={styles.statusDot} style={offline ? { background: 'var(--warn)' } : undefined} />
-          {offline
-            ? queued > 0
-              ? `OFFLINE · ${queued} QUEUED`
-              : 'OFFLINE · CACHED'
-            : queued > 0
-              ? `SENDING ${queued}`
-              : syncing
-                ? 'SYNCING'
-                : 'SYNCED'}
+        <span className={styles.status} data-tone={status.tone} title={status.detail}>
+          <span className={styles.statusDot} />
+          {status.label}
         </span>
       </div>
 
@@ -241,4 +258,25 @@ export function Workspace() {
       ) : null}
     </div>
   );
+}
+
+/** How long a sync has to run before the status line calls it one. */
+const SYNC_FLICKER_MS = 400;
+
+/** True once `value` has stayed true for `delayMs`, and false the instant it stops. */
+function useHeldTrue(value: boolean, delayMs: number): boolean {
+  const [held, setHeld] = useState(false);
+
+  useEffect(() => {
+    if (!value) {
+      setHeld(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setHeld(true), delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+
+  return held;
 }

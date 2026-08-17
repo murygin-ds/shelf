@@ -51,6 +51,14 @@
   flex: none;
 }
 
+.savedDot[data-tone='busy'] {
+  background: var(--text-quiet);
+}
+
+.savedDot[data-tone='warn'] {
+  background: var(--warn);
+}
+
 .savedLabel {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -230,11 +238,20 @@
   flex: 1;
 }
 
-.statusOk {
+.status {
   display: flex;
   align-items: center;
   gap: 5px;
   color: var(--ok);
+  cursor: default;
+}
+
+.status[data-tone='busy'] {
+  color: var(--text-quiet);
+}
+
+.status[data-tone='warn'] {
+  color: var(--warn);
 }
 
 .statusDot {
@@ -242,6 +259,27 @@
   height: 5px;
   border-radius: 50%;
   background: var(--ok-dot);
+}
+
+.status[data-tone='busy'] .statusDot {
+  background: var(--text-quiet);
+  animation: statusPulse 1.4s ease-in-out infinite;
+}
+
+.status[data-tone='warn'] .statusDot {
+  background: var(--warn);
+}
+
+@keyframes statusPulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status[data-tone='busy'] .statusDot {
+    animation: none;
+  }
 }
 
 .banner {

@@ -240,6 +240,11 @@ export async function outbox(vaultId: number): Promise<Queued[]> {
   return (await open()).getAllFromIndex('outbox', 'vault', vaultId);
 }
 
+/** Whether a note has a body waiting to be sent, which is what makes it unsent rather than saved. */
+export async function isQueued(id: number): Promise<boolean> {
+  return (await (await open()).get('outbox', id)) !== undefined;
+}
+
 export async function dequeue(id: number): Promise<void> {
   await (await open()).delete('outbox', id);
 }

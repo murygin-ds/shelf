@@ -1,3 +1,4 @@
+import { OfflineError } from '@/api/client';
 import type { FileDto, FolderDto } from '@/api/workspace';
 import * as ws from '@/api/workspace';
 import type { ScopeKeyring } from '@/crypto/keyring';
@@ -7,6 +8,12 @@ import { buildIndexEntry, type IndexedNote } from '@/lib/search';
 /** How often a focused tab asks for changes. Hidden tabs back off hard. */
 export const POLL_ACTIVE_MS = 8_000;
 export const POLL_HIDDEN_MS = 60_000;
+/**
+ * How often to try anyway with no connection. The browser's `online` event covers losing an
+ * interface, but not a server that was down and came back, so the only way to find that out
+ * is to ask — rarely enough that a long outage is not a request per few seconds.
+ */
+export const POLL_OFFLINE_MS = 20_000;
 
 export interface Snapshot {
   folders: ws.FolderNode[];
@@ -26,6 +33,47 @@ export async function fromCache(vaultId: number, keyring: ScopeKeyring): Promise
     notes: await Promise.all(cached.notes.map((dto) => ws.openNoteDto(dto, keyring))),
     cursor,
   };
+}
+
+/**
+ * Reads a note body: the server first, and what this device already holds when the server
+ * cannot be reached.
+ *
+ * Without the fallback the tree paints from the cache with no network and then every note
+ * in it refuses to open, which is a cache that answers the one question nobody asked. The
+ * cached copy is also the newer one once a write has been queued — `queue` puts the sealed
+ * body here as well — so coming back to a note edited offline shows what was typed rather
+ * than the version the server still has.
+ */
+export async function readBody(note: ws.NoteNode, keyring: ScopeKeyring): Promise<ws.NoteBody> {
+  try {
+    return await ws.readNote(note.id, keyring);
+  } catch (cause) {
+    if (!(cause instanceof OfflineError)) throw cause;
+
+    const cached = await cache.readBody(note.vaultId, note.id);
+    if (!cached) throw cause;
+
+    const dto = {
+      vault_id: note.vaultId,
+      client_id: note.clientId,
+      key_scope_id: note.keyScopeId,
+      key_scope_client_id: note.keyScopeClientId,
+      key_version: note.keyVersion,
+    };
+
+    const body = await ws.openBody(dto, cached.content, cached.contentNonce, keyring);
+
+    // A note this member cannot open reads the same offline as it does online. Anything else
+    // that will not open is a stale ciphertext, and only the server can settle that.
+    if (body === null) {
+      if (note.locked) return { body: '', contentSeq: cached.contentSeq, locked: true };
+
+      throw cause;
+    }
+
+    return { body, contentSeq: cached.contentSeq, locked: false };
+  }
 }
 
 export interface PullResult extends Snapshot {
