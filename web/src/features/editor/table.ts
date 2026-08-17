@@ -1,9 +1,9 @@
 import { redo, undo } from '@codemirror/commands';
 import { syntaxTree } from '@codemirror/language';
 import {
+  EditorState,
   Facet,
   StateField,
-  type EditorState,
   type Extension,
   type Range,
   type TransactionSpec,
@@ -188,6 +188,19 @@ export function trailingTable(state: EditorState): SyntaxNode | null {
   const node = tableAt(state, end, -1);
 
   return node && node.to >= end ? node : null;
+}
+
+/**
+ * Whether `pos` sits on the blank line a table ends against — the line markdown reads as one
+ * more row of it the moment anything is written there.
+ */
+export function rowUnderTable(state: EditorState, pos: number): boolean {
+  const line = state.doc.lineAt(pos);
+  if (line.from === 0 || line.text.trim() !== '') return false;
+
+  const node = tableAt(state, line.from - 1, -1);
+
+  return !!node && node.to === line.from - 1;
 }
 
 class TableWidget extends WidgetType {
@@ -672,4 +685,28 @@ const groundBelow = EditorView.domEventHandlers({
   },
 });
 
-export const tableGrid: Extension = [grid, groundBelow];
+/**
+ * Keeps what is written under a table out of it.
+ *
+ * In GFM the line a table ends against is one more row of it as soon as it holds anything, so
+ * a sentence typed on the blank line below the grid does not appear under the table — it
+ * appears inside it, as a row. Nothing on screen says why, because the pipes it was written
+ * between are never shown. So the first thing written there opens a line of its own first.
+ */
+const roomUnder = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged || !tr.isUserEvent('input')) return tr;
+
+  let at: number | null = null;
+
+  tr.changes.iterChanges((fromA, _toA, fromB, _toB, inserted) => {
+    // A leading newline already is the blank line; there is nothing to make room for.
+    if (at !== null || inserted.line(1).text === '') return;
+    if (!rowUnderTable(tr.startState, fromA)) return;
+
+    at = tr.state.doc.lineAt(fromB).from;
+  });
+
+  return at === null ? tr : [tr, { changes: { from: at, insert: '\n' }, sequential: true }];
+});
+
+export const tableGrid: Extension = [grid, groundBelow, roomUnder];

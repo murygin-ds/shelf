@@ -4,7 +4,15 @@ import type { SyntaxNode } from '@lezer/common';
 import { describe, expect, it } from 'vitest';
 
 import { noteLanguage } from './language';
-import { alignsOf, exitAbove, exitBelow, serialize, trailingTable, type TableModel } from './table';
+import {
+  alignsOf,
+  exitAbove,
+  exitBelow,
+  serialize,
+  tableGrid,
+  trailingTable,
+  type TableModel,
+} from './table';
 
 /**
  * Nobody sees this markdown while they are editing — the grid is what is on screen — which
@@ -135,6 +143,52 @@ describe('leaving a table downwards', () => {
 
   it('lands on the blank line that is already there', () => {
     expect(exit(`${TABLE}\n\nAfter.`, 'below')).toBe(`${TABLE}\n\n|After.`);
+  });
+});
+
+/** What writing `text` at `at` leaves behind, once the editor's filters have had it. */
+function typed(doc: string, at: number, text: string, userEvent: string | null = 'input.type'): string {
+  const state = EditorState.create({ doc, extensions: [noteLanguage, tableGrid] });
+  const changes = { from: at, insert: text };
+
+  // `null` is a change nobody typed: no user event on it at all.
+  return state
+    .update(userEvent === null ? { changes } : { changes, userEvent })
+    .state.doc.toString();
+}
+
+/** The blank line a table ends against, which is where a sentence goes to become a row. */
+const UNDER = TABLE.length + 1;
+
+describe('writing on the line a table ends against', () => {
+  it('opens a line of its own for it', () => {
+    expect(typed(`${TABLE}\n\ntail`, UNDER, 'hello')).toBe(`${TABLE}\n\nhello\ntail`);
+  });
+
+  it('leaves a newline typed there alone', () => {
+    expect(typed(`${TABLE}\n\ntail`, UNDER, '\n')).toBe(`${TABLE}\n\n\ntail`);
+  });
+
+  it('separates a paste the same way', () => {
+    expect(typed(`${TABLE}\n\ntail`, UNDER, 'hello', 'input.paste')).toBe(
+      `${TABLE}\n\nhello\ntail`,
+    );
+  });
+
+  // Somebody else's keystroke, or a body pulled from the server: reshaping those would be
+  // rewriting what they wrote rather than what this person is typing.
+  it('leaves a change nobody typed alone', () => {
+    expect(typed(`${TABLE}\n\ntail`, UNDER, 'hello', null)).toBe(`${TABLE}\nhello\ntail`);
+  });
+});
+
+describe('writing anywhere else', () => {
+  it('is untouched a blank line further down', () => {
+    expect(typed(`${TABLE}\n\n\ntail`, UNDER + 1, 'ok')).toBe(`${TABLE}\n\nok\ntail`);
+  });
+
+  it('is untouched under something that is not a table', () => {
+    expect(typed('one\n\nthree', 4, 'two')).toBe('one\ntwo\nthree');
   });
 });
 
