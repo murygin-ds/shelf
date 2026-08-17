@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
 import { allTags } from '@/lib/search';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -25,6 +26,7 @@ export function Editor() {
     editBody,
     saveNote,
     rename,
+    setIcon,
     openNote,
     openInBackground,
     closeTab,
@@ -32,6 +34,7 @@ export function Editor() {
   } = useWorkspace();
   const identity = useSession((state) => state.identity);
   const [title, setTitle] = useState(open?.note.name ?? '');
+  const [picker, setPicker] = useState<PickerTarget | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const { open: openMenu, menu } = useContextMenu();
 
@@ -191,7 +194,19 @@ export function Editor() {
       <div className={styles.scroll}>
         <div className={styles.document}>
           <div className={styles.header}>
-            <button type="button" className={styles.iconButton} {...tip('Change icon')} disabled>
+            <button
+              type="button"
+              className={styles.iconButton}
+              {...tip('Change icon')}
+              disabled={readOnly}
+              onClick={(event) =>
+                setPicker({
+                  ...pickerPosition(event.currentTarget.getBoundingClientRect()),
+                  current: note.icon,
+                  onPick: (icon) => void setIcon(note, 'file', icon),
+                })
+              }
+            >
               <Icon name={(note.icon as IconName) ?? 'doc'} size={21} />
             </button>
             <input
@@ -289,6 +304,8 @@ export function Editor() {
           ) : null}
         </div>
       </div>
+
+      {picker ? <IconPicker target={picker} onClose={() => setPicker(null)} /> : null}
     </div>
   );
 }
