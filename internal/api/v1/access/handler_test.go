@@ -54,6 +54,9 @@ func (s *stubService) SetRole(context.Context, int64, int64, int64, vault.Role) 
 func (s *stubService) RemoveMember(context.Context, int64, int64, int64) ([]int64, error) {
 	return s.scopes, s.err
 }
+func (s *stubService) Leave(context.Context, int64, int64) ([]int64, error) {
+	return s.scopes, s.err
+}
 func (s *stubService) Grants(context.Context, int64, int64, vault.ScopeType, int64) ([]domain.Grant, error) {
 	return s.grants, s.err
 }
@@ -357,6 +360,39 @@ func TestRemovalWithNothingPendingStillReturnsAList(t *testing.T) {
 
 	if body["pending_rotation"] == nil {
 		t.Fatalf("pending_rotation is null, want an empty list: %s", rec.Body)
+	}
+}
+
+func TestLeaveReportsPendingRotation(t *testing.T) {
+	t.Parallel()
+
+	rec := doJSON(t, newTestRouter(t, &stubService{scopes: []int64{3}}), http.MethodPost,
+		"/api/v1/vaults/1/leave", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body)
+	}
+
+	var body handler.RemovalResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// A leaver keeps whatever they already copied, so the scopes they held are stale for
+	// everyone left behind — the same debt a removal reports.
+	if len(body.PendingRotation) != 1 {
+		t.Fatalf("pending = %v, want one scope", body.PendingRotation)
+	}
+}
+
+// The owner cannot walk out of their own vault: the membership carries the vault, and a
+// vault with no owner has nobody who can administer or delete it.
+func TestLeaveRefusesTheOwner(t *testing.T) {
+	t.Parallel()
+
+	rec := doJSON(t, newTestRouter(t, &stubService{err: domain.ErrOwnerRequired}), http.MethodPost,
+		"/api/v1/vaults/1/leave", nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusForbidden, rec.Body)
 	}
 }
 

@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 
 import type { FolderNode, NoteNode } from '@/api/workspace';
 import { allTags } from '@/lib/search';
-import { useSession } from '@/store/session';
-import { treeRows, useWorkspace } from '@/store/workspace';
+import { type TreeRow, treeRows, useWorkspace } from '@/store/workspace';
+import { type MenuItem, useContextMenu } from '@/ui/ContextMenu';
 import { Icon, type IconName } from '@/ui/Icon';
 import { useNamePrompt } from '@/ui/NamePrompt';
+import { tip } from '@/ui/Tooltip';
 
 import { IconPicker, type PickerTarget, pickerPosition } from './IconPicker';
 import styles from './sidebar.module.css';
@@ -19,7 +20,6 @@ export function Sidebar({
   onOpenPalette: () => void;
   onOpenPermissions: (folderId: number) => void;
 }) {
-  const { user } = useSession();
   const {
     vaults,
     vaultId,
@@ -44,17 +44,68 @@ export function Sidebar({
   const vault = vaults.find((v) => v.id === vaultId);
   const rows = treeRows(tree, expanded);
   const tags = useMemo(() => allTags(index).slice(0, 8), [index]);
-  const initials = (user?.display_name ?? '?')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
 
   const { ask, dialog } = useNamePrompt();
+  const { open: openMenu, menu } = useContextMenu();
+
+  const askIcon = (anchor: DOMRect, node: FolderNode | NoteNode, kind: 'folder' | 'file') =>
+    setPicker({
+      ...pickerPosition(anchor),
+      current: node.icon,
+      onPick: (icon) => void setIcon(node, kind, icon),
+    });
+
+  const askRename = (node: FolderNode | NoteNode, kind: 'folder' | 'file') =>
+    void ask('Name', node.name).then((name) => {
+      if (name && name !== node.name) void rename(node, kind, name);
+    });
+
+  const askNote = (folderId: number | null) =>
+    void ask('Note title', 'Untitled').then((title) => {
+      if (title) void addNote(folderId, title);
+    });
+
+  /** The same verbs the row already offers on hover, reachable with the right button. */
+  const rowMenu = (row: TreeRow, anchor: DOMRect): MenuItem[] => {
+    const node = row.node;
+    const kind = row.kind === 'folder' ? 'folder' : 'file';
+
+    const head: MenuItem[] =
+      row.kind === 'folder'
+        ? [
+            // An empty folder has nothing to expand, so it is not offered.
+            ...(row.hasChildren
+              ? [
+                  {
+                    label: row.expanded ? 'Collapse' : 'Expand',
+                    icon: row.expanded ? ('down' as const) : ('chev' as const),
+                    onSelect: () => toggleFolder(node.id),
+                  },
+                ]
+              : []),
+            { label: 'New note here', icon: 'plus', onSelect: () => askNote(node.id) },
+            { label: 'Permissions', icon: 'user', onSelect: () => onOpenPermissions(node.id) },
+          ]
+        : [{ label: 'Open', icon: 'doc', onSelect: () => void openNote(node as NoteNode) }];
+
+    return [
+      ...head,
+      { label: 'Rename', icon: 'tag', onSelect: () => askRename(node, kind) },
+      { label: 'Change icon', icon: 'star', onSelect: () => askIcon(anchor, node, kind) },
+      {
+        label: 'Move to trash',
+        icon: 'trash',
+        danger: true,
+        separated: true,
+        onSelect: () => void trash(node as FolderNode | NoteNode, kind),
+      },
+    ];
+  };
 
   return (
     <div className={styles.sidebar}>
       {dialog}
+      {menu}
       <div className={styles.search}>
         <button type="button" className={styles.searchButton} onClick={onOpenPalette}>
           <Icon name="search" />
@@ -108,7 +159,7 @@ export function Sidebar({
             <button
               type="button"
               className={styles.sectionButton}
-              title="New folder"
+              {...tip('New folder')}
               onClick={() =>
                 void ask('Folder name', 'New folder').then((name) => {
                   if (name) void addFolder(null, name);
@@ -120,12 +171,8 @@ export function Sidebar({
             <button
               type="button"
               className={styles.sectionButton}
-              title="New note"
-              onClick={() =>
-                void ask('Note title', 'Untitled').then((title) => {
-                  if (title) void addNote(null, title);
-                })
-              }
+              {...tip('New note')}
+              onClick={() => askNote(null)}
             >
               <Icon name="plus" size={13} />
             </button>
@@ -162,6 +209,14 @@ export function Sidebar({
                 if (isFolder) toggleFolder(node.id);
                 else void openNote(node as NoteNode);
               }}
+              onContextMenu={(event) => {
+                // A locked node has no verbs — there is no key here to rename or trash with
+                // — but the platform menu stays suppressed either way.
+                event.preventDefault();
+                if (node.locked) return;
+
+                openMenu(event, rowMenu(row, event.currentTarget.getBoundingClientRect()));
+              }}
             >
               <span className={styles.indent} style={{ width: row.depth * INDENT }} />
 
@@ -179,7 +234,7 @@ export function Sidebar({
 
               <button
                 type="button"
-                title="Change icon"
+                {...tip('Change icon')}
                 className={[
                   styles.rowIcon,
                   isFolder ? styles.rowIconFolder : '',
@@ -191,13 +246,7 @@ export function Sidebar({
                   event.stopPropagation();
                   if (node.locked) return;
 
-                  const anchor = event.currentTarget.getBoundingClientRect();
-
-                  setPicker({
-                    ...pickerPosition(anchor),
-                    current: node.icon,
-                    onPick: (icon) => void setIcon(node, kind, icon),
-                  });
+                  askIcon(event.currentTarget.getBoundingClientRect(), node, kind);
                 }}
               >
                 <Icon name={(node.icon as IconName) ?? (isFolder ? 'folder' : 'doc')} />
@@ -219,7 +268,7 @@ export function Sidebar({
                     <button
                       type="button"
                       className={styles.rowAction}
-                      title="Permissions"
+                      {...tip('Permissions')}
                       onClick={() => onOpenPermissions(node.id)}
                     >
                       <Icon name="user" size={12} />
@@ -229,12 +278,8 @@ export function Sidebar({
                     <button
                       type="button"
                       className={styles.rowAction}
-                      title="New note here"
-                      onClick={() =>
-                        void ask('Note title', 'Untitled').then((title) => {
-                          if (title) void addNote(node.id, title);
-                        })
-                      }
+                      {...tip('New note here')}
+                      onClick={() => askNote(node.id)}
                     >
                       <Icon name="plus" size={12} />
                     </button>
@@ -242,19 +287,15 @@ export function Sidebar({
                   <button
                     type="button"
                     className={styles.rowAction}
-                    title="Rename"
-                    onClick={() =>
-                      void ask('Name', node.name).then((name) => {
-                        if (name && name !== node.name) void rename(node, kind, name);
-                      })
-                    }
+                    {...tip('Rename')}
+                    onClick={() => askRename(node, kind)}
                   >
                     <Icon name="tag" size={12} />
                   </button>
                   <button
                     type="button"
                     className={styles.rowAction}
-                    title="Move to trash"
+                    {...tip('Move to trash')}
                     onClick={() => void trash(node as FolderNode | NoteNode, kind)}
                   >
                     <Icon name="trash" size={12} />
@@ -267,28 +308,10 @@ export function Sidebar({
 
         {tags.length ? (
           <>
-            <button
-          type="button"
-          className={`${styles.navItem} ${view === 'graph' ? styles.navItemActive : ''}`}
-          onClick={() => setView('graph')}
-        >
-          <Icon name="graph" style={{ flex: 'none', opacity: 0.8 }} />
-          <span className={styles.navLabel}>Graph</span>
-        </button>
-
-        <button
-          type="button"
-          className={`${styles.navItem} ${view === 'trash' ? styles.navItemActive : ''}`}
-          onClick={() => setView('trash')}
-        >
-          <Icon name="trash" style={{ flex: 'none', opacity: 0.8 }} />
-          <span className={styles.navLabel}>Trash</span>
-        </button>
-
-        <div className={styles.sectionHead}>
+            <div className={styles.sectionHead}>
               <span className={styles.sectionTitle}>TAGS</span>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '0 6px' }}>
+            <div className={styles.facets}>
               {tags.map((tag) => (
                 <button
                   key={tag}
@@ -302,16 +325,6 @@ export function Sidebar({
             </div>
           </>
         ) : null}
-      </div>
-
-      <div className={styles.footer}>
-        <span className={styles.footerAvatar}>{initials}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className={styles.footerName}>{user?.display_name}</div>
-          <div className={styles.footerState}>
-            {(vault?.role ?? 'member').toUpperCase()} · KEY UNLOCKED
-          </div>
-        </div>
       </div>
 
       {picker ? <IconPicker target={picker} onClose={() => setPicker(null)} /> : null}

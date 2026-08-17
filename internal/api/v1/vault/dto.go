@@ -32,6 +32,13 @@ type updateMetaRequest struct {
 	Position  *int32 `binding:"omitempty,min=0"         json:"position,omitempty"`
 }
 
+// setLabelRequest carries a note sealed to the caller's own identity key. Both fields
+// empty clears the label; the server never sees either as anything but bytes.
+type setLabelRequest struct {
+	Label      []byte `binding:"omitempty,max=1024" json:"label"       format:"byte"`
+	LabelNonce []byte `binding:"omitempty,max=32"   json:"label_nonce" format:"byte"`
+}
+
 type createFolderRequest struct {
 	ClientID  string `binding:"required,uuid"           json:"client_id"`
 	ParentID  *int64 `binding:"omitempty,min=1"         json:"parent_id,omitempty"`
@@ -106,6 +113,10 @@ type VaultSummaryResponse struct {
 	KeyVersion       int32  `json:"key_version"  example:"1"`
 	NoteCount        int    `json:"note_count"   example:"213"`
 	MemberCount      int    `json:"member_count" example:"6"`
+	// Label is the caller's own note on this vault, sealed to their identity key. Absent
+	// when they have not written one; no other member ever receives it.
+	Label      []byte `json:"label,omitempty"       format:"byte"`
+	LabelNonce []byte `json:"label_nonce,omitempty" format:"byte"`
 }
 
 type VaultsResponse struct {
@@ -285,7 +296,7 @@ func vaultSummaries(summaries []vault.Summary) VaultsResponse {
 	out := make([]VaultSummaryResponse, 0, len(summaries))
 
 	for _, s := range summaries {
-		out = append(out, VaultSummaryResponse{
+		summary := VaultSummaryResponse{
 			VaultResponse:    vaultResponse(&s.Vault),
 			Role:             string(s.Role),
 			KeyState:         string(s.KeyState),
@@ -294,7 +305,14 @@ func vaultSummaries(summaries []vault.Summary) VaultsResponse {
 			KeyVersion:       s.KeyVersion,
 			NoteCount:        s.NoteCount,
 			MemberCount:      s.MemberCount,
-		})
+		}
+
+		if s.Label != nil {
+			summary.Label = s.Label.Ciphertext
+			summary.LabelNonce = s.Label.Nonce
+		}
+
+		out = append(out, summary)
 	}
 
 	return VaultsResponse{Vaults: out}

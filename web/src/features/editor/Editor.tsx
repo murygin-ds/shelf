@@ -1,20 +1,58 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
+import { allTags } from '@/lib/search';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
+import { useContextMenu } from '@/ui/ContextMenu';
+import { tip } from '@/ui/Tooltip';
 
+import { contextOf } from './context';
+import { MarkdownEditor, type LinkWhere } from './MarkdownEditor';
+import { editorMenu, tableMenu } from './menu';
 import styles from './editor.module.css';
 
 /** Long enough that typing does not turn into one request per keystroke. */
 const AUTOSAVE_MS = 1200;
 
 export function Editor() {
-  const { open, saving, tabs, editBody, saveNote, rename, openNote, closeTab, saveAsCopy } =
-    useWorkspace();
+  const {
+    open,
+    saving,
+    tabs,
+    tree,
+    index,
+    editBody,
+    saveNote,
+    rename,
+    setIcon,
+    openNote,
+    openInBackground,
+    closeTab,
+    saveAsCopy,
+  } = useWorkspace();
   const identity = useSession((state) => state.identity);
   const [title, setTitle] = useState(open?.note.name ?? '');
+  const [picker, setPicker] = useState<PickerTarget | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  const { open: openMenu, menu } = useContextMenu();
+
+  // Keyed on a cheap signature rather than on the array: the poller hands out a new
+  // `tree.notes` every eight seconds with the same contents in it, and reconfiguring the
+  // editor on each of those would be work for nothing.
+  const signature = tree.notes.map((note) => `${note.id}:${note.name}`).join('|');
+  // A tag can hold no whitespace, so joining them is a signature and a value at once.
+  const tags = allTags(index).join(' ');
+
+  const context = useMemo(
+    () =>
+      contextOf(
+        tree.notes.map((note) => ({ id: note.id, name: note.name })),
+        tags ? tags.split(' ') : [],
+      ),
+    [signature, tags],
+  );
 
   useEffect(() => {
     setTitle(open?.note.name ?? '');
@@ -45,8 +83,39 @@ export function Editor() {
 
   if (!open) return null;
 
+  // The tab on screen goes last. Closing it hands the editor to whatever tab is left, and
+  // that hand-off loads a body asynchronously — so it has to happen when the survivors are
+  // already known, or the editor ends up on a note the strip no longer lists.
+  const closeOthers = (keep: number) => {
+    const openId = open.note.id;
+
+    for (const tab of tabs) {
+      if (tab.id !== keep && tab.id !== openId) closeTab(tab.id);
+    }
+
+    if (openId !== keep) closeTab(openId);
+  };
+
   const note = open.note;
   const readOnly = open.locked || note.permission === 'view' || note.permission === 'comment';
+
+  /**
+   * Resolved here rather than in the editor, and by the same rule the graph uses: titles are
+   * encrypted, so only a holder of the key can turn one into a note — and when two notes
+   * share a title the older one wins, so the same body always leads to the same place.
+   */
+  const openLink = (target: string, where: LinkWhere) => {
+    const wanted = target.trim().toLowerCase();
+
+    const found = tree.notes
+      .filter((candidate) => candidate.name.trim().toLowerCase() === wanted)
+      .sort((a, b) => a.id - b.id)[0];
+
+    if (!found) return;
+
+    if (where === 'tab') openInBackground(found);
+    else void openNote(found);
+  };
 
   const commitTitle = () => {
     const next = title.trim();
@@ -56,12 +125,44 @@ export function Editor() {
 
   return (
     <div className={styles.pane}>
+      {menu}
+
       <div className={styles.tabs}>
         {tabs.map((tab) => {
           const active = tab.id === note.id;
 
           return (
-            <span key={tab.id} className={`${styles.tab} ${active ? styles.tabActive : ''}`}>
+            <span
+              key={tab.id}
+              className={`${styles.tab} ${active ? styles.tabActive : ''}`}
+              // Middle-click closes the tab. The mousedown has to be swallowed too, or the
+              // browser starts its own autoscroll on the way to the click.
+              onMouseDown={(event) => {
+                if (event.button === 1) event.preventDefault();
+              }}
+              onAuxClick={(event) => {
+                if (event.button !== 1) return;
+
+                event.preventDefault();
+                closeTab(tab.id);
+              }}
+              onContextMenu={(event) =>
+                openMenu(event, [
+                  { label: 'Close', icon: 'x', onSelect: () => closeTab(tab.id) },
+                  { label: 'Close others', onSelect: () => closeOthers(tab.id) },
+                  {
+                    // Others first, so the open note is the last tab standing when it goes
+                    // and the store closes the editor instead of loading a neighbour that
+                    // is about to be closed too.
+                    label: 'Close all',
+                    onSelect: () => {
+                      closeOthers(tab.id);
+                      closeTab(tab.id);
+                    },
+                  },
+                ])
+              }
+            >
               <button
                 type="button"
                 className={styles.tabOpen}
@@ -80,7 +181,7 @@ export function Editor() {
               <button
                 type="button"
                 className={styles.tabClose}
-                title="Close"
+                {...tip('Close')}
                 onClick={() => closeTab(tab.id)}
               >
                 <Icon name="x" size={11} />
@@ -93,7 +194,19 @@ export function Editor() {
       <div className={styles.scroll}>
         <div className={styles.document}>
           <div className={styles.header}>
-            <button type="button" className={styles.iconButton} title="Change icon" disabled>
+            <button
+              type="button"
+              className={styles.iconButton}
+              {...tip('Change icon')}
+              disabled={readOnly}
+              onClick={(event) =>
+                setPicker({
+                  ...pickerPosition(event.currentTarget.getBoundingClientRect()),
+                  current: note.icon,
+                  onPick: (icon) => void setIcon(note, 'file', icon),
+                })
+              }
+            >
               <Icon name={(note.icon as IconName) ?? 'doc'} size={21} />
             </button>
             <input
@@ -135,14 +248,24 @@ export function Editor() {
               </span>
             </div>
           ) : (
-            <textarea
+            <MarkdownEditor
               className={styles.body}
+              docId={note.id}
               value={open.body}
-              onChange={(event) => editBody(event.target.value)}
+              readOnly={readOnly}
+              context={context}
+              placeholder={
+                readOnly
+                  ? 'This note is empty.'
+                  : 'Write in markdown. Everything here is encrypted before it leaves this device.'
+              }
+              onChange={editBody}
               onBlur={() => void saveNote(identity ?? undefined)}
-              placeholder="Write in markdown. Everything here is encrypted before it leaves this device."
-              disabled={readOnly}
-              spellCheck={false}
+              onOpenLink={openLink}
+              onContextMenu={(event, view, pos) =>
+                openMenu(event, editorMenu(view, pos, (link) => openLink(link.target, link.where)))
+              }
+              onTableMenu={(event, ref) => openMenu(event, tableMenu(ref))}
             />
           )}
 
@@ -181,6 +304,8 @@ export function Editor() {
           ) : null}
         </div>
       </div>
+
+      {picker ? <IconPicker target={picker} onClose={() => setPicker(null)} /> : null}
     </div>
   );
 }

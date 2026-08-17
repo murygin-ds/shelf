@@ -757,6 +757,18 @@ definitions:
     - master_key_nonce
     - wrapped_master_key
     type: object
+  auth.deleteAccountRequest:
+    properties:
+      auth_hash:
+        items:
+          format: byte
+          type: integer
+        maxItems: 128
+        minItems: 16
+        type: array
+    required:
+    - auth_hash
+    type: object
   auth.kdfParams:
     properties:
       algorithm:
@@ -990,6 +1002,16 @@ definitions:
     - recovery
     - wrapped_master_key
     - wrapped_private_key
+    type: object
+  auth.updateProfileRequest:
+    properties:
+      display_name:
+        example: Dmitry Murygin
+        maxLength: 128
+        minLength: 1
+        type: string
+    required:
+    - display_name
     type: object
   response.Error:
     properties:
@@ -1668,6 +1690,19 @@ definitions:
       key_version:
         example: 1
         type: integer
+      label:
+        description: |-
+          Label is the caller's own note on this vault, sealed to their identity key. Absent
+          when they have not written one; no other member ever receives it.
+        items:
+          format: byte
+          type: integer
+        type: array
+      label_nonce:
+        items:
+          format: byte
+          type: integer
+        type: array
       member_count:
         example: 6
         type: integer
@@ -2023,6 +2058,21 @@ definitions:
     - meta
     - meta_nonce
     type: object
+  vault.setLabelRequest:
+    properties:
+      label:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        type: array
+      label_nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        type: array
+    type: object
   vault.setLinksRequest:
     properties:
       to:
@@ -2233,6 +2283,37 @@ paths:
       tags:
       - auth
   /api/v1/auth/me:
+    delete:
+      consumes:
+      - application/json
+      description: 'Destroys the account, the vaults it owns and every session it
+        holds. The password is asked for again as auth_hash: an access token alone
+        is not enough for something nothing can undo.'
+      parameters:
+      - description: Password proof
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.deleteAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Account deletion
+      tags:
+      - auth
     get:
       produces:
       - application/json
@@ -2248,6 +2329,38 @@ paths:
       security:
       - BearerAuth: []
       summary: Current user
+      tags:
+      - auth
+    patch:
+      consumes:
+      - application/json
+      description: Changes the display name — the only account field the server can
+        read.
+      parameters:
+      - description: New profile data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.updateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Profile change
       tags:
       - auth
   /api/v1/auth/password:
@@ -3753,6 +3866,60 @@ paths:
       summary: List the caller's key grants
       tags:
       - vaults
+  /api/v1/vaults/{id}/label:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: sealed label, empty to clear
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/vault.setLabelRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set the caller's private label on a vault
+      tags:
+      - vaults
+  /api/v1/vaults/{id}/leave:
+    post:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/access.RemovalResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Leave a vault
+      tags:
+      - access
   /api/v1/vaults/{id}/members:
     get:
       parameters:

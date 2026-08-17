@@ -9,11 +9,12 @@ import {
   type EntityRef,
   type EntityType,
   isLocked,
+  labelInfo,
   sealInfo,
 } from '@/crypto/envelope';
 import { type Identity, splitPublicBlob } from '@/crypto/identity';
 import { type GroupKeyDto, type KeyGrantDto, ScopeKeyring } from '@/crypto/keyring';
-import { seal } from '@/crypto/sealedbox';
+import { open as openSealed, seal } from '@/crypto/sealedbox';
 import { signRevision } from '@/crypto/signature';
 
 import { api } from './client';
@@ -69,6 +70,9 @@ export interface VaultSummaryDto {
   key_version: number;
   note_count: number;
   member_count: number;
+  /** The caller's own note on this vault, sealed to their identity key. */
+  label?: B64;
+  label_nonce?: B64;
 }
 
 /** A node after decryption. `locked` marks one the viewer holds no key for. */
@@ -80,6 +84,8 @@ export interface Node {
   keyScopeClientId: string;
   name: string;
   icon: string | undefined;
+  /** Always an array, empty for a node with none and for one this reader cannot open. */
+  tags: string[];
   locked: boolean;
   permission: Permission;
   keyScopeId: number;
@@ -116,6 +122,12 @@ export interface Vault {
   noteCount: number;
   memberCount: number;
   changeSeq: number;
+  /**
+   * A note this account keeps on the vault, readable by nobody else. Undefined when there
+   * is none, and when the sealed bytes will not open — a label that fails is not a reason
+   * to hide the vault it belongs to.
+   */
+  label: string | undefined;
 }
 
 export interface Tree {
@@ -170,7 +182,7 @@ export async function createVault(
   const scopeClientId = crypto.randomUUID();
   const key = await generateKey();
 
-  const sealedMeta = await encryptMeta(key, meta(name, emoji), vaultRef(clientId, scopeClientId, 1));
+  const sealedMeta = await encryptMeta(key, buildMeta(name, emoji), vaultRef(clientId, scopeClientId, 1));
 
   const box = await seal(
     splitPublicBlob(identity.publicBlob).seal,
@@ -232,8 +244,105 @@ async function openVault(summary: VaultSummaryDto, identity: Identity): Promise<
     noteCount: summary.note_count,
     memberCount: summary.member_count,
     changeSeq: summary.change_seq,
+    // The label rides the caller's own identity key, not the vault's scope key, so it
+    // opens even on a vault this account holds no content key for.
+    label: await openLabel(summary, identity),
   };
 }
+
+/**
+ * Reads the caller's private label off a vault summary.
+ *
+ * A label that will not open is dropped rather than thrown: it is an annotation, and
+ * losing the vault list over one unreadable note would be the wrong trade.
+ */
+async function openLabel(
+  summary: VaultSummaryDto,
+  identity: Identity,
+): Promise<string | undefined> {
+  if (!summary.label || !summary.label_nonce) return undefined;
+
+  try {
+    const payload = await openSealed(
+      identity.sealPrivate,
+      { blob: b64ToBytes(summary.label), nonce: b64ToBytes(summary.label_nonce) },
+      labelInfo(summary.client_id),
+    );
+
+    return new TextDecoder().decode(payload);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The longest label the server will store, in characters of the note itself. */
+export const MAX_LABEL = 120;
+
+/**
+ * Writes the caller's private note on a vault, or clears it when the text is empty.
+ *
+ * It is sealed to this account's own public key rather than the vault's scope key: every
+ * member holds that one, and a note about the people you share a vault with is not for
+ * them to read.
+ */
+export async function setVaultLabel(
+  vault: Vault,
+  label: string,
+  identity: Identity,
+): Promise<void> {
+  const text = label.trim().slice(0, MAX_LABEL);
+
+  if (!text) {
+    await api.put<void>(`/vaults/${vault.id}/label`, {});
+    return;
+  }
+
+  const box = await seal(
+    splitPublicBlob(identity.publicBlob).seal,
+    new TextEncoder().encode(text),
+    labelInfo(vault.clientId),
+  );
+
+  await api.put<void>(`/vaults/${vault.id}/label`, {
+    label: bytesToB64(box.blob),
+    label_nonce: bytesToB64(box.nonce),
+  });
+}
+
+/**
+ * Reseals the vault's own name and icon. The scope key never changes here, so the current
+ * key version has to be carried into the additional data — sealing at v1 after a rotation
+ * would make the vault read as locked.
+ */
+export async function updateVaultMeta(
+  vault: Vault,
+  name: string,
+  icon: string | undefined,
+  keyring: ScopeKeyring,
+): Promise<void> {
+  const scope: Scope = {
+    id: vault.keyScopeId,
+    clientId: vault.keyScopeClientId,
+    version: vault.keyVersion,
+  };
+
+  const sealed = await encryptMeta(
+    requireKey(keyring, scope),
+    buildMeta(name, icon),
+    vaultRef(vault.clientId, vault.keyScopeClientId, vault.keyVersion),
+  );
+
+  await api.patch<unknown>(`/vaults/${vault.id}`, {
+    meta: bytesToB64(sealed.ciphertext),
+    meta_nonce: bytesToB64(sealed.nonce),
+  });
+}
+
+/**
+ * Destroys a vault and everything sealed under it, for every member. Owner only, and there
+ * is no trash behind it: the ciphertext is gone, and no key anybody kept can bring it back.
+ */
+export const deleteVault = (vaultId: number) => api.delete<void>(`/vaults/${vaultId}`);
 
 export async function loadKeyring(vaultId: number, identity: Identity): Promise<ScopeKeyring> {
   // Both halves in one go: a scope key sealed to a group is bytes until the group's own
@@ -298,6 +407,7 @@ async function openNode(dto: NodeDto, entity: EntityType, keyring: ScopeKeyring)
     keyScopeClientId: dto.key_scope_client_id,
     name: locked ? LOCKED_NAME : opened.name,
     icon: locked ? undefined : opened.icon,
+    tags: locked ? [] : (opened.tags ?? []),
     locked,
     permission: dto.permission,
     keyScopeId: scope.id,
@@ -319,7 +429,7 @@ export async function createFolder(
   const clientId = crypto.randomUUID();
   const key = requireKey(keyring, scope);
 
-  const sealed = await encryptMeta(key, meta(name), ref(vaultId, 'folder', clientId, scope));
+  const sealed = await encryptMeta(key, buildMeta(name), ref(vaultId, 'folder', clientId, scope));
 
   const dto = await api.post<FolderDto>(`/vaults/${vaultId}/folders`, {
     client_id: clientId,
@@ -344,7 +454,7 @@ export async function createNote(
   const key = requireKey(keyring, scope);
   const slot = ref(vaultId, 'file', clientId, scope);
 
-  const sealedMeta = await encryptMeta(key, meta(title), slot);
+  const sealedMeta = await encryptMeta(key, buildMeta(title), slot);
   const sealedBody = await encryptContent(key, '', slot);
 
   const dto = await api.post<FileDto>(`/vaults/${vaultId}/files`, {
@@ -361,11 +471,23 @@ export async function createNote(
   return openNote(dto, keyring);
 }
 
-export async function renameNode(
+export interface MetaPatch {
+  name?: string;
+  icon?: string | undefined;
+  tags?: readonly string[];
+}
+
+/**
+ * Rewrites a node's meta.
+ *
+ * A patch rather than a full set of fields, because meta is a single ciphertext: everything
+ * not passed has to be carried over, and a caller that forgets a field does not fail — it
+ * erases it. Taking a patch is what makes forgetting impossible.
+ */
+export async function writeMeta(
   node: FolderNode | NoteNode,
   kind: 'folder' | 'file',
-  name: string,
-  icon: string | undefined,
+  patch: MetaPatch,
   keyring: ScopeKeyring,
 ): Promise<void> {
   const scope = scopeOfNode(node);
@@ -373,7 +495,13 @@ export async function renameNode(
 
   const sealed = await encryptMeta(
     key,
-    meta(name, icon),
+    buildMeta(
+      patch.name ?? node.name,
+      // `undefined` is meaningful here — it means "drop the icon" — so the key's presence
+      // is what decides, not its value.
+      'icon' in patch ? patch.icon : node.icon,
+      patch.tags ?? node.tags,
+    ),
     ref(node.vaultId, kind, node.clientId, scope),
   );
 
@@ -494,8 +622,23 @@ export const restoreNote = (id: number) => api.post<void>(`/files/${id}/restore`
 export const purgeFolder = (id: number) => api.delete<void>(`/folders/${id}/purge`);
 export const purgeNote = (id: number) => api.delete<void>(`/files/${id}/purge`);
 
-function meta(name: string, icon?: string | undefined): EntityMeta {
-  return icon === undefined ? { name } : { name, icon };
+/**
+ * Exported because the re-key path builds meta too, and a second copy of this is exactly how
+ * a field ends up silently dropped: re-sealing a note without its tags overwrites the only
+ * ciphertext that held them.
+ */
+export function buildMeta(
+  name: string,
+  icon?: string | undefined,
+  tags?: readonly string[],
+): EntityMeta {
+  return {
+    name,
+    ...(icon === undefined ? {} : { icon }),
+    // An empty list is left out rather than written as `[]`, so a note that never had tags
+    // seals to the same bytes it always did.
+    ...(tags && tags.length ? { tags: [...tags] } : {}),
+  };
 }
 
 function requireKey(keyring: ScopeKeyring, scope: Scope): CryptoKey {

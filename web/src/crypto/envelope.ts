@@ -36,6 +36,14 @@ export function sealInfo(scopeClientId: string, keyVersion: number): string {
 }
 
 /**
+ * Binds a member's private label to the vault it annotates. Without it the server could
+ * move one label onto another vault and the note would open, pointing at the wrong thing.
+ */
+export function labelInfo(vaultClientId: string): string {
+  return `shelf/label/v1|${vaultClientId}`;
+}
+
+/**
  * Stands in for content the viewer holds no key to. Returning it instead of throwing is
  * what lets the tree render a greyed row and the graph a nameless node without a try/catch
  * around every read.
@@ -51,6 +59,12 @@ export function isLocked(value: unknown): value is Locked {
 export interface EntityMeta {
   name: string;
   icon?: string;
+  /**
+   * Tags chosen for the note, as opposed to the `#tag` written into its body. Optional, so
+   * a note saved before this existed still opens — and so a note with none is sealed to the
+   * same bytes it was before.
+   */
+  tags?: string[];
 }
 
 export async function encryptMeta(key: CryptoKey, meta: EntityMeta, ref: EntityRef): Promise<Sealed> {

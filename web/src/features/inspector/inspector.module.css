@@ -1,10 +1,11 @@
 .pane {
   display: flex;
   flex-direction: column;
-  width: 280px;
+  width: var(--inspector-w);
   flex: none;
+  min-height: 0;
   border-left: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--panel);
   overflow: hidden;
 }
 
@@ -140,7 +141,7 @@
   margin-top: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-inset);
   color: var(--text-body);
   font: inherit;
   font-size: 12px;
@@ -179,6 +180,68 @@
   background: #150f10;
   font-size: 12px;
   color: #d8b6b6;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.chipQuiet {
+  color: var(--text-quiet);
+}
+
+.chipLabel {
+  padding: 3px 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chipRemove {
+  display: grid;
+  place-items: center;
+  padding: 0 7px 0 0;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.chipRemove:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.input {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-body);
+  font: inherit;
+  font-size: 12px;
+}
+
+.input:focus {
+  border-color: var(--accent-focus);
+  outline: none;
 }
 
 .preview {

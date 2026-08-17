@@ -134,8 +134,10 @@ Not the notes. It does learn, and cannot help learning:
   address each other, and **the email hint on an invite**, so an invitation can say who it
   was meant for.
 
-It does not learn: note titles, bodies, folder names, icons, tags, search queries, or the
-text of any link that did not resolve.
+It does not learn: note titles, bodies, folder names, icons, tags, search queries, the
+text of any link that did not resolve, or the private label a member keeps on a vault —
+that one is sealed to the member's own identity key rather than the shared scope key, so
+neither the server nor the other members can read it.
 
 Two deliberate consequences worth knowing before you deploy this:
 
@@ -278,11 +280,11 @@ oracle for what exists. 403 is reserved for "you can see this, but not do that".
 
 | Area          | Endpoints                                                                                                                                 |
 |---------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| Vaults        | `POST/GET /vaults`, `GET/PATCH/DELETE /vaults/{id}`, `/keys`, `/scopes`, `/tree`, `/sync`, `/trash`, `/audit`, `/graph`                     |
+| Vaults        | `POST/GET /vaults`, `GET/PATCH/DELETE /vaults/{id}`, `PUT /vaults/{id}/label`, `/keys`, `/scopes`, `/tree`, `/sync`, `/trash`, `/audit`, `/graph` |
 | Folders       | `POST /vaults/{id}/folders`, `PATCH /folders/{id}`, `/move`, `DELETE`, `/restore`, `/purge`                                                 |
 | Notes         | `POST /vaults/{id}/files`, `POST /vaults/{id}/files/bulk`, `GET/PATCH/DELETE /files/{id}`, `PUT /files/{id}/content`, `/move`, `/restore`, `/purge` |
 | Groups        | `GET/POST /vaults/{id}/groups`, `GET /vaults/{id}/group-keys`, `PATCH/DELETE /groups/{id}`, `PUT /groups/{id}/members` |
-| Access        | `GET /vaults/{id}/members`, `PATCH/DELETE /vaults/{id}/members/{member_id}`, `GET/PUT /vaults/{id}/grants`, `DELETE /vaults/{id}/grants/{grant_id}`, `GET /users/lookup` |
+| Access        | `GET /vaults/{id}/members`, `PATCH/DELETE /vaults/{id}/members/{member_id}`, `POST /vaults/{id}/leave`, `GET/PUT /vaults/{id}/grants`, `DELETE /vaults/{id}/grants/{grant_id}`, `GET /users/lookup` |
 | Invites       | `POST/GET /vaults/{id}/invites`, `DELETE /vaults/{id}/invites/{invite_id}`, `POST /invites/lookup` (anonymous), `POST /invites/redeem`, `GET /me/invites` |
 | Keys          | `POST /vaults/{id}/rekeys`, `PUT /rekeys/{id}/items`, `POST /rekeys/{id}/commit`, `DELETE /rekeys/{id}`                                     |
 | Graph         | `PUT /files/{id}/links`, `GET /files/{id}/backlinks`, `GET /vaults/{id}/graph`                                                              |

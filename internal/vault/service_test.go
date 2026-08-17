@@ -115,7 +115,10 @@ func (s stubVaults) VaultsByMember(context.Context, int64) ([]vault.Summary, err
 }
 func (s stubVaults) Vault(context.Context, int64) (*vault.Vault, error)       { panic("not reached") }
 func (s stubVaults) UpdateVaultMeta(context.Context, int64, vault.Blob) error { panic("not reached") }
-func (s stubVaults) DeleteVault(context.Context, int64) error                 { panic("not reached") }
+func (s stubVaults) SetMemberLabel(context.Context, int64, int64, *vault.Blob) error {
+	panic("not reached")
+}
+func (s stubVaults) DeleteVault(context.Context, int64) error { panic("not reached") }
 func (s stubVaults) KeyGrants(context.Context, int64, int64) ([]vault.KeyGrant, error) {
 	panic("not reached")
 }

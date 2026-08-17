@@ -134,6 +134,38 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, vaultID, targetID i
 	return scopes, nil
 }
 
+// Leave gives up the caller's own membership.
+//
+// The revocation is the same one a manager performs, but the act is not: walking out of a
+// vault is not managing it, so a viewer may do it while RemoveMember still refuses both a
+// non-manager and anyone pointing it at themselves.
+//
+// The owner is the exception. The vault belongs to that account — leaving it would strand
+// a vault nobody can administer — so ownership is given up by deleting the vault instead.
+func (s *Service) Leave(ctx context.Context, userID, vaultID int64) ([]int64, error) {
+	member, err := s.member(ctx, vaultID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if member.Role == vault.RoleOwner {
+		return nil, ErrOwnerRequired
+	}
+
+	scopes, err := s.repo.RemoveMember(ctx, vaultID, userID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("leave vault: %w", err)
+	}
+
+	s.log.Info("member left, scopes await rotation",
+		zap.Int64("vault_id", vaultID),
+		zap.Int64("user_id", userID),
+		zap.Int("scopes", len(scopes)),
+	)
+
+	return scopes, nil
+}
+
 func (s *Service) Grants(
 	ctx context.Context,
 	userID, vaultID int64,

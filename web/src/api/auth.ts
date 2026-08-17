@@ -93,20 +93,45 @@ export async function signIn(login: string, passphrase: string): Promise<Unlocke
 
   storeTokens(response.tokens, response.user.login);
 
-  return openKeys(response.user, response.keys, account.wrappingKey);
+  return { user: response.user, ...(await openKeys(response.keys, account.wrappingKey)) };
 }
 
 /**
  * Re-derives the keys for a session that survived a reload. The refresh token persists,
  * the master key does not, so the passphrase is asked for again — that is what the
  * "KEY UNLOCKED" state in the sidebar actually tracks.
+ *
+ * The account is read only after the wrap opens. Nothing about the passphrase can be checked
+ * server-side here — the session is already valid, and the wrapped key either decrypts or it
+ * does not — so a wrong one costs a single request and gets back nothing but ciphertext.
  */
 export async function unlock(passphrase: string): Promise<UnlockedSession> {
-  const [user, keys] = await Promise.all([api.get<User>('/auth/me'), api.get<Keys>('/auth/keys')]);
+  const keys = await api.get<Keys>('/auth/keys');
+  const account = await deriveAccountKeys(passphrase, b64ToBytes(keys.kdf_salt), keys.kdf_params);
+  const opened = await openKeys(keys, account.wrappingKey);
 
+  return { user: await api.get<User>('/auth/me'), ...opened };
+}
+
+/** The display name is the one account field the server can read, so the only one it can change. */
+export function updateDisplayName(displayName: string): Promise<User> {
+  return api.patch<User>('/auth/me', { display_name: displayName });
+}
+
+/**
+ * Destroys the account, the vaults it owns and every session it holds.
+ *
+ * The passphrase is proved again rather than the open session taken at its word: an access
+ * token says a browser was signed in at some point, which is not the same as the owner
+ * asking for the one thing here that nothing undoes.
+ */
+export async function deleteAccount(passphrase: string): Promise<void> {
+  const keys = await api.get<Keys>('/auth/keys');
   const account = await deriveAccountKeys(passphrase, b64ToBytes(keys.kdf_salt), keys.kdf_params);
 
-  return openKeys(user, keys, account.wrappingKey);
+  await api.delete<void>('/auth/me', { body: { auth_hash: bytesToB64(account.authHash) } });
+
+  clearSession();
 }
 
 export async function signOut(): Promise<void> {
@@ -204,7 +229,11 @@ export async function changePassphrase(
   return { recoveryCode };
 }
 
-async function openKeys(user: User, keys: Keys, wrappingKey: CryptoKey): Promise<UnlockedSession> {
+/** Opens the wrapped key pair, which is also the only check a passphrase ever gets. */
+async function openKeys(
+  keys: Keys,
+  wrappingKey: CryptoKey,
+): Promise<Omit<UnlockedSession, 'user'>> {
   const masterKey = await unwrapMasterKey(
     sealedFrom(keys.wrapped_master_key, keys.master_key_nonce),
     wrappingKey,
@@ -216,7 +245,7 @@ async function openKeys(user: User, keys: Keys, wrappingKey: CryptoKey): Promise
     masterKey,
   );
 
-  return { user, identity, masterKey };
+  return { identity, masterKey };
 }
 
 /** Builds a fresh passphrase wrap plus a rotated recovery key, which always travel together. */

@@ -146,6 +146,10 @@ type Summary struct {
 	KeyVersion       int32
 	NoteCount        int
 	MemberCount      int
+	// Label is the caller's own note on this vault, sealed to their identity key. Nil when
+	// they have not written one. It belongs to the membership, not the vault: no other
+	// member sees it, and the server cannot read it either.
+	Label *Blob
 }
 
 // Access is the caller-specific view of one node, resolved by the query that read it.
@@ -289,6 +293,9 @@ type Repository interface {
 	Vault(ctx context.Context, vaultID int64) (*Vault, error)
 	VaultsByMember(ctx context.Context, userID int64) ([]Summary, error)
 	UpdateVaultMeta(ctx context.Context, vaultID int64, meta Blob) error
+	// SetMemberLabel writes one member's private note on a vault, or clears it when the
+	// label is nil.
+	SetMemberLabel(ctx context.Context, vaultID, userID int64, label *Blob) error
 	DeleteVault(ctx context.Context, vaultID int64) error
 
 	Membership(ctx context.Context, vaultID, userID int64) (*Membership, error)

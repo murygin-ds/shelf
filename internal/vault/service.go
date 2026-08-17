@@ -117,6 +117,23 @@ func (s *Service) UpdateVault(ctx context.Context, userID, vaultID int64, meta B
 	return nil
 }
 
+// SetLabel writes the caller's own note on a vault, or clears it when label is nil.
+//
+// Every member may write one, whatever their role: it is theirs, it is sealed to their
+// identity key, and it changes nothing anybody else can see. A viewer being unable to
+// annotate a vault they were let into would defeat the point of the thing.
+func (s *Service) SetLabel(ctx context.Context, userID, vaultID int64, label *Blob) error {
+	if _, err := s.member(ctx, vaultID, userID); err != nil {
+		return err
+	}
+
+	if err := s.vaults.SetMemberLabel(ctx, vaultID, userID, label); err != nil {
+		return fmt.Errorf("set member label: %w", err)
+	}
+
+	return nil
+}
+
 // DeleteVault is the owner's alone: an admin can manage access, but destroying the
 // ciphertext of everyone else is a different kind of act.
 func (s *Service) DeleteVault(ctx context.Context, userID, vaultID int64) error {

@@ -6,6 +6,7 @@ import * as collab from '@/api/collab';
 import type { RekeyProgress } from '@/api/rekey';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
+import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
 
 import styles from './access.module.css';
@@ -17,6 +18,7 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
   const [events, setEvents] = useState<audit.AuditEventDto[]>([]);
   const [cursor, setCursor] = useState(0);
   const [exhausted, setExhausted] = useState(false);
+  const dismiss = useDismiss(onClose);
   const [members, setMembers] = useState<collab.MemberDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,11 +74,8 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
   const stale = vault?.keyState === 'pending_rotation';
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        className={`${styles.modal} ${styles.wide}`}
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div className={styles.overlay} {...dismiss}>
+      <div className={`${styles.modal} ${styles.wide}`}>
         <div className={styles.head}>
           <div>
             <div className={styles.title}>Keys &amp; history</div>

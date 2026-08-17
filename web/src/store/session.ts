@@ -34,6 +34,9 @@ interface SessionState {
   register: (input: authApi.RegisterInput) => Promise<void>;
   recover: (login: string, code: string, passphrase: string) => Promise<void>;
   acknowledgeKit: () => void;
+  updateDisplayName: (displayName: string) => Promise<void>;
+  changePassphrase: (current: string, next: string) => Promise<void>;
+  deleteAccount: (passphrase: string) => Promise<void>;
   signOut: () => Promise<void>;
   lock: () => void;
   clearError: () => void;
@@ -99,6 +102,47 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   acknowledgeKit: () => set({ status: 'unlocked', pendingRecoveryCode: null }),
+
+  updateDisplayName: async (displayName) => {
+    await run(set, async () => {
+      set({ user: await authApi.updateDisplayName(displayName) });
+    });
+  },
+
+  /**
+   * Re-wraps the master key with a key from the new passphrase. The key itself does not
+   * change, so nothing that was sealed under it has to be touched — but the recovery code
+   * is rotated with the wrap, and it is shown exactly once. That is what the kit state is
+   * for, so the session goes back through it rather than dropping a new code on the floor.
+   */
+  changePassphrase: async (current, next) => {
+    await run(set, async () => {
+      const { user, masterKey } = get();
+
+      if (!user || !masterKey) throw new Error('Unlock your keys before changing the passphrase.');
+
+      const { recoveryCode } = await authApi.changePassphrase(user.login, current, next, masterKey);
+
+      set({ status: 'kit', pendingRecoveryCode: recoveryCode, knownLogin: user.login });
+    });
+  },
+
+  deleteAccount: async (passphrase) => {
+    await run(set, async () => {
+      await authApi.deleteAccount(passphrase);
+      await dropCache().catch(() => undefined);
+
+      set({
+        status: 'anonymous',
+        user: null,
+        identity: null,
+        masterKey: null,
+        knownLogin: null,
+        pendingRecoveryCode: null,
+        error: null,
+      });
+    });
+  },
 
   signOut: async () => {
     await authApi.signOut().catch(() => undefined);

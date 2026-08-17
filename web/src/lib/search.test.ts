@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { NoteNode } from '@/api/workspace';
 
-import { allTags, buildIndexEntry, extractTags, search } from './search';
+import { allTags, buildIndexEntry, extractTags, normalizeTag, search } from './search';
 
-function note(id: number, name: string, updatedAt = '2026-08-16T00:00:00Z'): NoteNode {
+function note(
+  id: number,
+  name: string,
+  updatedAt = '2026-08-16T00:00:00Z',
+  tags: string[] = [],
+): NoteNode {
   return {
     id,
     clientId: `client-${id}`,
@@ -12,6 +17,7 @@ function note(id: number, name: string, updatedAt = '2026-08-16T00:00:00Z'): Not
     keyScopeClientId: 'scope-1',
     name,
     icon: undefined,
+    tags,
     locked: false,
     permission: 'edit',
     keyScopeId: 1,
@@ -48,6 +54,37 @@ describe('tags', () => {
 
   it('ranks the vault tags by how often they are used', () => {
     expect(allTags(index)).toEqual(['spec', 'adr']);
+  });
+
+  it('folds a tag chosen in the panel to the same spelling as one written in the body', () => {
+    expect(normalizeTag('  #Draft ')).toBe('draft');
+    expect(normalizeTag('draft')).toBe('draft');
+  });
+
+  it('rejects what could never be written as a tag in a body', () => {
+    expect(normalizeTag('two words')).toBeNull();
+    expect(normalizeTag('-leading')).toBeNull();
+    expect(normalizeTag('#')).toBeNull();
+    expect(normalizeTag('')).toBeNull();
+  });
+});
+
+describe('tags chosen for a note', () => {
+  const entry = buildIndexEntry(
+    note(9, 'Access model', '2026-08-16T10:00:00Z', ['Draft', 'spec', 'not a tag']),
+    'Body text with #spec and #inline.',
+    'PRODUCT',
+  );
+
+  it('merges the note’s own tags with the ones in its body, without repeats', () => {
+    expect(entry.tags).toEqual(['draft', 'spec', 'inline']);
+  });
+
+  // The sidebar searches by typing `#tag`, so a tag that was chosen but never typed into
+  // the body has to be findable the same way.
+  it('makes a tag that appears nowhere in the body searchable', () => {
+    expect(search([entry], '#draft').map((hit) => hit.note.id)).toEqual([9]);
+    expect(search([entry], 'rotation')).toEqual([]);
   });
 });
 

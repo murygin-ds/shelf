@@ -2,14 +2,16 @@ import { create } from 'zustand';
 
 import { ApiError, OfflineError } from '@/api/client';
 import { ErrorCode } from '@/api/types';
+import * as collab from '@/api/collab';
 import * as graphApi from '@/api/graph';
 import * as rekeyApi from '@/api/rekey';
 import * as ws from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
-import type { IndexedNote } from '@/lib/search';
+import { normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
+import * as connectivity from '@/sync/connectivity';
 import * as sync from '@/sync/engine';
 
 export interface OpenNote {
@@ -24,11 +26,15 @@ export interface OpenNote {
   conflict: boolean;
 }
 
-export type View = 'editor' | 'search' | 'graph' | 'trash';
+export type View = 'editor' | 'search' | 'graph' | 'trash' | 'profile';
 
 // MAX_TABS bounds the strip. Past a dozen the labels are unreadable and the strip stops
 // being a way back to anything.
 const MAX_TABS = 12;
+
+// Meta is one ciphertext the server caps at 8 KiB. A note that cannot be saved because of
+// its tag list would be the worst way to find that out, so the list is bounded well short.
+const MAX_TAGS = 24;
 
 interface WorkspaceState {
   vaults: ws.Vault[];
@@ -42,23 +48,47 @@ interface WorkspaceState {
   /** Decrypted, in memory only. Persisting it would put plaintext on disk. */
   index: IndexedNote[];
   coverage: { covered: number; total: number };
+  /** The vault list has been read at least once. An empty list only means something after it. */
+  loaded: boolean;
   loading: boolean;
   saving: boolean;
   syncing: boolean;
+  /**
+   * The server could not be reached. Mirrored from the connectivity watch rather than
+   * decided here, so it is true from the moment the network goes rather than from the first
+   * request that happens to notice.
+   */
   offline: boolean;
+  /** When the last pull came back. Null until one does, which is not the same as synced. */
+  lastSyncedAt: number | null;
   /** Bodies written with no network, waiting to be sent. */
   queued: number;
   error: string | null;
 
-  load: (identity: Identity) => Promise<void>;
+  /**
+   * Reads the vault list and opens one. `preferVaultId` is the vault a restored URL names;
+   * without it, or when that vault is gone, the first one opens.
+   */
+  load: (identity: Identity, preferVaultId?: number) => Promise<void>;
   selectVault: (vaultId: number, identity: Identity) => Promise<void>;
   createVault: (name: string, identity: Identity) => Promise<void>;
+  /**
+   * Destroys a vault of one's own, or walks out of somebody else's. Both end the same way
+   * here — the vault is gone from this account — so they share the aftermath.
+   */
+  removeVault: (vaultId: number, mode: 'delete' | 'leave', identity: Identity) => Promise<void>;
   syncNow: () => Promise<void>;
+  /**
+   * Polls, watches the connection, and drains the outbox the moment it returns. Gives back
+   * the teardown the caller has to run.
+   */
   startPolling: () => () => void;
   toggleFolder: (folderId: number) => void;
   addFolder: (parentId: number | null, name: string) => Promise<void>;
   addNote: (folderId: number | null, title: string) => Promise<void>;
   openNote: (note: ws.NoteNode) => Promise<void>;
+  /** Takes the editor off the note without touching the tab strip, unlike `closeTab`. */
+  closeNote: () => void;
   editBody: (body: string) => void;
   saveNote: (identity?: Identity) => Promise<void>;
   /** Replays every body written while the network was gone. */
@@ -69,6 +99,19 @@ interface WorkspaceState {
     kind: 'folder' | 'file',
     icon: string | undefined,
   ) => Promise<void>;
+  /**
+   * The note's own tags, as opposed to the `#tag` written into its body. They ride the same
+   * encrypted meta as its name, so the server learns nothing from them.
+   */
+  setTags: (note: ws.NoteNode, tags: readonly string[]) => Promise<void>;
+  /** Only the open vault: its scope key is the one the loaded keyring holds. */
+  setVaultIcon: (icon: string | undefined) => Promise<void>;
+  /**
+   * Writes this account's private note on a vault, or clears it when the text is empty.
+   * Any vault in the list, open or not: the label rides the identity key rather than the
+   * vault's, so it needs no keyring.
+   */
+  setVaultLabel: (vaultId: number, label: string, identity: Identity) => Promise<void>;
   trash: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file') => Promise<void>;
   /** What is in the trash, loaded on demand rather than kept in sync. */
   trashed: ws.Tree;
@@ -81,6 +124,11 @@ interface WorkspaceState {
    * a list of places to go back to, which is what a tab strip is.
    */
   tabs: ws.NoteNode[];
+  /**
+   * Puts a note in the strip without taking the reader off the one they are on. Reads no
+   * body: a tab is a `NoteNode` and a promise to come back, not a loaded document.
+   */
+  openInBackground: (note: ws.NoteNode) => void;
   closeTab: (noteId: number) => void;
   purge: (id: number, kind: 'folder' | 'file') => Promise<void>;
   setView: (view: View) => void;
@@ -112,22 +160,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   query: '',
   index: [],
   coverage: { covered: 0, total: 0 },
+  loaded: false,
   loading: false,
   saving: false,
   syncing: false,
-  offline: false,
+  offline: !connectivity.isOnline(),
+  lastSyncedAt: null,
   queued: 0,
   error: null,
 
-  load: async (identity) => {
+  load: async (identity, preferVaultId) => {
     set({ loading: true, error: null });
 
     try {
       const vaults = await ws.listVaults(identity);
-      set({ vaults });
+      set({ vaults, loaded: true });
 
-      const first = vaults[0];
-      if (first && get().vaultId === null) await get().selectVault(first.id, identity);
+      const wanted = vaults.find((vault) => vault.id === preferVaultId) ?? vaults[0];
+      if (wanted && get().vaultId === null) await get().selectVault(wanted.id, identity);
     } catch (cause) {
       report(set, cause);
     } finally {
@@ -181,7 +231,50 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ vaults: await ws.listVaults(identity) });
       await get().selectVault(created.id, identity);
     } catch (cause) {
-      report(set, cause);
+      reportChange(set, cause);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  removeVault: async (vaultId, mode, identity) => {
+    set({ loading: true, error: null });
+
+    try {
+      await (mode === 'delete' ? ws.deleteVault(vaultId) : collab.leaveVault(vaultId));
+
+      // Whatever this device cached for it is unopenable from here on, and a queued write
+      // for it can never land. Both go with the vault rather than sitting in IndexedDB.
+      await cache.dropVault(vaultId);
+
+      const vaults = await ws.listVaults(identity);
+      set({ vaults });
+
+      // Another vault was on screen, so nothing the reader is looking at has moved.
+      if (get().vaultId !== vaultId) return;
+
+      const next = vaults[0];
+      if (next) {
+        await get().selectVault(next.id, identity);
+        return;
+      }
+
+      // Nothing left to fall back to. The shell's first-vault prompt takes it from here,
+      // which it cannot do while the tree of a vault that no longer exists is still up.
+      set({
+        vaultId: null,
+        keyring: null,
+        tree: emptyTree,
+        trashed: emptyTree,
+        tabs: [],
+        expanded: new Set(),
+        open: null,
+        index: [],
+        coverage: { covered: 0, total: 0 },
+        queued: 0,
+      });
+    } catch (cause) {
+      reportChange(set, cause);
     } finally {
       set({ loading: false });
     }
@@ -200,7 +293,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const tree = { folders: pulled.folders, notes: pulled.notes };
       set({
         tree,
-        offline: false,
+        lastSyncedAt: Date.now(),
         expanded: pulled.resynced || get().expanded.size === 0 ? allOpen(pulled.folders) : get().expanded,
       });
 
@@ -247,33 +340,43 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   startPolling: () => {
     let timer: number | undefined;
 
+    const catchUp = () => get().flushOutbox().then(() => get().syncNow());
+
     const tick = () => {
-      const delay = document.hidden ? sync.POLL_HIDDEN_MS : sync.POLL_ACTIVE_MS;
+      // With no connection the poll becomes the probe: a server that was down and came back
+      // fires no browser event, so the only way to learn about it is to keep asking.
+      const delay = document.hidden
+        ? sync.POLL_HIDDEN_MS
+        : connectivity.isOnline()
+          ? sync.POLL_ACTIVE_MS
+          : sync.POLL_OFFLINE_MS;
 
       timer = window.setTimeout(() => {
-        if (navigator.onLine) void get().flushOutbox().then(() => get().syncNow());
+        void catchUp();
         tick();
       }, delay);
     };
 
     const onVisible = () => {
-      if (!document.hidden) void get().flushOutbox().then(() => get().syncNow());
+      if (!document.hidden) void catchUp();
     };
 
-    // Regaining the network is not the same event as coming back to the tab, and must not
-    // be gated on it: a queued write belongs to the user whether or not they are looking.
-    const onOnline = () => {
-      void get().flushOutbox();
-    };
+    // Regaining the network is not the same event as coming back to the tab, and must not be
+    // gated on it: a queued write belongs to the user whether or not they are looking.
+    const unwatch = connectivity.subscribe((online) => {
+      set({ offline: !online });
+      if (online) void catchUp();
+    });
+
+    set({ offline: !connectivity.isOnline() });
 
     tick();
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', onOnline);
 
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', onOnline);
+      unwatch();
     };
   },
 
@@ -298,7 +401,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         set({ expanded });
       }
     } catch (cause) {
-      report(set, cause);
+      reportChange(set, cause);
     }
   },
 
@@ -312,7 +415,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().openNote(note);
       set({ view: 'editor' });
     } catch (cause) {
-      report(set, cause);
+      reportChange(set, cause);
     }
   },
 
@@ -321,13 +424,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!keyring) return;
 
     try {
-      const body = await ws.readNote(note.id, keyring);
+      const body = await sync.readBody(note, keyring);
+
+      // The body may be the one this device wrote with no network. Saying so is the
+      // difference between "saved" and "saved here, not there yet".
+      const queued = await cache.isQueued(note.id).catch(() => false);
 
       // A note already open keeps its place rather than jumping to the end: a tab strip
       // that reorders itself under the pointer is unusable.
       const tabs = get().tabs.some((tab) => tab.id === note.id)
         ? get().tabs.map((tab) => (tab.id === note.id ? note : tab))
-        : [...get().tabs, note].slice(-MAX_TABS);
+        : fit([...get().tabs, note], note.id);
 
       set({
         view: 'editor',
@@ -338,12 +445,35 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           contentSeq: body.contentSeq,
           locked: body.locked,
           dirty: false,
+          queued,
           conflict: false,
         },
       });
     } catch (cause) {
+      // The tree comes from the cache, so a note can be on screen with no network and no
+      // copy of its body here. That is a specific thing to say rather than a blank editor.
+      if (cause instanceof OfflineError) {
+        set({
+          error: `“${note.name}” is not on this device yet, and there is no connection to fetch it.`,
+        });
+        return;
+      }
+
       report(set, cause);
     }
+  },
+
+  closeNote: () => set({ open: null }),
+
+  openInBackground: (note) => {
+    const { tabs, open } = get();
+
+    if (tabs.some((tab) => tab.id === note.id)) {
+      set({ tabs: tabs.map((tab) => (tab.id === note.id ? note : tab)) });
+      return;
+    }
+
+    set({ tabs: fit([...tabs, note], open?.note.id) });
   },
 
   editBody: (body) => {
@@ -374,10 +504,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             ...current,
             contentSeq,
             dirty: current.body !== open.body,
+            queued: false,
             conflict: false,
           },
         });
       }
+
+      // What was just sent is also what this device should answer with when the network is
+      // gone. Writing it here rather than waiting for the index to notice keeps the note
+      // readable offline from the moment it is saved. A cache that will not take it costs
+      // nothing the server does not already hold, so it is not worth failing the save over.
+      await cache
+        .writeBodies([
+          {
+            vaultId: open.note.vaultId,
+            id: open.note.id,
+            content: payload.content,
+            contentNonce: payload.content_nonce,
+            contentSeq,
+          },
+        ])
+        .catch(() => undefined);
 
       // Links are resolved against what this reader can open, so they are recorded from
       // here rather than derived on the server, which holds no titles to match.
@@ -419,7 +566,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   rename: async (node, kind, name) => {
     await withKeyring(get, set, async (keyring) => {
-      await ws.renameNode(node, kind, name, node.icon, keyring);
+      await ws.writeMeta(node, kind, { name }, keyring);
       await get().syncNow();
 
       const open = get().open;
@@ -429,9 +576,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  setTags: async (note, tags) => {
+    await withKeyring(get, set, async (keyring) => {
+      const clean = [...new Set(tags.flatMap((tag) => normalizeTag(tag) ?? []))].slice(0, MAX_TAGS);
+
+      await ws.writeMeta(note, 'file', { tags: clean }, keyring);
+      await get().syncNow();
+
+      const open = get().open;
+      if (open && open.note.id === note.id) {
+        set({ open: { ...open, note: { ...open.note, tags: clean } } });
+      }
+    });
+  },
+
   setIcon: async (node, kind, icon) => {
     await withKeyring(get, set, async (keyring) => {
-      await ws.renameNode(node, kind, node.name, icon, keyring);
+      await ws.writeMeta(node, kind, { icon }, keyring);
       await get().syncNow();
 
       const open = get().open;
@@ -439,6 +600,45 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         set({ open: { ...open, note: { ...open.note, icon } } });
       }
     });
+  },
+
+  setVaultIcon: async (icon) => {
+    await withKeyring(get, set, async (keyring) => {
+      const { vaultId, vaults } = get();
+      const vault = vaults.find((candidate) => candidate.id === vaultId);
+      if (!vault) return;
+
+      await ws.updateVaultMeta(vault, vault.name, icon, keyring);
+
+      // The sync delta carries the tree, not the vault summary, so the list is patched here
+      // rather than waiting for a reload to show the icon that was just chosen.
+      set({
+        vaults: vaults.map((candidate) =>
+          candidate.id === vault.id ? { ...candidate, emoji: icon } : candidate,
+        ),
+      });
+    });
+  },
+
+  setVaultLabel: async (vaultId, label, identity) => {
+    const vault = get().vaults.find((candidate) => candidate.id === vaultId);
+    if (!vault) return;
+
+    try {
+      await ws.setVaultLabel(vault, label, identity);
+
+      // Patched in place rather than re-listing: nothing else about the vault moved, and
+      // a full list means decrypting every vault's name again.
+      const text = label.trim().slice(0, ws.MAX_LABEL);
+
+      set({
+        vaults: get().vaults.map((candidate) =>
+          candidate.id === vaultId ? { ...candidate, label: text || undefined } : candidate,
+        ),
+      });
+    } catch (cause) {
+      reportChange(set, cause);
+    }
   },
 
   trash: async (node, kind) => {
@@ -450,7 +650,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
       await get().syncNow();
     } catch (cause) {
-      report(set, cause);
+      reportChange(set, cause);
     }
   },
 
@@ -498,56 +698,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   flushOutbox: async () => {
-    const { vaultId } = get();
-    if (vaultId === null || !navigator.onLine) return;
+    // One drain at a time, and everyone waits on the same one. The poll, the tab coming
+    // back and the connection returning can all land together; two of them reading the same
+    // queue would send a write twice, and the second copy meets a conflict of its own making
+    // and ends up saved as a stray copy.
+    // It never rejects either: every caller chains a pull onto it, and a cache that will not
+    // open would otherwise take the pull down with it.
+    flushing ??= drain(get, set)
+      .catch((cause: unknown) => report(set, cause))
+      .finally(() => {
+        flushing = null;
+      });
 
-    // The queue is read rather than the counter: two tabs share one IndexedDB, and a write
-    // parked by the other one is just as much this vault's work.
-    const pending = await cache.outbox(vaultId);
-    if (pending.length === 0) return;
-
-    for (const write of pending) {
-      try {
-        const contentSeq = await ws.sendNote(write.id, write.payload, write.contentSeq);
-
-        await cache.dequeue(write.id);
-
-        const open = get().open;
-        if (open && open.note.id === write.id) {
-          set({ open: { ...open, contentSeq, conflict: false } });
-        }
-      } catch (cause) {
-        // A conflict means somebody wrote while this device was away, and nobody but a
-        // client can merge two ciphertexts. Dropping the queued copy would lose work the
-        // user did offline and never see again, so it is kept — as a note of its own.
-        if (cause instanceof ApiError && cause.is(ErrorCode.Conflict)) {
-          await rescue(get, set, write);
-          await cache.dequeue(write.id);
-
-          const open = get().open;
-          if (open && open.note.id === write.id) set({ open: { ...open, conflict: true } });
-
-          continue;
-        }
-
-        // A note that was purged or that this account no longer reaches will refuse this
-        // write forever. Retrying it on every reconnect would be a queue that never drains.
-        if (cause instanceof ApiError && (cause.status === 404 || cause.status === 403)) {
-          await rescue(get, set, write);
-          await cache.dequeue(write.id);
-
-          continue;
-        }
-
-        // Still offline, or the server is unwell. Leave the rest queued and try later.
-        if (cause instanceof OfflineError) break;
-
-        report(set, cause);
-      }
-    }
-
-    set({ queued: await cache.outboxSize(vaultId), offline: false });
-    await get().syncNow();
+    return flushing;
   },
 
   // The server cannot merge two ciphertexts and neither can anybody else automatically, so
@@ -574,7 +737,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().openNote({ ...copy, contentSeq });
       set({ view: 'editor' });
     } catch (cause) {
-      report(set, cause);
+      reportChange(set, cause);
     } finally {
       set({ saving: false });
     }
@@ -617,7 +780,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().loadTrash();
       await get().syncNow();
     } catch (cause) {
-      report(set, cause);
+      reportChange(set, cause);
     }
   },
 
@@ -627,7 +790,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().loadTrash();
       await get().syncNow();
     } catch (cause) {
-      report(set, cause);
+      reportChange(set, cause);
     }
   },
 
@@ -647,12 +810,88 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       coverage: { covered: 0, total: 0 },
       query: '',
       view: 'editor',
+      loaded: false,
       error: null,
     });
   },
 }));
 
 type Setter = (partial: Partial<WorkspaceState>) => void;
+
+/** The drain in flight, if any. See `flushOutbox`. */
+let flushing: Promise<void> | null = null;
+
+/**
+ * Sends every body this device wrote with no network, oldest attempt included.
+ *
+ * A write that the server will never take is not retried forever: it is kept as a note of
+ * its own and taken off the queue, because a queue that cannot drain stops being a promise
+ * that the work will land.
+ */
+async function drain(get: () => WorkspaceState, set: Setter): Promise<void> {
+  const { vaultId } = get();
+  if (vaultId === null || !connectivity.isOnline()) return;
+
+  // The queue is read rather than the counter: two tabs share one IndexedDB, and a write
+  // parked by the other one is just as much this vault's work.
+  const pending = await cache.outbox(vaultId);
+  if (pending.length === 0) return;
+
+  for (const write of pending) {
+    try {
+      const contentSeq = await ws.sendNote(write.id, write.payload, write.contentSeq);
+
+      await cache.dequeue(write.id);
+
+      // The queued ciphertext is now what the server holds, under the sequence it just
+      // assigned. Stamping it here keeps the cached body from reading as stale and being
+      // fetched straight back — the same bytes, over the network.
+      await cache.writeBodies([
+        {
+          vaultId: write.vaultId,
+          id: write.id,
+          content: write.payload.content,
+          contentNonce: write.payload.content_nonce,
+          contentSeq,
+        },
+      ]);
+
+      const open = get().open;
+      if (open && open.note.id === write.id) {
+        set({ open: { ...open, contentSeq, queued: false, conflict: false } });
+      }
+    } catch (cause) {
+      // A conflict means somebody wrote while this device was away, and nobody but a client
+      // can merge two ciphertexts. Dropping the queued copy would lose work the user did
+      // offline and never see again, so it is kept — as a note of its own.
+      if (cause instanceof ApiError && cause.is(ErrorCode.Conflict)) {
+        await rescue(get, set, write);
+        await cache.dequeue(write.id);
+
+        const open = get().open;
+        if (open && open.note.id === write.id) set({ open: { ...open, conflict: true } });
+
+        continue;
+      }
+
+      // A note that was purged or that this account no longer reaches will refuse this write
+      // forever. Retrying it on every reconnect would be a queue that never drains.
+      if (cause instanceof ApiError && (cause.status === 404 || cause.status === 403)) {
+        await rescue(get, set, write);
+        await cache.dequeue(write.id);
+
+        continue;
+      }
+
+      // Still offline, or the server is unwell. Leave the rest queued and try later.
+      if (cause instanceof OfflineError) break;
+
+      report(set, cause);
+    }
+  }
+
+  set({ queued: await cache.outboxSize(vaultId) });
+}
 
 async function withKeyring(
   get: () => WorkspaceState,
@@ -665,12 +904,25 @@ async function withKeyring(
   try {
     await action(keyring);
   } catch (cause) {
-    report(set, cause);
+    reportChange(set, cause);
   }
 }
 
 function allOpen(folders: ws.FolderNode[]): Set<number> {
   return new Set(folders.map((folder) => folder.id));
+}
+
+/**
+ * Trims the strip back to MAX_TABS, oldest first but never the note on screen: dropping that
+ * one leaves the editor showing a note the strip no longer lists, and no way back to it.
+ */
+function fit(tabs: ws.NoteNode[], keep: number | undefined): ws.NoteNode[] {
+  if (tabs.length <= MAX_TABS) return tabs;
+
+  const oldest = tabs.findIndex((tab) => tab.id !== keep);
+  if (oldest < 0) return tabs.slice(-MAX_TABS);
+
+  return fit([...tabs.slice(0, oldest), ...tabs.slice(oldest + 1)], keep);
 }
 
 /**
@@ -760,24 +1012,41 @@ async function queue(
   // The state is read here rather than passed in: sealing and sending both awaited, and
   // whatever the user typed meanwhile is the version worth keeping. Queueing the snapshot
   // would put the older text in the outbox and revert the editor to match it.
-  if (!open || open.note.id !== noteId) {
-    set({ offline: true });
-    return;
-  }
+  if (!open || open.note.id !== noteId) return;
 
   try {
+    const payload = await ws.sealNote(open.note, open.body, open.contentSeq, keyring, identity);
+
     await cache.enqueue({
       id: open.note.id,
       vaultId,
       contentSeq: open.contentSeq,
-      payload: await ws.sealNote(open.note, open.body, open.contentSeq, keyring, identity),
+      payload,
       queuedAt: Date.now(),
     });
 
+    // The same ciphertext also replaces the cached body. Without it, closing the note and
+    // coming back offline reads the copy the server last had — the text the user just wrote
+    // would be gone from the screen while sitting in the outbox, and typing on top of it
+    // would queue the older version back.
+    //
+    // It keeps the sequence it was sealed against, which is the one the server still holds,
+    // so the index does not treat it as behind and fetch it back over the write.
+    await cache.writeBodies([
+      {
+        vaultId,
+        id: open.note.id,
+        content: payload.content,
+        contentNonce: payload.content_nonce,
+        contentSeq: open.contentSeq,
+      },
+    ]);
+
     const current = get().open;
 
+    // `offline` is not touched here: the failed request already told the connectivity watch,
+    // and it is the one thing that decides.
     set({
-      offline: true,
       queued: await cache.outboxSize(vaultId),
       ...(current && current.note.id === noteId
         ? { open: { ...current, dirty: current.body !== open.body, queued: true } }
@@ -791,14 +1060,29 @@ async function queue(
 }
 
 function report(set: Setter, cause: unknown): void {
-  // Losing the network is a state, not a failure: the cache still answers reads and the
-  // next poll picks up where this one stopped.
+  // Losing the network is a state, not a failure: the cache still answers reads, the status
+  // line already says so, and the next poll picks up where this one stopped.
+  if (cause instanceof OfflineError) return;
+
+  set({ error: describe(cause) });
+}
+
+/**
+ * The same, for a change the user just made rather than for a read.
+ *
+ * Only note bodies survive a lost network — everything else here is a request and nothing
+ * more. Swallowing those the way a failed read is swallowed would leave a folder that was
+ * never created, or a rename that never happened, with the tree redrawn as if it had.
+ */
+function reportChange(set: Setter, cause: unknown): void {
   if (cause instanceof OfflineError) {
-    set({ offline: true });
+    set({
+      error: 'No connection. That change was not saved — try it again once you are back online.',
+    });
     return;
   }
 
-  set({ error: describe(cause) });
+  report(set, cause);
 }
 
 function describe(cause: unknown): string {

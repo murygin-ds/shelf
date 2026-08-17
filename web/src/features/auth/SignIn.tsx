@@ -1,9 +1,9 @@
 import { type FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { useSession } from '@/store/session';
 
-import { AuthLayout, ErrorNote, Field, Origin } from './AuthLayout';
+import { AuthLayout, ErrorNote, Field } from './AuthLayout';
 import styles from './auth.module.css';
 
 /**
@@ -13,9 +13,12 @@ import styles from './auth.module.css';
  */
 export function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { status, knownLogin, busy, error, signIn, unlock, signOut, clearError } = useSession();
 
   const locked = status === 'locked';
+  // Set by the guard that sent the user here: a reload on a note comes back to that note.
+  const from = (location.state as { from?: string } | null)?.from ?? '/';
   const [login, setLogin] = useState(knownLogin ?? '');
   const [passphrase, setPassphrase] = useState('');
 
@@ -30,7 +33,7 @@ export function SignIn() {
       }
 
       setPassphrase('');
-      navigate('/', { replace: true });
+      navigate(from, { replace: true });
     } catch {
       // The store already turned it into a message; the passphrase stays for a retry.
     }
@@ -40,25 +43,19 @@ export function SignIn() {
     <AuthLayout
       footer={
         locked ? (
-          <>
-            <span>
-              Not you?{' '}
-              <button type="button" className={styles.footerAction} onClick={() => void signOut()}>
-                Sign out
-              </button>
-            </span>
-            <Origin />
-          </>
+          <span>
+            Not you?{' '}
+            <button type="button" className={styles.footerAction} onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </span>
         ) : (
-          <>
-            <span>
-              No account?{' '}
-              <Link className={styles.footerAction} to="/signup" onClick={clearError}>
-                Create one
-              </Link>
-            </span>
-            <Origin />
-          </>
+          <span>
+            No account?{' '}
+            <Link className={styles.footerAction} to="/signup" onClick={clearError}>
+              Create one
+            </Link>
+          </span>
         )
       }
     >

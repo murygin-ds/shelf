@@ -38,16 +38,33 @@ export function extractTags(body: string): string[] {
   return [...tags];
 }
 
+const TAG_SHAPE = /^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u;
+
+/**
+ * One spelling for both sources: `#Draft` written into a body and "Draft" chosen in the
+ * panel have to become the same tag, or one note would answer to two of them.
+ */
+export function normalizeTag(raw: string): string | null {
+  const text = raw.trim().replace(/^#+/, '').trim().toLowerCase();
+
+  return TAG_SHAPE.test(text) ? text : null;
+}
+
 export function buildIndexEntry(note: NoteNode, body: string, path: string): IndexedNote {
+  const chosen = note.tags.flatMap((tag) => normalizeTag(tag) ?? []);
+  const tags = [...new Set([...chosen, ...extractTags(body)])];
+
   return {
     id: note.id,
     title: note.name,
     body,
     folderId: note.folderId,
     path,
-    tags: extractTags(body),
+    tags,
     updatedAt: note.updatedAt,
-    haystack: `${note.name}\n${body}`.toLowerCase(),
+    // Tags join the haystack: one chosen in the panel and never typed into the body would
+    // otherwise be invisible to a `#tag` query, which is exactly how the sidebar searches.
+    haystack: `${note.name}\n${body}\n${tags.map((tag) => `#${tag}`).join(' ')}`.toLowerCase(),
   };
 }
 

@@ -98,6 +98,11 @@ export function removeMember(
   return api.delete<{ pending_rotation: number[] }>(`/vaults/${vaultId}/members/${userId}`);
 }
 
+/** Gives up the caller's own membership. Refused for the owner, who deletes instead. */
+export function leaveVault(vaultId: number): Promise<{ pending_rotation: number[] }> {
+  return api.post<{ pending_rotation: number[] }>(`/vaults/${vaultId}/leave`);
+}
+
 export function listGrants(
   vaultId: number,
   scopeType: 'folder' | 'file',
