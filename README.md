@@ -223,8 +223,8 @@ web/src/
   sync/                delta pull, hydration, the local search index, the live socket
   collab/              the shared document: room, carets, per-person colours
   store/               zustand: session and workspace
-  lib/                 wikilink resolution, the search index, passphrase strength, the
-                       archive format and the zip it travels in
+  lib/                 wikilink resolution, the search index, the heading outline,
+                       passphrase strength, the archive format and the zip it travels in
   ui/                  icons and the shared primitives
   styles/              the design tokens everything else reads
   features/            auth, shell, sidebar, editor, search, graph, inspector, access, share,
