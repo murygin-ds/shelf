@@ -162,10 +162,12 @@ export function MarkdownEditor({
     };
 
     return EditorState.create({
-      // With a room the document comes from the Y.Text, and CodeMirror is told to start
-      // empty: yCollab fills it from the shared state, and seeding it here as well would
-      // insert the body a second time.
-      doc: room ? '' : doc,
+      // With a room the Y.Text is the document, so the state starts from what it holds
+      // rather than from the store's copy. yCollab only relays changes from here on — it
+      // does not fill the editor — so starting empty would leave the note blank until
+      // somebody typed, and every edit would then be positioned against text CodeMirror
+      // could not see.
+      doc: room ? room.text.toString() : doc,
       extensions: [
         // A shared document has no local history. ⌘Z on one would take back whatever the
         // stack happened to hold, including somebody else's sentence; Y.UndoManager undoes
