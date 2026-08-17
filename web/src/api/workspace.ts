@@ -511,6 +511,23 @@ export async function writeMeta(
   });
 }
 
+/**
+ * Relocates a node under a different parent, or to the vault root when `parentId` is null.
+ *
+ * Nothing is re-encrypted: the server refuses a destination whose key scope differs from the
+ * node's, because moving a row under a foreign key would leave ciphertext that nobody at the
+ * destination can open. `movable` is the same rule, asked before the drag rather than after.
+ */
+export async function moveNode(
+  node: FolderNode | NoteNode,
+  kind: 'folder' | 'file',
+  parentId: number | null,
+): Promise<void> {
+  await api.post<unknown>(`/${kind === 'folder' ? 'folders' : 'files'}/${node.id}/move`, {
+    parent_id: parentId,
+  });
+}
+
 export interface NoteBody {
   body: string;
   contentSeq: number;

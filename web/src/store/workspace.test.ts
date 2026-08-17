@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CRDTCommit, NoteNode } from '@/api/workspace';
+import type { CRDTCommit, FolderNode, NoteNode, Tree, Vault } from '@/api/workspace';
 import { generateKey } from '@/crypto/aead';
 import { generateIdentity } from '@/crypto/identity';
 import type { Identity } from '@/crypto/identity';
 import { ScopeKeyring } from '@/crypto/keyring';
 
-import { commitBody, reorderTabs } from './workspace';
+import { commitBody, movable, reorderTabs, treeRows } from './workspace';
 
 /**
  * The write-back a live session performs.
@@ -122,6 +122,121 @@ describe('moving a tab', () => {
   it('clamps a slot past either end', () => {
     expect(ids(reorderTabs(strip(1, 2, 3), 3, 7))).toEqual([1, 2, 3]);
     expect(ids(reorderTabs(strip(1, 2, 3), 3, -2))).toEqual([3, 1, 2]);
+  });
+});
+
+describe('the sidebar tree', () => {
+  const folder = (id: number, parentId: number | null) => ({ id, parentId }) as FolderNode;
+  const file = (id: number, folderId: number | null) => ({ id, folderId }) as NoteNode;
+
+  const tree: Tree = {
+    folders: [folder(1, null), folder(2, 1), folder(3, 2)],
+    notes: [file(10, 3), file(11, null)],
+  };
+
+  it('descends into nested folders, one indent per level', () => {
+    const rows = treeRows(tree, new Set([1, 2, 3]));
+
+    expect(rows.map((row) => [row.node.id, row.depth])).toEqual([
+      [1, 0],
+      [2, 1],
+      [3, 2],
+      [10, 3],
+      [11, 0],
+    ]);
+    expect(rows.filter((row) => row.hasChildren).map((row) => row.node.id)).toEqual([1, 2, 3]);
+  });
+
+  it('leaves the subtree of a collapsed folder undrawn', () => {
+    const rows = treeRows(tree, new Set([1]));
+
+    expect(rows.map((row) => row.node.id)).toEqual([1, 2, 11]);
+
+    // The chevron survives the collapse: the folder still has children, they are just not
+    // on screen, and a row without one cannot be opened again.
+    expect(rows.find((row) => row.node.id === 2)).toMatchObject({
+      hasChildren: true,
+      expanded: false,
+    });
+  });
+});
+
+describe('where a dragged row may land', () => {
+  // One vault scope, version 1, shared by everything that has not been given its own key.
+  const ROOT = { keyScopeId: 1, keyVersion: 1, role: 'editor' } as unknown as Vault;
+
+  const folder = (id: number, parentId: number | null, over: Partial<FolderNode> = {}) =>
+    ({
+      id,
+      parentId,
+      keyScopeId: 1,
+      keyVersion: 1,
+      permission: 'edit',
+      locked: false,
+      ...over,
+    }) as FolderNode;
+
+  const file = (id: number, folderId: number | null, over: Partial<NoteNode> = {}) =>
+    ({
+      id,
+      folderId,
+      keyScopeId: 1,
+      keyVersion: 1,
+      permission: 'edit',
+      locked: false,
+      ...over,
+    }) as NoteNode;
+
+  // 1 → 2 → 3, plus a sealed folder holding its own key and a note at the root.
+  const sealed = folder(4, null, { keyScopeId: 9, keyVersion: 1, ownScope: true });
+  const tree: Tree = {
+    folders: [folder(1, null), folder(2, 1), folder(3, 2), sealed],
+    notes: [file(10, null), file(11, 1)],
+  };
+
+  it('accepts a note into a folder and back out to the root', () => {
+    expect(movable(tree, ROOT, file(10, null), 'file', 1)).toBe(true);
+    expect(movable(tree, ROOT, file(11, 1), 'file', null)).toBe(true);
+  });
+
+  it('refuses a move that changes nothing', () => {
+    expect(movable(tree, ROOT, file(11, 1), 'file', 1)).toBe(false);
+    expect(movable(tree, ROOT, folder(2, 1), 'folder', 1)).toBe(false);
+  });
+
+  it('refuses a folder into itself or its own subtree', () => {
+    expect(movable(tree, ROOT, folder(1, null), 'folder', 1)).toBe(false);
+    expect(movable(tree, ROOT, folder(1, null), 'folder', 3)).toBe(false);
+
+    // The other direction is a real move: a child may come out to sit beside its parent.
+    expect(movable(tree, ROOT, folder(3, 2), 'folder', null)).toBe(true);
+  });
+
+  it('refuses to cross a key scope in either direction', () => {
+    // The server answers 409 rather than re-encrypting, so the drop never leaves the browser.
+    expect(movable(tree, ROOT, file(10, null), 'file', 4)).toBe(false);
+    expect(movable(tree, ROOT, sealed, 'folder', 1)).toBe(false);
+
+    // And a note sealed under that folder's key cannot be carried out of it.
+    const inside = file(12, 4, { keyScopeId: 9 });
+    expect(movable({ ...tree, notes: [inside] }, ROOT, inside, 'file', null)).toBe(false);
+  });
+
+  it('refuses what the viewer holds no key or no permission for', () => {
+    expect(movable(tree, ROOT, file(10, null, { locked: true }), 'file', 1)).toBe(false);
+    expect(movable(tree, ROOT, file(10, null, { permission: 'view' }), 'file', 1)).toBe(false);
+
+    const readOnly = folder(5, null, { permission: 'comment' });
+    const withReadOnly = { ...tree, folders: [...tree.folders, readOnly] };
+    expect(movable(withReadOnly, ROOT, file(10, null), 'file', 5)).toBe(false);
+
+    // A viewer on the vault cannot drop anything at the root either.
+    expect(movable(tree, { ...ROOT, role: 'viewer' }, file(11, 1), 'file', null)).toBe(false);
+  });
+
+  it('refuses a destination that is not there', () => {
+    expect(movable(tree, ROOT, file(10, null), 'file', 77)).toBe(false);
+    expect(movable(tree, undefined, file(10, null), 'file', 1)).toBe(false);
   });
 });
 

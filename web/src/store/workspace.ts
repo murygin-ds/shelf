@@ -41,6 +41,10 @@ const MAX_TABS = 12;
 // its tag list would be the worst way to find that out, so the list is bounded well short.
 const MAX_TAGS = 24;
 
+// Mirrors the CHECK on folders.depth. Only a guard here: it bounds the walk up a tree the
+// server would have refused to nest any deeper.
+const MAX_DEPTH = 32;
+
 interface WorkspaceState {
   vaults: ws.Vault[];
   vaultId: number | null;
@@ -116,6 +120,15 @@ interface WorkspaceState {
   /** Replays every body written while the network was gone. */
   flushOutbox: () => Promise<void>;
   rename: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file', name: string) => Promise<void>;
+  /**
+   * Relocates a node under a folder, or to the vault root when `parentId` is null. A move the
+   * server would refuse is dropped here instead of being sent — see `movable`.
+   */
+  move: (
+    node: ws.FolderNode | ws.NoteNode,
+    kind: 'folder' | 'file',
+    parentId: number | null,
+  ) => Promise<void>;
   setIcon: (
     node: ws.FolderNode | ws.NoteNode,
     kind: 'folder' | 'file',
@@ -874,6 +887,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  move: async (node, kind, parentId) => {
+    const { tree, vaults, vaultId } = get();
+
+    if (!movable(tree, vaults.find((vault) => vault.id === vaultId), node, kind, parentId)) return;
+
+    try {
+      await ws.moveNode(node, kind, parentId);
+      await get().syncNow();
+
+      if (parentId !== null) {
+        const expanded = new Set(get().expanded);
+        expanded.add(parentId);
+        set({ expanded });
+      }
+    } catch (cause) {
+      reportChange(set, cause);
+    }
+  },
+
   trash: async (node, kind) => {
     try {
       await (kind === 'folder' ? ws.trashFolder(node.id) : ws.trashNote(node.id));
@@ -1418,6 +1450,61 @@ function describe(cause: unknown): string {
   }
 
   return cause instanceof Error ? cause.message : 'Something went wrong.';
+}
+
+/**
+ * Whether a node may be dropped on a folder, or on the root when `targetId` is null.
+ *
+ * The rule is the server's, asked before the drag rather than after: a destination whose key
+ * scope differs would leave the moved ciphertext unreadable to everyone there, and the server
+ * answers 409 rather than re-encrypting. Being able to say no while the row is still under the
+ * hand is what makes the refusal legible — the alternative is a toast after the drop.
+ *
+ * The scope test is what stops a node from leaving a folder that owns its key, and stops a
+ * folder that owns its own key from being moved at all. That is the model, not an oversight:
+ * the ciphertext under it is sealed to that scope.
+ */
+export function movable(
+  tree: ws.Tree,
+  vault: ws.Vault | undefined,
+  node: ws.FolderNode | ws.NoteNode,
+  kind: 'folder' | 'file',
+  targetId: number | null,
+): boolean {
+  if (!vault || node.locked || !writable(node.permission)) return false;
+
+  const from = kind === 'folder' ? (node as ws.FolderNode).parentId : (node as ws.NoteNode).folderId;
+  if (from === targetId) return false;
+
+  const target = targetId === null ? null : tree.folders.find((folder) => folder.id === targetId);
+  if (targetId !== null && !target) return false;
+
+  if (target ? target.locked || !writable(target.permission) : vault.role === 'viewer') return false;
+
+  // A folder cannot swallow itself, nor land anywhere inside its own subtree.
+  if (kind === 'folder' && target && descends(tree, target, node.id)) return false;
+
+  const destination = target ?? vault;
+
+  return destination.keyScopeId === node.keyScopeId && destination.keyVersion === node.keyVersion;
+}
+
+function writable(permission: ws.Permission): boolean {
+  return permission === 'edit' || permission === 'own';
+}
+
+/** True when `folder` is `ancestorId` or sits under it. Bounded by the depth the server allows. */
+function descends(tree: ws.Tree, folder: ws.FolderNode, ancestorId: number): boolean {
+  let current: ws.FolderNode | undefined = folder;
+
+  for (let step = 0; current && step <= MAX_DEPTH; step += 1) {
+    if (current.id === ancestorId) return true;
+
+    const parentId: number | null = current.parentId;
+    current = parentId === null ? undefined : tree.folders.find((f) => f.id === parentId);
+  }
+
+  return false;
 }
 
 /** Builds the tree the sidebar renders, in the order the design shows it. */
