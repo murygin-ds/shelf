@@ -17,6 +17,9 @@ import styles from './editor.module.css';
 /** Long enough that typing does not turn into one request per keystroke. */
 const AUTOSAVE_MS = 1200;
 
+/** How far the pointer travels before a press on a tab counts as a move rather than a click. */
+const DRAG_SLOP_PX = 4;
+
 export function Editor() {
   const {
     open,
@@ -34,6 +37,7 @@ export function Editor() {
     setIcon,
     openNote,
     openInBackground,
+    moveTab,
     closeTab,
     saveAsCopy,
   } = useWorkspace();
@@ -41,6 +45,8 @@ export function Editor() {
   const user = useSession((state) => state.user);
   const [title, setTitle] = useState(open?.note.name ?? '');
   const [picker, setPicker] = useState<PickerTarget | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const strip = useRef<HTMLDivElement | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const { open: openMenu, menu } = useContextMenu();
 
@@ -115,6 +121,42 @@ export function Editor() {
     if (openId !== keep) closeTab(openId);
   };
 
+  // Reordering runs on pointer events rather than on the drag-and-drop API: a tab is a pair
+  // of buttons, and a native drag started on one of those is at the browser's discretion.
+  // The listeners are on the window because a hand moving a tab leaves the strip freely, and
+  // a drag that ends out there still has to end.
+  const grab = (event: React.PointerEvent, id: number) => {
+    if (event.button !== 0) return;
+
+    const from = event.clientX;
+    // The strip as it stood when the tab was picked up. Frozen on purpose: the slots shift
+    // as the tab travels through them, and measuring the thing that is moving makes the
+    // answer depend on whether the browser has painted the last move yet.
+    const edges = Array.from(strip.current?.children ?? []).map(
+      (slot) => slot.getBoundingClientRect().right,
+    );
+    let armed = false;
+
+    const move = (moved: PointerEvent) => {
+      if (!armed && Math.abs(moved.clientX - from) < DRAG_SLOP_PX) return;
+
+      armed = true;
+      setDragging(id);
+      moveTab(id, slotAt(edges, moved.clientX));
+    };
+
+    const drop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', drop);
+      window.removeEventListener('pointercancel', drop);
+      setDragging(null);
+    };
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', drop);
+    window.addEventListener('pointercancel', drop);
+  };
+
   const note = open.note;
   const readOnly = open.locked || note.permission === 'view' || note.permission === 'comment';
 
@@ -146,14 +188,17 @@ export function Editor() {
     <div className={styles.pane}>
       {menu}
 
-      <div className={styles.tabs}>
+      <div className={styles.tabs} ref={strip}>
         {tabs.map((tab) => {
           const active = tab.id === note.id;
 
           return (
             <span
               key={tab.id}
-              className={`${styles.tab} ${active ? styles.tabActive : ''}`}
+              data-tab={tab.id}
+              className={`${styles.tab} ${active ? styles.tabActive : ''} ${
+                dragging === tab.id ? styles.tabMoving : ''
+              }`}
               // Middle-click closes the tab. The mousedown has to be swallowed too, or the
               // browser starts its own autoscroll on the way to the click.
               onMouseDown={(event) => {
@@ -185,6 +230,9 @@ export function Editor() {
               <button
                 type="button"
                 className={styles.tabOpen}
+                onPointerDown={(event) => grab(event, tab.id)}
+                // A tab that was dragged is opened too, as it is in every browser: the press
+                // that moved it is still a press on it.
                 onClick={() => {
                   if (!active) void openNote(tab);
                 }}
@@ -329,6 +377,13 @@ export function Editor() {
       {picker ? <IconPicker target={picker} onClose={() => setPicker(null)} /> : null}
     </div>
   );
+}
+
+/** The slot a pointer at `x` is over, given each slot's right edge. Past the end is the end. */
+function slotAt(edges: number[], x: number): number {
+  const at = edges.findIndex((edge) => x < edge);
+
+  return at < 0 ? edges.length - 1 : at;
 }
 
 function relative(iso: string): string {

@@ -6,7 +6,7 @@ import { generateIdentity } from '@/crypto/identity';
 import type { Identity } from '@/crypto/identity';
 import { ScopeKeyring } from '@/crypto/keyring';
 
-import { commitBody } from './workspace';
+import { commitBody, reorderTabs } from './workspace';
 
 /**
  * The write-back a live session performs.
@@ -102,6 +102,28 @@ async function store(open: unknown = null) {
     }) as unknown as Parameters<typeof commitBody>[1],
   };
 }
+
+describe('moving a tab', () => {
+  const strip = (...ids: number[]) => ids.map((id) => ({ id }) as NoteNode);
+  const ids = (tabs: NoteNode[]) => tabs.map((tab) => tab.id);
+
+  it('lands on the slot it was dropped on, in either direction', () => {
+    expect(ids(reorderTabs(strip(1, 2, 3, 4), 1, 2))).toEqual([2, 3, 1, 4]);
+    expect(ids(reorderTabs(strip(1, 2, 3, 4), 4, 1))).toEqual([1, 4, 2, 3]);
+  });
+
+  it('keeps the strip as it is when nothing moves', () => {
+    const tabs = strip(1, 2, 3);
+
+    expect(reorderTabs(tabs, 2, 1)).toBe(tabs);
+    expect(reorderTabs(tabs, 9, 0)).toBe(tabs);
+  });
+
+  it('clamps a slot past either end', () => {
+    expect(ids(reorderTabs(strip(1, 2, 3), 3, 7))).toEqual([1, 2, 3]);
+    expect(ids(reorderTabs(strip(1, 2, 3), 3, -2))).toEqual([3, 1, 2]);
+  });
+});
 
 describe('the live write-back', () => {
   it('writes the body after the note has been closed', async () => {

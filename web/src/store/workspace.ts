@@ -151,6 +151,12 @@ interface WorkspaceState {
    * body: a tab is a `NoteNode` and a promise to come back, not a loaded document.
    */
   openInBackground: (note: ws.NoteNode) => void;
+  /**
+   * Sets a tab down at `to`, counted in the strip as it stands. From then on the order is
+   * the reader's rather than the order the notes were opened in — including for `fit`, which
+   * still drops from the left when the strip overflows.
+   */
+  moveTab: (noteId: number, to: number) => void;
   closeTab: (noteId: number) => void;
   purge: (id: number, kind: 'folder' | 'file') => Promise<void>;
   setView: (view: View) => void;
@@ -694,6 +700,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ tabs: fit([...tabs, note], open?.note.id) });
   },
 
+  moveTab: (noteId, to) => {
+    set({ tabs: reorderTabs(get().tabs, noteId, to) });
+  },
+
   editBody: (body) => {
     const open = get().open;
     if (!open) return;
@@ -1215,6 +1225,22 @@ function fit(tabs: ws.NoteNode[], keep: number | undefined): ws.NoteNode[] {
   if (oldest < 0) return tabs.slice(-MAX_TABS);
 
   return fit([...tabs.slice(0, oldest), ...tabs.slice(oldest + 1)], keep);
+}
+
+/**
+ * The strip with one tab lifted out and set down at `to`, which counts slots in the strip as
+ * it stands — a drag reports the slot it is over, not the gap it left behind.
+ */
+export function reorderTabs(tabs: ws.NoteNode[], noteId: number, to: number): ws.NoteNode[] {
+  const from = tabs.findIndex((tab) => tab.id === noteId);
+  const moved = tabs[from];
+  const target = Math.min(Math.max(to, 0), tabs.length - 1);
+
+  if (!moved || from === target) return tabs;
+
+  const rest = tabs.filter((tab) => tab.id !== noteId);
+
+  return [...rest.slice(0, target), moved, ...rest.slice(target)];
 }
 
 /**
