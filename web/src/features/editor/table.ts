@@ -1,6 +1,13 @@
 import { redo, undo } from '@codemirror/commands';
 import { syntaxTree } from '@codemirror/language';
-import { Facet, StateField, type EditorState, type Extension, type Range } from '@codemirror/state';
+import {
+  Facet,
+  StateField,
+  type EditorState,
+  type Extension,
+  type Range,
+  type TransactionSpec,
+} from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 
@@ -157,12 +164,30 @@ function modelOf(state: EditorState, table: SyntaxNode): TableModel | null {
 }
 
 /** The extent of the table covering `pos`, looked up fresh rather than remembered. */
-function tableAt(state: EditorState, pos: number): SyntaxNode | null {
-  let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 1);
+function tableAt(state: EditorState, pos: number, side: -1 | 1 = 1): SyntaxNode | null {
+  let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, side);
 
   while (node && node.name !== 'Table') node = node.parent;
 
   return node;
+}
+
+/**
+ * The table the document ends on, if it ends on one.
+ *
+ * A block replacement covering the last line leaves the position after it with no DOM of its
+ * own. The caret can still be moved there, and CodeMirror will report it there, but the
+ * browser draws it in the nearest editable spot it can find — a line above the table — and
+ * that is where the next keystroke is written. A lone blank line under the table is no way
+ * out either: a caret on it writes another row.
+ */
+export function trailingTable(state: EditorState): SyntaxNode | null {
+  const last = state.doc.lineAt(state.doc.length);
+  const end = last.from > 0 && last.text.trim() === '' ? last.from - 1 : last.to;
+
+  const node = tableAt(state, end, -1);
+
+  return node && node.to >= end ? node : null;
 }
 
 class TableWidget extends WidgetType {
@@ -177,17 +202,26 @@ class TableWidget extends WidgetType {
     return other.source === this.source;
   }
 
+  /**
+   * The `<table>` goes inside a box of its own rather than being the widget itself, because
+   * the air around it has to be padding. CodeMirror measures a block widget with
+   * `getBoundingClientRect`, which does not see margins: spacing the grid with one would
+   * leave the height map short by that much for every table above a line, and a click on the
+   * lower part of that line would resolve to the block below it.
+   */
   override toDOM(view: EditorView): HTMLElement {
-    const table = document.createElement('table');
+    const table = document.createElement('div');
     table.className = 'cm-md-grid';
     // The widget sits inside the editor's own contenteditable, so it has to opt out of it
     // explicitly; the cells then opt back in one at a time.
     table.contentEditable = 'false';
 
-    const head = table.appendChild(document.createElement('thead'));
+    const grid = table.appendChild(document.createElement('table'));
+
+    const head = grid.appendChild(document.createElement('thead'));
     head.appendChild(rowDOM(this.model.header, 'th', this.model.aligns));
 
-    const body = table.appendChild(document.createElement('tbody'));
+    const body = grid.appendChild(document.createElement('tbody'));
     for (const row of this.model.rows) body.appendChild(rowDOM(row, 'td', this.model.aligns));
 
     table.addEventListener('keydown', (event) => onKey(event, view, table));
@@ -464,12 +498,26 @@ function onKey(event: KeyboardEvent, view: EditorView, table: HTMLElement): void
     return;
   }
 
+  // Down out of the bottom row and up out of the header are the way out of a table that ends
+  // or opens a note, where the document has no line on that side to reach for.
+  if (event.key === 'ArrowDown' && at + columns >= cells.length) {
+    event.preventDefault();
+
+    exit(view, table, 'below');
+    return;
+  }
+
+  if (event.key === 'ArrowUp' && at < columns) {
+    event.preventDefault();
+
+    exit(view, table, 'above');
+    return;
+  }
+
   if (event.key === 'Escape') {
     event.preventDefault();
 
-    commit(view, table);
-    view.focus();
-    exitBelow(view, table);
+    exit(view, table, 'below');
   }
 }
 
@@ -480,40 +528,73 @@ function onKey(event: KeyboardEvent, view: EditorView, table: HTMLElement): void
  * continuation of it, so a caret parked there turns the next thing written into another
  * row — the sentence after the table silently becomes part of it.
  */
-function exitBelow(view: EditorView, table: HTMLElement): void {
-  const node = tableAt(view.state, view.posAtDOM(table));
-  if (!node) return;
-
-  const doc = view.state.doc;
+export function exitBelow(state: EditorState, node: SyntaxNode): TransactionSpec {
+  const doc = state.doc;
 
   if (node.to >= doc.length) {
-    view.dispatch({
+    return {
       changes: { from: doc.length, insert: '\n\n' },
       selection: { anchor: doc.length + 2 },
-    });
-    return;
+      scrollIntoView: true,
+    };
   }
 
   const under = doc.lineAt(node.to + 1);
 
+  // Something is already written there: push it down and land on it, now separated.
   if (under.text.trim() !== '') {
-    // Something is already written there: push it down and land on it, now separated.
-    view.dispatch({
+    return {
       changes: { from: under.from, insert: '\n' },
       selection: { anchor: under.from + 1 },
-    });
-    return;
+      scrollIntoView: true,
+    };
   }
 
   if (under.to >= doc.length) {
-    view.dispatch({
+    return {
       changes: { from: doc.length, insert: '\n' },
       selection: { anchor: doc.length + 1 },
-    });
-    return;
+      scrollIntoView: true,
+    };
   }
 
-  view.dispatch({ selection: { anchor: doc.lineAt(under.to + 1).from } });
+  return { selection: { anchor: doc.lineAt(under.to + 1).from }, scrollIntoView: true };
+}
+
+/**
+ * The same upwards, for the table a note opens with — which is the same trap read the other
+ * way round, with the added twist that there is no empty page above the first block to click
+ * on at all.
+ */
+export function exitAbove(state: EditorState, node: SyntaxNode): TransactionSpec {
+  if (node.from === 0) {
+    return { changes: { from: 0, insert: '\n\n' }, selection: { anchor: 0 }, scrollIntoView: true };
+  }
+
+  const over = state.doc.lineAt(node.from - 1);
+
+  // A heading sits directly above the table it introduces; landing on it would put the caret
+  // in someone else's line rather than in a line of one's own.
+  if (over.text.trim() !== '') {
+    return {
+      changes: { from: over.to, insert: '\n' },
+      selection: { anchor: over.to + 1 },
+      scrollIntoView: true,
+    };
+  }
+
+  return { selection: { anchor: over.from }, scrollIntoView: true };
+}
+
+/** Leaves the grid for the document around it, taking whatever is half-typed along. */
+function exit(view: EditorView, table: HTMLElement, where: 'above' | 'below'): void {
+  commit(view, table);
+  view.focus();
+
+  const node = tableAt(view.state, view.posAtDOM(table));
+  if (!node) return;
+
+  view.dispatch(where === 'below' ? exitBelow(view.state, node) : exitAbove(view.state, node));
 }
 
 /**
@@ -565,4 +646,30 @@ const grid = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-export const tableGrid: Extension = [grid];
+/**
+ * The empty page under a trailing table, turned into the line that is missing there.
+ *
+ * Clicking below the last block is how a paragraph gets added to the end of a note, and a
+ * trailing table is the one thing that breaks it: the click resolves to the position after
+ * the table, which no caret can occupy, and the typing lands somewhere above instead.
+ */
+const groundBelow = EditorView.domEventHandlers({
+  mousedown: (event, view) => {
+    if (event.button !== 0 || view.state.readOnly) return false;
+
+    const node = trailingTable(view.state);
+    if (!node) return false;
+
+    // Strictly under the grid: a click on the table itself belongs to the cell it hit.
+    const rect = view.coordsAtPos(node.to);
+    if (!rect || event.clientY <= rect.bottom) return false;
+
+    event.preventDefault();
+    view.dispatch(exitBelow(view.state, node));
+    view.focus();
+
+    return true;
+  },
+});
+
+export const tableGrid: Extension = [grid, groundBelow];

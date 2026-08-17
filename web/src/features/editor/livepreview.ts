@@ -485,15 +485,16 @@ export const editorTheme = EditorView.theme(
     '.cm-md-table': { fontVariantLigatures: 'none' },
     '.cm-md-thead': { fontWeight: '700', color: 'var(--text)' },
 
-    // The rendered grid that stands in for them the rest of the time.
+    // The rendered grid that stands in for them the rest of the time. The air around it is
+    // padding, not margin: CodeMirror measures the widget's box, and a margin it cannot see
+    // would put every line under a table out of step with where clicks land on it.
     '.cm-md-grid': {
-      borderCollapse: 'collapse',
-      width: '100%',
-      margin: '0.5em 0',
+      padding: '0.5em 0',
       fontFamily: 'var(--font-sans)',
       fontSize: '13px',
       lineHeight: '1.5',
     },
+    '.cm-md-grid > table': { borderCollapse: 'collapse', width: '100%' },
     '.cm-md-grid th, .cm-md-grid td': {
       padding: '6px 10px',
       border: '1px solid var(--border)',
