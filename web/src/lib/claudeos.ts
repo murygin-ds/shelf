@@ -52,7 +52,7 @@ export function claudeOsPlan(vaultName: string, at: Date = new Date()): ImportPl
   ];
 
   return {
-    vault: { name: vaultName, icon: 'bulb' },
+    vault: { name: vaultName, icon: 'claude' },
     exportedAt: at.toISOString(),
     folders,
     notes,

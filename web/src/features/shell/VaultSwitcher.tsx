@@ -372,7 +372,7 @@ export function VaultSwitcher({
                   }}
                 >
                   <span className={styles.actionIcon}>
-                    <Icon name="bulb" size={13} />
+                    <Icon name="claude" size={13} />
                   </span>
                   Connect Claude…
                 </button>

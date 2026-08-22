@@ -21,6 +21,7 @@ var Icons = []string{
 	"doc", "folder", "lock", "key", "shield", "eye", "star", "flag", "bolt", "bulb",
 	"book", "target", "code", "terminal", "db", "calendar", "clock", "user", "globe",
 	"hash", "tag", "layers", "inbox", "warn", "graph", "pin", "link", "circle",
+	"claude",
 }
 
 // ErrIcon rejects an icon the tree could not draw.

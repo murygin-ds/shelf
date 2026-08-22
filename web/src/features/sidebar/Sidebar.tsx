@@ -263,7 +263,7 @@ export function Sidebar({
             className={`${styles.navItem} ${view === 'claude' ? styles.navItemActive : ''}`}
             onClick={() => setView('claude')}
           >
-            <Icon name="bulb" style={{ flex: 'none', opacity: 0.8 }} />
+            <Icon name="claude" style={{ flex: 'none', opacity: 0.8 }} />
             <span className={styles.navLabel}>Claude</span>
           </button>
         ) : null}
