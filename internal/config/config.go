@@ -52,6 +52,7 @@ type Config struct {
 	Postgres Postgres `mapstructure:"postgres"`
 	Auth     Auth     `mapstructure:"auth"`
 	Realtime Realtime `mapstructure:"realtime"`
+	MCP      MCP      `mapstructure:"mcp"`
 	Log      Log      `mapstructure:"log"`
 }
 
@@ -110,6 +111,13 @@ type Postgres struct {
 	MaxConnLifetime time.Duration `mapstructure:"max_conn_lifetime"  validate:"required"`
 	MaxConnIdleTime time.Duration `mapstructure:"max_conn_idle_time" validate:"required"`
 	ConnectTimeout  time.Duration `mapstructure:"connect_timeout"    validate:"required"`
+	// AutoMigrate applies the migrations embedded in the binary at startup.
+	//
+	// On by default because the image has no shell to run a migration tool in, and a
+	// deployment that needs a second step is a deployment that starts against an empty
+	// database. Turn it off where something else owns the schema — a managed database with
+	// its own pipeline, or a replica that must not race the instance that migrates.
+	AutoMigrate bool `mapstructure:"auto_migrate"`
 }
 
 // DSN builds the PostgreSQL connection string
@@ -168,6 +176,10 @@ type RateLimit struct {
 	// RegisterIP counts account creations from a single address. Registration is the one
 	// unauthenticated endpoint that runs Argon2id, twice, at 64 MiB
 	RegisterIP Rule `mapstructure:"register_ip"`
+	// OAuthIP counts dynamic client registrations from a single address. Claude registers
+	// itself on every fresh connection, so the endpoint has to stay open — and an endpoint
+	// that writes a row without a credential has to be counted
+	OAuthIP Rule `mapstructure:"oauth_ip"`
 }
 
 // Rule is the allowed number of requests per window
@@ -211,6 +223,29 @@ type Realtime struct {
 	SendQueue int `mapstructure:"send_queue"         validate:"required,min=16"`
 	// UpdateRate throttles document updates per connection
 	UpdateRate Rule `mapstructure:"update_rate"`
+}
+
+// MCP holds the parameters of the Claude connector.
+//
+// It is the one feature that gives this server a key to something, so it is off unless
+// somebody deliberately turns it on, and it stays off if it is not configured properly
+// rather than starting in a half-working state.
+type MCP struct {
+	// Enabled exposes the connector endpoints. With it off no vault can be connected and
+	// none of the routes exist, which is the state every deployment starts in
+	Enabled bool `mapstructure:"enabled"`
+	// Secret wraps the connector keys at rest, so a database dump on its own opens nothing.
+	//
+	// Unlike auth.secret there is no ephemeral fallback anywhere, local included: a
+	// generated secret would make every connector key already in the database unopenable
+	// after the first restart, and the failure would look like corruption rather than like
+	// a missing setting
+	Secret string `mapstructure:"secret"          validate:"omitempty,min=32"`
+	// PublicBaseURL is the address a connector is reached at, as the person types it into
+	// Claude. It has to be configured rather than taken from the request Host: the
+	// protected resource metadata must name the same URL byte for byte, and a proxy that
+	// rewrites Host would otherwise break discovery in a way nothing here can see
+	PublicBaseURL string `mapstructure:"public_base_url" validate:"omitempty,url"`
 }
 
 // Log holds the logging parameters
@@ -260,7 +295,34 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	if err := checkMCP(&cfg); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// checkMCP refuses to start a connector that is turned on but not configured.
+//
+// Both settings are load-bearing in a way that fails silently otherwise: without the secret
+// there is nothing to wrap the connector keys with, and without the base URL the metadata
+// Claude discovers would name an address it cannot reach.
+func checkMCP(cfg *Config) error {
+	if !cfg.MCP.Enabled {
+		return nil
+	}
+
+	if cfg.MCP.Secret == "" {
+		return fmt.Errorf("mcp.secret is required when mcp.enabled is on (set %s_MCP_SECRET)", EnvPrefix)
+	}
+
+	if cfg.MCP.PublicBaseURL == "" {
+		return fmt.Errorf(
+			"mcp.public_base_url is required when mcp.enabled is on (set %s_MCP_PUBLIC_BASE_URL): "+
+				"it has to match the URL entered in Claude exactly", EnvPrefix)
+	}
+
+	return nil
 }
 
 // resolveAuthSecret requires the secret in every environment except local, where it substitutes
@@ -318,6 +380,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("postgres.max_conn_lifetime", 30*time.Minute)
 	v.SetDefault("postgres.max_conn_idle_time", 5*time.Minute)
 	v.SetDefault("postgres.connect_timeout", 5*time.Second)
+	v.SetDefault("postgres.auto_migrate", true)
+
+	v.SetDefault("mcp.enabled", false)
 
 	v.SetDefault("auth.secret", "")
 	v.SetDefault("auth.issuer", "shelf")
@@ -343,6 +408,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.rate_limit.invite_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.share_ip.limit", 60)
 	v.SetDefault("auth.rate_limit.share_ip.window", 15*time.Minute)
+	v.SetDefault("auth.rate_limit.oauth_ip.limit", 30)
+	v.SetDefault("auth.rate_limit.oauth_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.register_ip.limit", 20)
 	v.SetDefault("auth.rate_limit.register_ip.window", time.Hour)
 

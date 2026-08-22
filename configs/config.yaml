@@ -34,6 +34,9 @@ postgres:
   max_conn_lifetime: 30m
   max_conn_idle_time: 5m
   connect_timeout: 5s
+  # Applies the migrations built into the binary on startup. Turn off only where something
+  # else owns the schema.
+  auto_migrate: true # SHELF_POSTGRES_AUTO_MIGRATE
 
 auth:
   secret: "" # SHELF_AUTH_SECRET, at least 32 characters; required everywhere except local
@@ -59,6 +62,8 @@ auth:
     invite_ip: { limit: 20, window: 15m }
     share_ip: { limit: 60, window: 15m }
     register_ip: { limit: 20, window: 1h }
+    # Claude registers a client on every fresh connection, so this stays open and counted.
+    oauth_ip: { limit: 30, window: 15m }
 
 # The live editing socket. Turning it off costs latency, not correctness: the clients keep
 # polling, which is the channel they fall back to whenever the socket is down anyway.
@@ -71,6 +76,19 @@ realtime:
   max_frame_bytes: 65536 # snapshots travel over REST, not through here
   send_queue: 256 # a reader slower than this is dropped rather than grown into memory
   update_rate: { limit: 60, window: 10s }
+
+# The Claude connector. Off by default: it is the one feature that hands this server a key,
+# and everything else in the system is built on it not having one.
+mcp:
+  enabled: false # SHELF_MCP_ENABLED
+  # Wraps the connector keys at rest. At least 32 characters, and never in this file.
+  # Generate with: openssl rand -hex 32
+  # There is no ephemeral fallback: a generated secret would make the connector keys already
+  # in the database unopenable after a restart.
+  secret: "" # SHELF_MCP_SECRET
+  # The address a connector is reached at, exactly as it is typed into Claude. Required when
+  # enabled: the discovery metadata has to name the same URL byte for byte.
+  public_base_url: "" # SHELF_MCP_PUBLIC_BASE_URL
 
 log:
   level: debug # debug | info | warn | error

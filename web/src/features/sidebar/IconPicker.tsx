@@ -12,7 +12,7 @@ export interface PickerTarget {
   onPick: (icon: string | undefined) => void;
 }
 
-const SIZE = { width: 254, height: 200 };
+const SIZE = { width: 254, height: 205 };
 
 /** Positions the popover so it never leaves the viewport, the way the design opens it. */
 export function pickerPosition(anchor: DOMRect): { x: number; y: number } {

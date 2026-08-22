@@ -1013,6 +1013,236 @@ definitions:
     required:
     - display_name
     type: object
+  mcp.ConnectorResponse:
+    properties:
+      created_at:
+        type: string
+      fingerprint:
+        description: Fingerprint is what a person compares against the one the server
+          logged at startup.
+        example: 0XXE EW2H S7R6 V26W
+        type: string
+      key_state:
+        example: ok
+        type: string
+      public_key:
+        description: PublicKey is the identity blob the browser seals scope keys to.
+        items:
+          format: byte
+          type: integer
+        type: array
+      ready:
+        description: 'Ready is false between the two halves of enabling: the member
+          exists and reads nothing.'
+        example: true
+        type: boolean
+      role:
+        example: editor
+        type: string
+      user_id:
+        description: |-
+          UserID is the connector's account. It is a real member, so it appears in the member
+          list and in the rotation plan like anybody else.
+        example: 42
+        type: integer
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  mcp.CredentialResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        example: 3
+        type: integer
+      kind:
+        example: static
+        type: string
+      label:
+        example: laptop
+        type: string
+      last_used_at:
+        type: string
+    type: object
+  mcp.CredentialsResponse:
+    properties:
+      credentials:
+        items:
+          $ref: '#/definitions/mcp.CredentialResponse'
+        type: array
+    type: object
+  mcp.DisabledResponse:
+    properties:
+      scopes_awaiting_rotation:
+        items:
+          type: integer
+        type: array
+    type: object
+  mcp.IssuedResponse:
+    properties:
+      expires_at:
+        type: string
+      kind:
+        example: static
+        type: string
+      label:
+        example: laptop
+        type: string
+      secret:
+        example: 3Yy2...redacted
+        type: string
+    type: object
+  mcp.admitRequest:
+    properties:
+      keys:
+        items:
+          $ref: '#/definitions/mcp.sealedKeyRequest'
+        maxItems: 64
+        minItems: 1
+        type: array
+    required:
+    - keys
+    type: object
+  mcp.approveRequest:
+    properties:
+      client_id:
+        maxLength: 200
+        type: string
+      code_challenge:
+        maxLength: 200
+        type: string
+      redirect_uri:
+        type: string
+      state:
+        maxLength: 500
+        type: string
+      vault_id:
+        minimum: 1
+        type: integer
+    required:
+    - client_id
+    - code_challenge
+    - redirect_uri
+    - vault_id
+    type: object
+  mcp.approveResponse:
+    properties:
+      redirect_to:
+        type: string
+    type: object
+  mcp.clientResponse:
+    properties:
+      client_id:
+        type: string
+      client_name:
+        type: string
+      redirect_uris:
+        items:
+          type: string
+        type: array
+    type: object
+  mcp.credentialRequest:
+    properties:
+      label:
+        example: laptop
+        maxLength: 120
+        type: string
+    type: object
+  mcp.enableRequest:
+    properties:
+      role:
+        enum:
+        - editor
+        - viewer
+        example: editor
+        type: string
+    required:
+    - role
+    type: object
+  mcp.registerRequest:
+    properties:
+      client_name:
+        maxLength: 200
+        type: string
+      redirect_uris:
+        items:
+          type: string
+        maxItems: 16
+        minItems: 1
+        type: array
+    required:
+    - redirect_uris
+    type: object
+  mcp.registerResponse:
+    properties:
+      client_id:
+        type: string
+      client_id_issued_at:
+        type: integer
+      client_name:
+        type: string
+      grant_types:
+        items:
+          type: string
+        type: array
+      redirect_uris:
+        items:
+          type: string
+        type: array
+      response_types:
+        items:
+          type: string
+        type: array
+      token_endpoint_auth_method:
+        type: string
+    type: object
+  mcp.sealedKeyRequest:
+    properties:
+      key_version:
+        minimum: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      scope_id:
+        minimum: 1
+        type: integer
+      wrap_algorithm:
+        maxLength: 64
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - key_version
+    - nonce
+    - scope_id
+    - wrapped_key
+    type: object
+  mcp.tokenResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      scope:
+        type: string
+      token_type:
+        type: string
+    type: object
   response.Error:
     properties:
       code:
@@ -2216,6 +2446,32 @@ info:
   title: Shelf API
   version: "1.0"
 paths:
+  /.well-known/oauth-authorization-server:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: OAuth authorization server metadata
+      tags:
+      - mcp
+  /.well-known/oauth-protected-resource:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: OAuth protected resource metadata
+      tags:
+      - mcp
   /api/v1/auth/keys:
     get:
       description: 'Returns the wrapped keys: the client needs them after a restart
@@ -3233,6 +3489,109 @@ paths:
       summary: List my invites
       tags:
       - access
+  /api/v1/oauth/authorize:
+    get:
+      parameters:
+      - description: registered client
+        in: query
+        name: client_id
+        required: true
+        type: string
+      - description: where to return
+        in: query
+        name: redirect_uri
+        required: true
+        type: string
+      - description: PKCE S256 challenge
+        in: query
+        name: code_challenge
+        required: true
+        type: string
+      responses:
+        "302":
+          description: Found
+      summary: Start the authorization flow
+      tags:
+      - mcp
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: what is being approved
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.approveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.approveResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Approve a connector authorization
+      tags:
+      - mcp
+  /api/v1/oauth/client:
+    get:
+      parameters:
+      - description: registered client
+        in: query
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.clientResponse'
+      summary: Describe an OAuth client
+      tags:
+      - mcp
+  /api/v1/oauth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: client metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/mcp.registerResponse'
+      summary: Register an OAuth client
+      tags:
+      - mcp
+  /api/v1/oauth/token:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.tokenResponse'
+      summary: Exchange or refresh connector tokens
+      tags:
+      - mcp
   /api/v1/public/share/lookup:
     post:
       consumes:
@@ -3945,6 +4304,214 @@ paths:
       summary: Leave a vault
       tags:
       - access
+  /api/v1/vaults/{id}/mcp:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.DisabledResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove the connector from a vault
+      tags:
+      - mcp
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.ConnectorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the connector on a vault
+      tags:
+      - mcp
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: scope keys sealed to the connector
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.admitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.ConnectorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Give the connector its keys
+      tags:
+      - mcp
+  /api/v1/vaults/{id}/mcp/credentials:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Revoke every connector credential
+      tags:
+      - mcp
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.CredentialsResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List the connector's credentials
+      tags:
+      - mcp
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: what this credential is for
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.credentialRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/mcp.IssuedResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Issue a connector credential
+      tags:
+      - mcp
+  /api/v1/vaults/{id}/mcp/identity:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: what the connector may do
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.enableRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/mcp.ConnectorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create the connector identity for a vault
+      tags:
+      - mcp
   /api/v1/vaults/{id}/members:
     get:
       parameters:

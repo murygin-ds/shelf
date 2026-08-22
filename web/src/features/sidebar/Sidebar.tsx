@@ -30,6 +30,7 @@ export function Sidebar({
     tree,
     index,
     view,
+    connector,
     expanded,
     open,
     setView,
@@ -253,6 +254,19 @@ export function Sidebar({
           <span className={styles.navLabel}>Search</span>
           <span className={styles.navCount}>{index.length}</span>
         </button>
+
+        {/* Only where the server was given a key. On any other vault it would be a view of
+            something that does not exist. */}
+        {connector ? (
+          <button
+            type="button"
+            className={`${styles.navItem} ${view === 'claude' ? styles.navItemActive : ''}`}
+            onClick={() => setView('claude')}
+          >
+            <Icon name="claude" style={{ flex: 'none', opacity: 0.8 }} />
+            <span className={styles.navLabel}>Claude</span>
+          </button>
+        ) : null}
 
         <button
           type="button"

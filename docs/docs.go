@@ -21,6 +21,46 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/.well-known/oauth-authorization-server": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "OAuth authorization server metadata",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/.well-known/oauth-protected-resource": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "OAuth protected resource metadata",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/keys": {
             "get": {
                 "security": [
@@ -1627,6 +1667,167 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/oauth/authorize": {
+            "get": {
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Start the authorization flow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "registered client",
+                        "name": "client_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "where to return",
+                        "name": "redirect_uri",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "PKCE S256 challenge",
+                        "name": "code_challenge",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Found"
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Approve a connector authorization",
+                "parameters": [
+                    {
+                        "description": "what is being approved",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mcp.approveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.approveResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/oauth/client": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Describe an OAuth client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "registered client",
+                        "name": "client_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.clientResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/oauth/register": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Register an OAuth client",
+                "parameters": [
+                    {
+                        "description": "client metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mcp.registerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.registerResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/oauth/token": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Exchange or refresh connector tokens",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.tokenResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/public/share/lookup": {
             "post": {
                 "consumes": [
@@ -2766,6 +2967,337 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/mcp": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Read the connector on a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.ConnectorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Give the connector its keys",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "scope keys sealed to the connector",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mcp.admitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.ConnectorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Remove the connector from a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.DisabledResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/mcp/credentials": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "List the connector's credentials",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.CredentialsResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Issue a connector credential",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "what this credential is for",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mcp.credentialRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.IssuedResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Revoke every connector credential",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/mcp/identity": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Create the connector identity for a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "what the connector may do",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mcp.enableRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.ConnectorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -4539,6 +5071,330 @@ const docTemplate = `{
                     "maxLength": 128,
                     "minLength": 1,
                     "example": "Dmitry Murygin"
+                }
+            }
+        },
+        "mcp.ConnectorResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "fingerprint": {
+                    "description": "Fingerprint is what a person compares against the one the server logged at startup.",
+                    "type": "string",
+                    "example": "0XXE EW2H S7R6 V26W"
+                },
+                "key_state": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "public_key": {
+                    "description": "PublicKey is the identity blob the browser seals scope keys to.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "ready": {
+                    "description": "Ready is false between the two halves of enabling: the member exists and reads nothing.",
+                    "type": "boolean",
+                    "example": true
+                },
+                "role": {
+                    "type": "string",
+                    "example": "editor"
+                },
+                "user_id": {
+                    "description": "UserID is the connector's account. It is a real member, so it appears in the member\nlist and in the rotation plan like anybody else.",
+                    "type": "integer",
+                    "example": 42
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "mcp.CredentialResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "kind": {
+                    "type": "string",
+                    "example": "static"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "laptop"
+                },
+                "last_used_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "mcp.CredentialsResponse": {
+            "type": "object",
+            "properties": {
+                "credentials": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mcp.CredentialResponse"
+                    }
+                }
+            }
+        },
+        "mcp.DisabledResponse": {
+            "type": "object",
+            "properties": {
+                "scopes_awaiting_rotation": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "mcp.IssuedResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "example": "static"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "laptop"
+                },
+                "secret": {
+                    "type": "string",
+                    "example": "3Yy2...redacted"
+                }
+            }
+        },
+        "mcp.admitRequest": {
+            "type": "object",
+            "required": [
+                "keys"
+            ],
+            "properties": {
+                "keys": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/mcp.sealedKeyRequest"
+                    }
+                }
+            }
+        },
+        "mcp.approveRequest": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "code_challenge",
+                "redirect_uri",
+                "vault_id"
+            ],
+            "properties": {
+                "client_id": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "code_challenge": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "redirect_uri": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
+        "mcp.approveResponse": {
+            "type": "object",
+            "properties": {
+                "redirect_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "mcp.clientResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "client_name": {
+                    "type": "string"
+                },
+                "redirect_uris": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "mcp.credentialRequest": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "example": "laptop"
+                }
+            }
+        },
+        "mcp.enableRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "editor",
+                        "viewer"
+                    ],
+                    "example": "editor"
+                }
+            }
+        },
+        "mcp.registerRequest": {
+            "type": "object",
+            "required": [
+                "redirect_uris"
+            ],
+            "properties": {
+                "client_name": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "redirect_uris": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "mcp.registerResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "client_id_issued_at": {
+                    "type": "integer"
+                },
+                "client_name": {
+                    "type": "string"
+                },
+                "grant_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "redirect_uris": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "response_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "token_endpoint_auth_method": {
+                    "type": "string"
+                }
+            }
+        },
+        "mcp.sealedKeyRequest": {
+            "type": "object",
+            "required": [
+                "key_version",
+                "nonce",
+                "scope_id",
+                "wrapped_key"
+            ],
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                }
+            }
+        },
+        "mcp.tokenResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "expires_in": {
+                    "type": "integer"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "token_type": {
+                    "type": "string"
                 }
             }
         },

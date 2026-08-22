@@ -31,6 +31,7 @@ export const ICON_NAMES = [
   'pin',
   'link',
   'circle',
+  'claude',
 ] as const;
 
 export type IconName =
@@ -306,6 +307,13 @@ export function IconSprite() {
         </symbol>
         <symbol id="i-circle" {...stroke}>
           <circle cx="12" cy="12" r="7.5" />
+        </symbol>
+        {/* Claude's own mark, measured off its monochrome template icon: the twelve rays at the
+            angles and relative lengths it really uses, redrawn at this set's stroke and brought
+            in to `star`'s reach so it does not outsize its neighbours. It marks what is connected
+            to Claude and nothing else, which is why it carries no brand colour. */}
+        <symbol id="i-claude" {...stroke}>
+          <path d="M12 12l6.41 1.84M12 12l5.04 4.91M12 12l3.37 6.01M12 12l-1.02 6.84M12 12l-3.82 6.03M12 12l-5.49 4.06M12 12l-6.89 0.05M12 12l-6.07 -3.70M12 12l-3.58 -6.53M12 12l1.14 -6.45M12 12l4.47 -5.08M12 12l6.38 -1.14" />
         </symbol>
         <symbol id="i-vault" {...stroke}>
           <rect x="3.5" y="4" width="17" height="16" rx="2.5" />

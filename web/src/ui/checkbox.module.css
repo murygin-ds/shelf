@@ -1,0 +1,64 @@
+.field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.field[data-disabled='true'] {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* The real input stays in the tree rather than being replaced: it is what carries the
+   keyboard, the focus and the announcement to a screen reader. */
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: transparent;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.field:hover .box {
+  border-color: var(--border-hover);
+}
+
+.input:checked + .box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.input:focus-visible + .box {
+  box-shadow: var(--focus-ring);
+  border-color: var(--focus-border);
+}
+
+.label {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-body);
+}

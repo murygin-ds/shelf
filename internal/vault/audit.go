@@ -25,6 +25,11 @@ const (
 	AuditGroupCreated AuditAction = "group.created"
 	AuditGroupMembers AuditAction = "group.members_changed"
 	AuditGroupGone    AuditAction = "group.deleted"
+	// The connector is the one grant that hands a key to this server rather than to a
+	// person, so it is worth a line somebody can find later. Turning it off has no action of
+	// its own: it is the removal of a member, recorded as one, in the transaction that does
+	// it — a second entry written afterwards could outlive a rollback and say otherwise.
+	AuditMCPEnabled AuditAction = "mcp.enabled"
 )
 
 // AuditEvent is one entry of the log.

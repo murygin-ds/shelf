@@ -6,6 +6,7 @@ import (
 
 	"shelf/internal/api/middleware"
 	v1 "shelf/internal/api/v1"
+	mcpapi "shelf/internal/api/v1/mcp"
 	realtimeapi "shelf/internal/api/v1/realtime"
 	"shelf/internal/config"
 	"shelf/internal/web"
@@ -34,11 +35,16 @@ const (
 	pathReady   = "/ready"
 	pathAPI     = "/api"
 	pathSwagger = "/swagger"
+	// pathWellKnown carries the discovery documents an MCP client reads before it has a
+	// token. It has to be a server prefix: falling through to the SPA would answer a
+	// discovery probe with an HTML page and a 200, and the client would give up with
+	// nothing to report.
+	pathWellKnown = "/.well-known"
 )
 
 // serverPrefixes are the paths that belong to the server rather than to the client
 // router, so an unmatched request under them is a genuine 404 and not a page.
-var serverPrefixes = []string{pathAPI, pathHealth, pathReady, pathSwagger}
+var serverPrefixes = []string{pathAPI, pathHealth, pathReady, pathSwagger, pathWellKnown}
 
 // Router is the engine together with what the HTTP server cannot shut down on its own.
 //
@@ -80,8 +86,12 @@ func NewRouter(deps Deps) (*Router, error) {
 		middleware.CORS(deps.Config.HTTP),
 		middleware.MaxBody(deps.Config.HTTP.MaxBodyBytes),
 		// The socket outlives any ceiling that makes sense for a request, so it is exempt
-		// rather than given a longer one.
-		middleware.Deadline(deps.Config.HTTP.HandlerTimeout, pathAPI+"/v1"+realtimeapi.Path),
+		// rather than given a longer one. The MCP transport holds a stream open for the same
+		// reason, and a handler timeout would cut it mid-session.
+		middleware.Deadline(deps.Config.HTTP.HandlerTimeout,
+			pathAPI+"/v1"+realtimeapi.Path,
+			pathAPI+"/v1"+mcpapi.Path,
+		),
 	)
 
 	spa, err := web.NewSPA(deps.Config.HTTP.StaticCacheMaxAge)
@@ -107,11 +117,13 @@ func NewRouter(deps Deps) (*Router, error) {
 
 	api := engine.Group(pathAPI)
 	hub := v1.Register(api, v1.Deps{
+		Root:     engine,
 		Logger:   deps.Logger,
 		Pool:     deps.Pool,
 		Auth:     deps.Config.Auth,
 		HTTP:     deps.Config.HTTP,
 		Realtime: deps.Config.Realtime,
+		MCP:      deps.Config.MCP,
 	})
 
 	router := &Router{Engine: engine}
