@@ -19,6 +19,13 @@ import (
 // bound the browser uses, so a note Claude writes is one a person could have written.
 const MaxBodyBytes = 4*1024*1024 - envelope.PadBlock - 16
 
+// MaxTags and MaxTagBytes bound what may be attached to a note. The browser meets the same
+// bounds when it writes a tag; a connector calls the domain directly, so it meets them here.
+const (
+	MaxTags     = 24
+	MaxTagBytes = 64
+)
+
 // MaxNameBytes bounds a folder or note name. The browser meets this bound in the request
 // DTO; a connector calls the domain directly, so it has to meet it here.
 const MaxNameBytes = 200
@@ -41,6 +48,10 @@ var (
 	ErrPath = errors.New("no such path")
 	// ErrLocked reports a node this connector holds no key for.
 	ErrLocked = errors.New("this connector holds no key for that")
+	// ErrNotEmpty refuses to trash a folder that still holds something.
+	ErrNotEmpty = errors.New("the folder is not empty")
+	// ErrTag rejects a tag the rest of the system would not accept.
+	ErrTag = errors.New("that is not a usable tag")
 )
 
 // Vaults is the slice of the vault service a connector drives. Every call goes through it
@@ -52,8 +63,13 @@ type Vaults interface {
 	File(ctx context.Context, userID, fileID int64) (*vault.File, error)
 	CreateFolder(ctx context.Context, userID int64, in vault.NewFolder) (*vault.Folder, error)
 	Files(ctx context.Context, userID, vaultID int64, ids []int64) ([]vault.File, error)
+	Trash(ctx context.Context, userID, vaultID int64) ([]vault.Folder, []vault.File, error)
 	CreateFile(ctx context.Context, userID int64, in vault.NewFile) (*vault.File, error)
 	UpdateFile(ctx context.Context, userID, fileID int64, in vault.MetaUpdate) (*vault.File, error)
+	UpdateFolder(ctx context.Context, userID, folderID int64, in vault.MetaUpdate) (*vault.Folder, error)
+	DeleteFolder(ctx context.Context, userID, folderID int64) error
+	RestoreFile(ctx context.Context, userID, fileID int64) error
+	RestoreFolder(ctx context.Context, userID, folderID int64) error
 	UpdateContent(ctx context.Context, userID, fileID int64, in vault.ContentUpdate) (*vault.File, error)
 	MoveFile(ctx context.Context, userID, fileID int64, in vault.Move) (*vault.File, error)
 	DeleteFile(ctx context.Context, userID, fileID int64) error
@@ -89,6 +105,18 @@ type Node struct {
 type Note struct {
 	Node
 	Body string
+}
+
+// Trashed is something in the bin, addressed by an id rather than a path.
+//
+// A path is the address everywhere else here, but it is not one for a trashed note: the
+// place it names may hold a live note now, and restoring by path would be a guess.
+type Trashed struct {
+	ID        int64
+	Kind      string
+	Name      string
+	Path      string
+	TrashedAt time.Time
 }
 
 // Hit is one search result.
@@ -363,21 +391,67 @@ func (w *Workspace) bodies(ctx context.Context, ids []int64) (map[int64]vault.Fi
 	return out, nil
 }
 
-// Search looks through the bodies and the names. It decrypts the whole vault to do it,
+// Query narrows a search. Every field is optional on its own, but at least one of Text and
+// Tag has to be given: listing the vault is what the tree is for.
+type Query struct {
+	Text string
+	// Under restricts the search to a subtree, which is both a filter and the only way to
+	// keep the cost of a search proportional to what is being asked about.
+	Under string
+	Tag   string
+}
+
+// Search looks through the bodies, the names and the tags. It decrypts what it searches,
 // which is the only way: the index the browser keeps lives in a tab this server has no
 // access to, and there is nothing on disk to search that is not ciphertext.
-func (w *Workspace) Search(ctx context.Context, query string, limit int) ([]Hit, error) {
+func (w *Workspace) Search(ctx context.Context, query Query, limit int) ([]Hit, error) {
 	built, err := w.read(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	needle := strings.ToLower(strings.TrimSpace(query))
-	if needle == "" {
-		return nil, fmt.Errorf("%w: an empty query", ErrPath)
+	needle := strings.ToLower(strings.TrimSpace(query.Text))
+	tag := strings.ToLower(strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(query.Tag), "#")))
+
+	if needle == "" && tag == "" {
+		return nil, fmt.Errorf("%w: give something to search for, or a tag", ErrPath)
+	}
+
+	under := clean(query.Under)
+	if under != "" {
+		if _, ok := built.folders[under]; !ok {
+			return nil, fmt.Errorf("%w: %s", ErrPath, under)
+		}
 	}
 
 	paths := sortedKeys(built.notes)
+
+	if under != "" {
+		prefix := under + "/"
+		within := paths[:0:0]
+
+		for _, path := range paths {
+			if strings.HasPrefix(path, prefix) {
+				within = append(within, path)
+			}
+		}
+
+		paths = within
+	}
+
+	// The tag lives in the metadata the tree already carries, so filtering on it costs
+	// nothing and spares opening the bodies that could not match.
+	if tag != "" {
+		tagged := paths[:0:0]
+
+		for _, path := range paths {
+			if hasTag(built.notes[path].node.Tags, tag) {
+				tagged = append(tagged, path)
+			}
+		}
+
+		paths = tagged
+	}
 
 	ids := make([]int64, 0, len(paths))
 	for _, path := range paths {
@@ -416,6 +490,13 @@ func (w *Workspace) Search(ctx context.Context, query string, limit int) ([]Hit,
 			continue
 		}
 
+		// With no text to look for, matching the tag or the subtree is the whole query.
+		if needle == "" {
+			hits = append(hits, Hit{Node: at.node, Snippet: first(body)})
+
+			continue
+		}
+
 		snippet, found := excerpt(body, needle)
 
 		switch {
@@ -427,6 +508,16 @@ func (w *Workspace) Search(ctx context.Context, query string, limit int) ([]Hit,
 	}
 
 	return hits, nil
+}
+
+func hasTag(tags []string, want string) bool {
+	for _, tag := range tags {
+		if strings.EqualFold(strings.TrimSpace(tag), want) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (w *Workspace) openMeta(scopeID int64, version int32, blob vault.Blob, ref envelope.EntityRef) (envelope.Meta, error) {

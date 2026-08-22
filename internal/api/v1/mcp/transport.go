@@ -159,7 +159,9 @@ func toolError(err error) error {
 	case errors.Is(err, vault.ErrScopeMismatch):
 		return errors.New("that folder is sealed with a different key, so the note would be " +
 			"unreadable there — leave it where it is")
-	case errors.Is(err, mcp.ErrTooLarge), errors.Is(err, mcp.ErrPath):
+	case errors.Is(err, mcp.ErrNotEmpty):
+		return fmt.Errorf("%w — trash what is inside it first", err)
+	case errors.Is(err, mcp.ErrTooLarge), errors.Is(err, mcp.ErrPath), errors.Is(err, mcp.ErrTag):
 		// Already phrased for the caller; wrapping would only bury it.
 		return err
 	case errors.Is(err, vault.ErrDepthExceeded):
@@ -199,6 +201,10 @@ func reason(err error) string {
 		return "busy"
 	case errors.Is(err, mcp.ErrTooLarge):
 		return "too-large"
+	case errors.Is(err, mcp.ErrNotEmpty):
+		return "not-empty"
+	case errors.Is(err, mcp.ErrTag):
+		return "tag"
 	case errors.Is(err, vault.ErrVersionConflict):
 		return "conflict"
 	case errors.Is(err, vault.ErrScopeMismatch):

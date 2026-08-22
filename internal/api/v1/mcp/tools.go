@@ -27,6 +27,26 @@ type nodeOut struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+// patch turns what was sent into what SetMeta reads: absent means "leave it", and the two
+// have to stay distinguishable because the whole field is rewritten either way.
+func (in metaInput) patch() mcp.MetaPatch {
+	patch := mcp.MetaPatch{}
+
+	if in.Name != "" {
+		patch.Name = &in.Name
+	}
+
+	if in.Icon != "" {
+		patch.Icon = &in.Icon
+	}
+
+	if in.Tags != nil {
+		patch.Tags = &in.Tags
+	}
+
+	return patch
+}
+
 func nodeOf(n mcp.Node) nodeOut {
 	return nodeOut{
 		Path: n.Path, Kind: n.Kind, Name: n.Name, Icon: n.Icon, Tags: n.Tags,
@@ -60,7 +80,10 @@ type (
 	}
 
 	searchInput struct {
-		Query string `json:"query" jsonschema:"Text to look for in note titles and bodies."`
+		Query string `json:"query,omitempty" jsonschema:"Text to look for in note titles and bodies. Optional when a tag is given."`
+		//nolint:lll // the description is the contract a model reads.
+		Path  string `json:"path,omitempty" jsonschema:"Restrict the search to this folder and everything under it. Omit to search the whole vault."`
+		Tag   string `json:"tag,omitempty"  jsonschema:"Only notes carrying this tag. Combines with query and path."`
 		Limit int    `json:"limit,omitempty" jsonschema:"Maximum results, 1 to 50. Defaults to 10."`
 	}
 	searchOutput struct {
@@ -105,10 +128,36 @@ type (
 	}
 
 	trashInput struct {
-		Path string `json:"path" jsonschema:"Path of the note to move to the trash. It is recoverable from there."`
+		//nolint:lll // the description is the contract a model reads.
+		Path string `json:"path" jsonschema:"Path of the note to move to the trash. Recoverable with shelf_list_trash and shelf_restore."`
 	}
 	trashOutput struct {
 		Trashed string `json:"trashed"`
+	}
+
+	metaInput struct {
+		Path string `json:"path" jsonschema:"Path of the note or folder to change."`
+		Name string `json:"name,omitempty" jsonschema:"New name, one path segment. Omit to leave it. Use shelf_move_note to change the folder."`
+		Icon string `json:"icon,omitempty" jsonschema:"Icon name, or an empty string to remove it. Omit to leave it."`
+		//nolint:lll // the description is the contract a model reads.
+		Tags []string `json:"tags,omitempty" jsonschema:"The complete set of tags, replacing whatever is there. Lowercase, letters and digits then also - and _. Send an empty array to clear them; omit to leave them."`
+	}
+
+	restoreInput struct {
+		ID int64 `json:"id" jsonschema:"The id shelf_list_trash reported for the item."`
+	}
+
+	trashedOut struct {
+		ID   int64  `json:"id"`
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+		//nolint:lll // the description is the contract a model reads.
+		Path      string    `json:"path" jsonschema:"Where it was when it was trashed. Not an address — restore by id."`
+		TrashedAt time.Time `json:"trashed_at"`
+	}
+
+	trashListOutput struct {
+		Items []trashedOut `json:"items"`
 	}
 )
 
@@ -168,8 +217,9 @@ func (t *Transport) readTools(server *sdk.Server, connector *mcp.Connector) {
 
 	sdk.AddTool(server, &sdk.Tool{
 		Name: "shelf_search_notes",
-		Description: "Search note titles and bodies. Returns snippets; follow up with " +
-			"shelf_read_note for the full text.",
+		Description: "Search note titles and bodies. Narrow it with path to one folder, or with " +
+			"tag, or both — either of query and tag is enough on its own. Returns snippets; " +
+			"follow up with shelf_read_note for the full text.",
 	}, func(ctx context.Context, _ *sdk.CallToolRequest, in searchInput) (*sdk.CallToolResult, searchOutput, error) {
 		workspace, err := t.open(ctx, connector)
 		if err != nil {
@@ -183,7 +233,7 @@ func (t *Transport) readTools(server *sdk.Server, connector *mcp.Connector) {
 
 		limit = min(limit, maxSearchLimit)
 
-		hits, err := workspace.Search(ctx, in.Query, limit)
+		hits, err := workspace.Search(ctx, mcp.Query{Text: in.Query, Under: in.Path, Tag: in.Tag}, limit)
 		if err != nil {
 			return nil, searchOutput{}, t.logged("shelf_search_notes", connector, err)
 		}
@@ -284,6 +334,89 @@ func (t *Transport) writeTools(server *sdk.Server, connector *mcp.Connector) {
 		}
 
 		return nil, writeOutput{Note: nodeOf(*note)}, nil
+	})
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name: "shelf_set_meta",
+		Description: "Rename a note or folder, or set a note's icon and tags. Everything left " +
+			"out is kept: these share one encrypted field, so this replaces all of it at once.",
+	}, func(ctx context.Context, _ *sdk.CallToolRequest, in metaInput) (*sdk.CallToolResult, writeOutput, error) {
+		workspace, err := t.open(ctx, connector)
+		if err != nil {
+			return nil, writeOutput{}, t.logged("shelf_set_meta", connector, err)
+		}
+
+		node, err := workspace.SetMeta(ctx, in.Path, in.patch())
+		if err != nil {
+			return nil, writeOutput{}, t.logged("shelf_set_meta", connector, err)
+		}
+
+		return nil, writeOutput{Note: nodeOf(*node)}, nil
+	})
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name: "shelf_trash_folder",
+		Description: "Move an empty folder to the trash. Trash its notes first: a folder taken " +
+			"with its contents would remove a whole project by naming one directory.",
+	}, func(ctx context.Context, _ *sdk.CallToolRequest, in folderInput) (*sdk.CallToolResult, trashOutput, error) {
+		workspace, err := t.open(ctx, connector)
+		if err != nil {
+			return nil, trashOutput{}, t.logged("shelf_trash_folder", connector, err)
+		}
+
+		if err := workspace.TrashFolder(ctx, in.Path); err != nil {
+			return nil, trashOutput{}, t.logged("shelf_trash_folder", connector, err)
+		}
+
+		return nil, trashOutput{Trashed: in.Path}, nil
+	})
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name: "shelf_list_trash",
+		Description: "List what is in the trash, with the id each item is restored by. Trashed " +
+			"items are addressed by id, not path: the place a note came from may hold another now.",
+	}, func(ctx context.Context, _ *sdk.CallToolRequest, _ struct{}) (*sdk.CallToolResult, trashListOutput, error) {
+		workspace, err := t.open(ctx, connector)
+		if err != nil {
+			return nil, trashListOutput{}, t.logged("shelf_list_trash", connector, err)
+		}
+
+		binned, err := workspace.Trash(ctx)
+		if err != nil {
+			return nil, trashListOutput{}, t.logged("shelf_list_trash", connector, err)
+		}
+
+		out := trashListOutput{Items: make([]trashedOut, 0, len(binned))}
+		for _, item := range binned {
+			out.Items = append(out.Items, trashedOut{
+				ID: item.ID, Kind: item.Kind, Name: item.Name,
+				Path: item.Path, TrashedAt: item.TrashedAt,
+			})
+		}
+
+		return nil, out, nil
+	})
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name: "shelf_restore",
+		Description: "Take a note or folder out of the trash, using an id from shelf_list_trash. " +
+			"Restoring a folder brings back everything that was inside it, so its notes leave " +
+			"the trash at the same time and their own ids stop being restorable.",
+	}, func(ctx context.Context, _ *sdk.CallToolRequest, in restoreInput) (*sdk.CallToolResult, trashedOut, error) {
+		workspace, err := t.open(ctx, connector)
+		if err != nil {
+			return nil, trashedOut{}, t.logged("shelf_restore", connector, err)
+		}
+
+		item, err := workspace.Restore(ctx, in.ID)
+		if err != nil {
+			return nil, trashedOut{}, t.logged("shelf_restore", connector, err)
+		}
+
+		return nil, trashedOut{
+			ID: item.ID, Kind: item.Kind, Name: item.Name,
+			Path: item.Path, TrashedAt: item.TrashedAt,
+		}, nil
 	})
 
 	// Trash only. Purging destroys ciphertext nothing brings back, which is not a decision

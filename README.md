@@ -371,9 +371,22 @@ folder with its own key stays private without a second mechanism for it.
 
 ### What Claude can do
 
-Nine tools over Streamable HTTP at `/api/v1/mcp`: list the tree, read a note, search, create
-folders and notes, replace a body under its optimistic lock, append, move, and put a note in
-the trash. Purging is not offered at all — it destroys ciphertext nothing brings back.
+Thirteen tools over Streamable HTTP at `/api/v1/mcp`: list the tree; read, search, create,
+overwrite under an optimistic lock, append, move, rename and retag; create and trash folders;
+and list and restore what is in the bin. Purging is not offered at all — it destroys
+ciphertext nothing brings back.
+
+Three of them have shapes worth knowing. Renaming and retagging are the same call, because
+a name, an icon and a set of tags share one ciphertext: writing any of them back rebuilds all
+of it, and a separate rename would be the shape that silently drops an icon. Trashing a
+folder takes only an empty one — a folder goes with its whole subtree, and a model tidying up
+one stray directory should not be able to remove a project by naming its folder. And the bin
+is addressed by id rather than by path, because the place a trashed note came from may hold a
+different note now.
+
+Searching narrows by folder, by tag, or both, and either the text or the tag is enough on its
+own. The narrowing is not only a filter: a search opens every note it looks at, so scoping is
+what keeps the cost of asking about one project proportional to that project.
 
 Two refusals are worth knowing about. A write quoting a stale `content_seq` is refused rather
 than merged, because nobody here can merge two ciphertexts. And a write to a note somebody

@@ -230,7 +230,7 @@ func TestConnectorSearchesBodies(t *testing.T) {
 		}
 	}
 
-	hits, err := space.Search(ctx, "postgres", 10)
+	hits, err := space.Search(ctx, mcp.Query{Text: "postgres"}, 10)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestConnectorSearchesBodies(t *testing.T) {
 	}
 
 	// A title match counts even when the body says nothing.
-	byTitle, err := space.Search(ctx, "scratchpad", 10)
+	byTitle, err := space.Search(ctx, mcp.Query{Text: "scratchpad"}, 10)
 	if err != nil {
 		t.Fatalf("Search by title: %v", err)
 	}
@@ -414,6 +414,256 @@ func TestConnectorKeepsOnePathNamespace(t *testing.T) {
 
 	if _, err := space.MoveNote(ctx, "movable.md", "taken.md"); !errors.Is(err, mcp.ErrPath) {
 		t.Errorf("a move created a folder where a note already was: %v", err)
+	}
+}
+
+// Renaming rewrites the one field that also holds the icon and the tags, so anything the
+// caller did not mention has to survive it.
+func TestConnectorRenameKeepsEverythingElse(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	if _, err := space.CreateNote(ctx, "projects/alpha/decisions.md", "chose one"); err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	icon, tags := "book", []string{"Alpha", "#WIP", "alpha"}
+
+	if _, err := space.SetMeta(ctx, "projects/alpha/decisions.md", mcp.MetaPatch{
+		Icon: &icon, Tags: &tags,
+	}); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+
+	name := "adr.md"
+
+	renamed, err := space.SetMeta(ctx, "projects/alpha/decisions.md", mcp.MetaPatch{Name: &name})
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	if renamed.Path != "projects/alpha/adr.md" {
+		t.Errorf("renamed to %q", renamed.Path)
+	}
+
+	// Lowercased, hash stripped, duplicate dropped — the form the rest of the system reads.
+	if got := strings.Join(renamed.Tags, ","); got != "alpha,wip" {
+		t.Errorf("tags came back as %q", got)
+	}
+
+	if renamed.Icon != "book" {
+		t.Errorf("the rename dropped the icon: %q", renamed.Icon)
+	}
+
+	note, err := space.ReadNote(ctx, "projects/alpha/adr.md")
+	if err != nil {
+		t.Fatalf("ReadNote after rename: %v", err)
+	}
+
+	if note.Body != "chose one" {
+		t.Errorf("the rename touched the body: %q", note.Body)
+	}
+
+	// A folder renames through the same call.
+	folder := "beta"
+
+	if _, err := space.SetMeta(ctx, "projects/alpha", mcp.MetaPatch{Name: &folder}); err != nil {
+		t.Fatalf("rename folder: %v", err)
+	}
+
+	if _, err := space.ReadNote(ctx, "projects/beta/adr.md"); err != nil {
+		t.Errorf("the note did not move with its folder: %v", err)
+	}
+}
+
+func TestConnectorRenameRefusesWhatItShould(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	for _, path := range []string{"notes/one.md", "notes/two.md"} {
+		if _, err := space.CreateNote(ctx, path, "x"); err != nil {
+			t.Fatalf("CreateNote %s: %v", path, err)
+		}
+	}
+
+	taken := "two.md"
+
+	if _, err := space.SetMeta(ctx, "notes/one.md", mcp.MetaPatch{Name: &taken}); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("a rename onto an occupied path was allowed: %v", err)
+	}
+
+	for name, bad := range map[string]string{
+		"a path rather than a name": "other/one.md",
+		"an empty name":             "   ",
+		"a bidi override":           "one\u202egnp.exe",
+	} {
+		value := bad
+
+		if _, err := space.SetMeta(ctx, "notes/one.md", mcp.MetaPatch{Name: &value}); !errors.Is(err, mcp.ErrPath) {
+			t.Errorf("%s was accepted as a name: %v", name, err)
+		}
+	}
+
+	for name, bad := range map[string][]string{
+		"a tag with a space":    {"two words"},
+		"a tag starting with -": {"-lead"},
+	} {
+		value := bad
+
+		if _, err := space.SetMeta(ctx, "notes/one.md", mcp.MetaPatch{Tags: &value}); !errors.Is(err, mcp.ErrTag) {
+			t.Errorf("%s was accepted: %v", name, err)
+		}
+	}
+}
+
+// The gap this closes: trashing the only note in a folder used to leave the folder behind
+// with nothing able to remove it.
+func TestConnectorTrashesAndRestores(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	if _, err := space.CreateNote(ctx, "inbox/subfolder-test/stray.md", "x"); err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	// A folder with something in it stays, and says what is in the way.
+	if err := space.TrashFolder(ctx, "inbox/subfolder-test"); !errors.Is(err, mcp.ErrNotEmpty) {
+		t.Fatalf("trashing a full folder returned %v, want ErrNotEmpty", err)
+	}
+
+	if err := space.TrashNote(ctx, "inbox/subfolder-test/stray.md"); err != nil {
+		t.Fatalf("TrashNote: %v", err)
+	}
+
+	if err := space.TrashFolder(ctx, "inbox/subfolder-test"); err != nil {
+		t.Fatalf("TrashFolder once empty: %v", err)
+	}
+
+	binned, err := space.Trash(ctx)
+	if err != nil {
+		t.Fatalf("Trash: %v", err)
+	}
+
+	kinds := map[string]int64{}
+	for _, item := range binned {
+		kinds[item.Kind+":"+item.Name] = item.ID
+	}
+
+	note, ok := kinds[mcp.KindNote+":stray.md"]
+	if !ok {
+		t.Fatalf("the trashed note is not in the bin: %+v", binned)
+	}
+
+	if _, ok := kinds[mcp.KindFolder+":subfolder-test"]; !ok {
+		t.Fatalf("the trashed folder is not in the bin: %+v", binned)
+	}
+
+	// Restoring a folder brings back everything that was under it, in one statement — so
+	// the note comes back with it, and its own id is no longer in the bin. A caller that
+	// restored the folder and then reached for the note has nothing left to do.
+	if _, err := space.Restore(ctx, kinds[mcp.KindFolder+":subfolder-test"]); err != nil {
+		t.Fatalf("restore folder: %v", err)
+	}
+
+	if _, err := space.ReadNote(ctx, "inbox/subfolder-test/stray.md"); err != nil {
+		t.Errorf("the note did not come back with its folder: %v", err)
+	}
+
+	if _, err := space.Restore(ctx, note); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("the note was still in the bin after its folder came back: %v", err)
+	}
+
+	// A note trashed on its own comes back on its own.
+	if err := space.TrashNote(ctx, "inbox/subfolder-test/stray.md"); err != nil {
+		t.Fatalf("TrashNote again: %v", err)
+	}
+
+	again, err := space.Trash(ctx)
+	if err != nil {
+		t.Fatalf("Trash: %v", err)
+	}
+
+	var id int64
+	for _, item := range again {
+		if item.Name == "stray.md" {
+			id = item.ID
+		}
+	}
+
+	if _, err := space.Restore(ctx, id); err != nil {
+		t.Fatalf("restore note on its own: %v", err)
+	}
+
+	if _, err := space.ReadNote(ctx, "inbox/subfolder-test/stray.md"); err != nil {
+		t.Errorf("the restored note is not back: %v", err)
+	}
+
+	// An id that is not in this bin is not a handle.
+	if _, err := space.Restore(ctx, 999999); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("restoring an unknown id returned %v", err)
+	}
+}
+
+func TestConnectorSearchNarrows(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	for path, body := range map[string]string{
+		"projects/alpha/notes.md": "Postgres is the store here.",
+		"context/stack.md":        "Postgres and Go.",
+	} {
+		if _, err := space.CreateNote(ctx, path, body); err != nil {
+			t.Fatalf("CreateNote %s: %v", path, err)
+		}
+	}
+
+	tags := []string{"infra"}
+	if _, err := space.SetMeta(ctx, "context/stack.md", mcp.MetaPatch{Tags: &tags}); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+
+	all, err := space.Search(ctx, mcp.Query{Text: "postgres"}, 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+
+	if len(all) != 2 {
+		t.Fatalf("an unscoped search found %d, want 2", len(all))
+	}
+
+	under, err := space.Search(ctx, mcp.Query{Text: "postgres", Under: "projects"}, 10)
+	if err != nil {
+		t.Fatalf("scoped search: %v", err)
+	}
+
+	if len(under) != 1 || under[0].Path != "projects/alpha/notes.md" {
+		t.Errorf("scoping to projects/ found %+v", under)
+	}
+
+	// A tag is enough on its own, with or without the hash.
+	tagged, err := space.Search(ctx, mcp.Query{Tag: "#infra"}, 10)
+	if err != nil {
+		t.Fatalf("tag search: %v", err)
+	}
+
+	if len(tagged) != 1 || tagged[0].Path != "context/stack.md" {
+		t.Errorf("searching by tag found %+v", tagged)
+	}
+
+	if _, err := space.Search(ctx, mcp.Query{}, 10); !errors.Is(err, mcp.ErrPath) {
+		t.Error("a search with nothing to look for was accepted")
+	}
+
+	if _, err := space.Search(ctx, mcp.Query{Text: "x", Under: "nowhere"}, 10); !errors.Is(err, mcp.ErrPath) {
+		t.Error("a search under a folder that does not exist was accepted")
 	}
 }
 
