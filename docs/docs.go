@@ -2773,6 +2773,212 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/vaults/{id}/mcp": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Read the connector on a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.ConnectorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Give the connector its keys",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "scope keys sealed to the connector",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mcp.admitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.ConnectorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Remove the connector from a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.DisabledResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vaults/{id}/mcp/identity": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Create the connector identity for a vault",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "vault id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "what the connector may do",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mcp.enableRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/mcp.ConnectorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/vaults/{id}/members": {
             "get": {
                 "security": [
@@ -4539,6 +4745,133 @@ const docTemplate = `{
                     "maxLength": 128,
                     "minLength": 1,
                     "example": "Dmitry Murygin"
+                }
+            }
+        },
+        "mcp.ConnectorResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "fingerprint": {
+                    "description": "Fingerprint is what a person compares against the one the server logged at startup.",
+                    "type": "string",
+                    "example": "0XXE EW2H S7R6 V26W"
+                },
+                "key_state": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "public_key": {
+                    "description": "PublicKey is the identity blob the browser seals scope keys to.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "ready": {
+                    "description": "Ready is false between the two halves of enabling: the member exists and reads nothing.",
+                    "type": "boolean",
+                    "example": true
+                },
+                "role": {
+                    "type": "string",
+                    "example": "editor"
+                },
+                "user_id": {
+                    "description": "UserID is the connector's account. It is a real member, so it appears in the member\nlist and in the rotation plan like anybody else.",
+                    "type": "integer",
+                    "example": 42
+                },
+                "vault_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "mcp.DisabledResponse": {
+            "type": "object",
+            "properties": {
+                "scopes_awaiting_rotation": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "mcp.admitRequest": {
+            "type": "object",
+            "required": [
+                "keys"
+            ],
+            "properties": {
+                "keys": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/mcp.sealedKeyRequest"
+                    }
+                }
+            }
+        },
+        "mcp.enableRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "editor",
+                        "viewer"
+                    ],
+                    "example": "editor"
+                }
+            }
+        },
+        "mcp.sealedKeyRequest": {
+            "type": "object",
+            "required": [
+                "key_version",
+                "nonce",
+                "scope_id",
+                "wrapped_key"
+            ],
+            "properties": {
+                "key_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "nonce": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "minItems": 12,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
+                },
+                "scope_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "wrap_algorithm": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "wrapped_key": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 32,
+                    "items": {
+                        "type": "integer",
+                        "format": "byte"
+                    }
                 }
             }
         },

@@ -1013,6 +1013,102 @@ definitions:
     required:
     - display_name
     type: object
+  mcp.ConnectorResponse:
+    properties:
+      created_at:
+        type: string
+      fingerprint:
+        description: Fingerprint is what a person compares against the one the server
+          logged at startup.
+        example: 0XXE EW2H S7R6 V26W
+        type: string
+      key_state:
+        example: ok
+        type: string
+      public_key:
+        description: PublicKey is the identity blob the browser seals scope keys to.
+        items:
+          format: byte
+          type: integer
+        type: array
+      ready:
+        description: 'Ready is false between the two halves of enabling: the member
+          exists and reads nothing.'
+        example: true
+        type: boolean
+      role:
+        example: editor
+        type: string
+      user_id:
+        description: |-
+          UserID is the connector's account. It is a real member, so it appears in the member
+          list and in the rotation plan like anybody else.
+        example: 42
+        type: integer
+      vault_id:
+        example: 1
+        type: integer
+    type: object
+  mcp.DisabledResponse:
+    properties:
+      scopes_awaiting_rotation:
+        items:
+          type: integer
+        type: array
+    type: object
+  mcp.admitRequest:
+    properties:
+      keys:
+        items:
+          $ref: '#/definitions/mcp.sealedKeyRequest'
+        maxItems: 64
+        minItems: 1
+        type: array
+    required:
+    - keys
+    type: object
+  mcp.enableRequest:
+    properties:
+      role:
+        enum:
+        - editor
+        - viewer
+        example: editor
+        type: string
+    required:
+    - role
+    type: object
+  mcp.sealedKeyRequest:
+    properties:
+      key_version:
+        minimum: 1
+        type: integer
+      nonce:
+        items:
+          format: byte
+          type: integer
+        maxItems: 32
+        minItems: 12
+        type: array
+      scope_id:
+        minimum: 1
+        type: integer
+      wrap_algorithm:
+        maxLength: 64
+        type: string
+      wrapped_key:
+        items:
+          format: byte
+          type: integer
+        maxItems: 1024
+        minItems: 32
+        type: array
+    required:
+    - key_version
+    - nonce
+    - scope_id
+    - wrapped_key
+    type: object
   response.Error:
     properties:
       code:
@@ -3945,6 +4041,136 @@ paths:
       summary: Leave a vault
       tags:
       - access
+  /api/v1/vaults/{id}/mcp:
+    delete:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.DisabledResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove the connector from a vault
+      tags:
+      - mcp
+    get:
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.ConnectorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the connector on a vault
+      tags:
+      - mcp
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: scope keys sealed to the connector
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.admitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.ConnectorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Give the connector its keys
+      tags:
+      - mcp
+  /api/v1/vaults/{id}/mcp/identity:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: vault id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: what the connector may do
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.enableRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/mcp.ConnectorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create the connector identity for a vault
+      tags:
+      - mcp
   /api/v1/vaults/{id}/members:
     get:
       parameters:

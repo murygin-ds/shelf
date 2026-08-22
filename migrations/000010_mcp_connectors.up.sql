@@ -27,7 +27,14 @@ CREATE TABLE IF NOT EXISTS vault_mcp
     -- changed has to be noticed rather than silently failing to decrypt.
     identity_fpr      TEXT        NOT NULL,
     enabled_by        BIGINT REFERENCES users (id) ON DELETE SET NULL,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    -- A connector is a membership. Saying so here rather than in code is what makes turning
+    -- one off the same act as removing any other member: the existing removal deletes the
+    -- membership, and this row goes with it. Without the cascade, disabling would be two
+    -- transactions that can disagree, and the pair that disagreed would be unrecoverable.
+    FOREIGN KEY (vault_id, connector_user_id)
+        REFERENCES vault_members (vault_id, user_id) ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS vault_mcp_connector_key ON vault_mcp (connector_user_id);

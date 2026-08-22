@@ -6,10 +6,12 @@ import (
 	"shelf/internal/api/middleware"
 	accessapi "shelf/internal/api/v1/access"
 	authapi "shelf/internal/api/v1/auth"
+	mcpapi "shelf/internal/api/v1/mcp"
 	realtimeapi "shelf/internal/api/v1/realtime"
 	vaultapi "shelf/internal/api/v1/vault"
 	"shelf/internal/auth"
 	"shelf/internal/config"
+	"shelf/internal/mcp"
 	"shelf/internal/ratelimit"
 	"shelf/internal/realtime"
 	"shelf/internal/storage/postgres"
@@ -27,6 +29,7 @@ type Deps struct {
 	Auth     config.Auth
 	HTTP     config.HTTP
 	Realtime config.Realtime
+	MCP      config.MCP
 }
 
 // Register attaches the v1 routes to the given group (usually /api). It returns the live
@@ -84,6 +87,24 @@ func Register(rg *gin.RouterGroup, deps Deps) *realtime.Hub {
 	workspaceHandler.RegisterPublicRoutes(group)
 	accessapi.NewHandler(accessService, inviteLookupLimit(deps.Auth.RateLimit), deps.Logger).
 		RegisterRoutes(group, protected)
+
+	// Mounted only when the connector is configured: a server that was never meant to hold a
+	// key should not advertise the way to give it one.
+	if deps.MCP.Enabled {
+		mcpService := mcp.NewService(mcp.Deps{
+			Repo:    postgres.NewMCPRepository(deps.Pool, announcer),
+			Members: accessRepo,
+			Remover: accessRepo,
+			Hasher:  auth.NewHasher(deps.Auth.Argon2),
+			Config:  deps.MCP,
+			Logger:  deps.Logger,
+		})
+
+		mcpapi.NewHandler(mcpService, deps.Logger).RegisterRoutes(protected)
+
+		deps.Logger.Warn("the MCP connector is enabled: vaults connected to it are readable by this server",
+			zap.String("public_base_url", deps.MCP.PublicBaseURL))
+	}
 
 	if hub == nil {
 		return nil

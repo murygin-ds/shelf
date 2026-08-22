@@ -55,15 +55,15 @@ func connect(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("ping: %v", err)
 	}
 
-	migrate(t, pool)
+	applySchema(t, pool)
 
 	return pool
 }
 
-// migrate applies every up migration in order. The .down.sql files run first so a rerun
+// applySchema applies every up migration in order. The .down.sql files run first so a rerun
 // starts from nothing: these tests seed at fixed shapes and a leftover row from a previous
 // run would make them pass or fail for reasons that have nothing to do with the code.
-func migrate(t *testing.T, pool *pgxpool.Pool) {
+func applySchema(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -563,7 +563,7 @@ func TestMigrationsAreReversible(t *testing.T) {
 		t.Fatalf("rolling every migration back left %v behind", left)
 	}
 
-	migrate(t, pool)
+	applySchema(t, pool)
 
 	if after := tables(); strings.Join(after, ",") != strings.Join(before, ",") {
 		t.Fatalf("schema differs after down+up:\n before %v\n after  %v", before, after)

@@ -112,6 +112,7 @@ func NewRouter(deps Deps) (*Router, error) {
 		Auth:     deps.Config.Auth,
 		HTTP:     deps.Config.HTTP,
 		Realtime: deps.Config.Realtime,
+		MCP:      deps.Config.MCP,
 	})
 
 	router := &Router{Engine: engine}

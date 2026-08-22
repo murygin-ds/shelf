@@ -75,6 +75,19 @@ realtime:
   send_queue: 256 # a reader slower than this is dropped rather than grown into memory
   update_rate: { limit: 60, window: 10s }
 
+# The Claude connector. Off by default: it is the one feature that hands this server a key,
+# and everything else in the system is built on it not having one.
+mcp:
+  enabled: false # SHELF_MCP_ENABLED
+  # Wraps the connector keys at rest. At least 32 characters, and never in this file.
+  # Generate with: openssl rand -hex 32
+  # There is no ephemeral fallback: a generated secret would make the connector keys already
+  # in the database unopenable after a restart.
+  secret: "" # SHELF_MCP_SECRET
+  # The address a connector is reached at, exactly as it is typed into Claude. Required when
+  # enabled: the discovery metadata has to name the same URL byte for byte.
+  public_base_url: "" # SHELF_MCP_PUBLIC_BASE_URL
+
 log:
   level: debug # debug | info | warn | error
   format: console # console | json
