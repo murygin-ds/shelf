@@ -34,6 +34,9 @@ postgres:
   max_conn_lifetime: 30m
   max_conn_idle_time: 5m
   connect_timeout: 5s
+  # Applies the migrations built into the binary on startup. Turn off only where something
+  # else owns the schema.
+  auto_migrate: true # SHELF_POSTGRES_AUTO_MIGRATE
 
 auth:
   secret: "" # SHELF_AUTH_SECRET, at least 32 characters; required everywhere except local

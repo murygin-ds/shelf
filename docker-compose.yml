@@ -25,6 +25,8 @@ services:
       context: .
     container_name: shelf-backend
     restart: unless-stopped
+    # The schema is applied by the service itself on startup, from the migrations built into
+    # the binary, so waiting for the database to be healthy is the whole of the ordering.
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,6 +38,11 @@ services:
       SHELF_POSTGRES_DATABASE: ${SHELF_POSTGRES_DATABASE:-shelf}
       SHELF_APP_ENV: ${SHELF_APP_ENV:-local}
       SHELF_LOG_FORMAT: json
+      # A value in .env is substituted into this file, not handed to the container, so a
+      # secret that is not named here never reaches the process. Without it the service
+      # either mints an ephemeral one and invalidates every token on restart, or refuses to
+      # start at all outside app.env=local — and both look like the image being broken.
+      SHELF_AUTH_SECRET: ${SHELF_AUTH_SECRET:-}
     ports:
       - "${SHELF_HTTP_PORT:-8080}:8080"
 

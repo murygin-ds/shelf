@@ -110,6 +110,13 @@ type Postgres struct {
 	MaxConnLifetime time.Duration `mapstructure:"max_conn_lifetime"  validate:"required"`
 	MaxConnIdleTime time.Duration `mapstructure:"max_conn_idle_time" validate:"required"`
 	ConnectTimeout  time.Duration `mapstructure:"connect_timeout"    validate:"required"`
+	// AutoMigrate applies the migrations embedded in the binary at startup.
+	//
+	// On by default because the image has no shell to run a migration tool in, and a
+	// deployment that needs a second step is a deployment that starts against an empty
+	// database. Turn it off where something else owns the schema — a managed database with
+	// its own pipeline, or a replica that must not race the instance that migrates.
+	AutoMigrate bool `mapstructure:"auto_migrate"`
 }
 
 // DSN builds the PostgreSQL connection string
@@ -318,6 +325,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("postgres.max_conn_lifetime", 30*time.Minute)
 	v.SetDefault("postgres.max_conn_idle_time", 5*time.Minute)
 	v.SetDefault("postgres.connect_timeout", 5*time.Second)
+	v.SetDefault("postgres.auto_migrate", true)
 
 	v.SetDefault("auth.secret", "")
 	v.SetDefault("auth.issuer", "shelf")

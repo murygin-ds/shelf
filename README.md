@@ -478,6 +478,23 @@ turns the checks off entirely.
 
 ## Migrations
 
+The migrations are embedded in the binary and applied on startup, so a fresh database and a
+new image need nothing else: the service brings the schema to the version it was built
+against before it serves a request. The driver takes a Postgres advisory lock first, so
+several replicas starting at once is safe — one migrates and the rest find nothing to do.
+
+Two cases stop the service rather than letting it run against a schema it does not expect.
+A database left dirty by a half-applied migration is one: nothing can work out how far that
+migration got, so it has to be looked at and cleared with `make migrate-force`. A database
+ahead of the binary is the other, which is what a rollback to an older image looks like.
+
+Set `postgres.auto_migrate: false` (`SHELF_POSTGRES_AUTO_MIGRATE=false`) where something
+else owns the schema — a managed database with its own pipeline, or a replica that must not
+race the instance that migrates.
+
+The same migrations are driven by hand during development, through the same
+`schema_migrations` table, so the two paths cannot disagree about where the database stands:
+
 ```bash
 make migrate-create name=add_books   # a new .up.sql/.down.sql pair
 make migrate-up                      # apply
@@ -519,6 +536,13 @@ Four of them have to be set for any real deployment:
 | `http.trusted_proxies`   | otherwise every per-IP limit sees only the proxy and becomes one shared bucket |
 | `http.handler_timeout`   | bounds the work behind a request; ten slow queries would otherwise take the pool |
 | `postgres.ssl_mode`      | `require` or `verify-full` whenever Postgres is not on this host            |
+
+A value in `.env` is substituted into `docker-compose.yml`, not handed to the container, so
+anything the app needs has to be named in its `environment` block. `SHELF_AUTH_SECRET` is
+passed through there for exactly that reason.
+
+The schema needs no separate step: the image carries its migrations and applies them once
+Postgres is reachable.
 
 `make docker-up` is a development convenience: it publishes Postgres on the host with a
 default password and is not meant to run anywhere else.
