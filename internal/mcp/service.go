@@ -34,18 +34,28 @@ type Remover interface {
 // Deps are the service's dependencies.
 type Deps struct {
 	Repo    Repository
+	Tokens  Tokens
+	OAuth   OAuth
 	Members Members
 	Remover Remover
-	Hasher  Hasher
-	Config  config.MCP
-	Logger  *zap.Logger
+	Vaults  Vaults
+	// Live is optional: with the socket off there is no session to collide with, and a
+	// nil one means every write goes ahead.
+	Live   Live
+	Hasher Hasher
+	Config config.MCP
+	Logger *zap.Logger
 }
 
 // Service turns a vault into one this server holds a key to, and back again.
 type Service struct {
 	repo    Repository
+	tokens  Tokens
+	oauth   OAuth
 	members Members
 	remover Remover
+	vaults  Vaults
+	live    Live
 	hasher  Hasher
 	cfg     config.MCP
 	log     *zap.Logger
@@ -55,8 +65,12 @@ type Service struct {
 func NewService(deps Deps) *Service {
 	return &Service{
 		repo:    deps.Repo,
+		tokens:  deps.Tokens,
+		oauth:   deps.OAuth,
 		members: deps.Members,
 		remover: deps.Remover,
+		vaults:  deps.Vaults,
+		live:    deps.Live,
 		hasher:  deps.Hasher,
 		cfg:     deps.Config,
 		log:     deps.Logger,
@@ -182,6 +196,30 @@ func (s *Service) Keyring(ctx context.Context, vaultID int64) (*Keyring, error) 
 	}
 
 	return NewKeyring(identity, grants), nil
+}
+
+// Workspace opens the connected vault for one request.
+//
+// Everything it needs is read fresh: the connector row, its wrapped keys, its grants. That
+// is what makes revocation and rotation take effect on the next call rather than the next
+// restart, and it is cheap next to decrypting the notes the call is about to touch.
+func (s *Service) Workspace(ctx context.Context, connector *Connector) (*Workspace, error) {
+	ring, err := s.Keyring(ctx, connector.VaultID)
+	if err != nil {
+		return nil, err
+	}
+
+	keys, err := s.repo.Keys(ctx, connector.VaultID)
+	if err != nil {
+		return nil, err
+	}
+
+	identity, err := OpenIdentity(s.cfg.Secret, keys)
+	if err != nil {
+		return nil, err
+	}
+
+	return Open(ctx, s.vaults, s.live, ring, identity, connector)
 }
 
 // owner is the guard on every change to a connector. Admitting a reader of a vault is one

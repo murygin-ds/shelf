@@ -23,6 +23,9 @@ type Service interface {
 	Admit(ctx context.Context, actorID, vaultID int64, keys []mcp.SealedKey) (*mcp.Connector, error)
 	Disable(ctx context.Context, actorID, vaultID int64) ([]int64, error)
 	Status(ctx context.Context, actorID, vaultID int64) (*mcp.Connector, error)
+	IssueStatic(ctx context.Context, actorID, vaultID int64, label string) (*mcp.Issued, error)
+	Credentials(ctx context.Context, actorID, vaultID int64) ([]mcp.TokenSummary, error)
+	RevokeCredentials(ctx context.Context, actorID, vaultID int64) error
 }
 
 // Handler serves the connector endpoints.
@@ -47,6 +50,99 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	connector.POST("", h.Admit)
 	connector.GET("", h.Status)
 	connector.DELETE("", h.Disable)
+
+	connector.POST("/credentials", h.IssueCredential)
+	connector.GET("/credentials", h.Credentials)
+	connector.DELETE("/credentials", h.RevokeCredentials)
+}
+
+// IssueCredential mints a fixed credential for a local client.
+//
+//	@Summary	Issue a connector credential
+//	@Tags		mcp
+//	@Security	BearerAuth
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		int					true	"vault id"
+//	@Param		request	body		credentialRequest	true	"what this credential is for"
+//	@Success	201		{object}	IssuedResponse
+//	@Failure	403		{object}	response.ErrorResponse
+//	@Failure	404		{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/mcp/credentials [post]
+func (h *Handler) IssueCredential(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	var req credentialRequest
+	if !request.Bind(c, &req) {
+		return
+	}
+
+	issued, err := h.service.IssueStatic(c.Request.Context(), userID, vaultID, req.Label)
+	if err != nil {
+		h.fail(c, "issue connector credential", err)
+
+		return
+	}
+
+	c.JSON(http.StatusCreated, IssuedResponse{
+		Secret:    issued.Secret,
+		Kind:      issued.Kind,
+		Label:     issued.Label,
+		ExpiresAt: issued.ExpiresAt,
+	})
+}
+
+// Credentials lists what is outstanding.
+//
+//	@Summary	List the connector's credentials
+//	@Tags		mcp
+//	@Security	BearerAuth
+//	@Produce	json
+//	@Param		id	path		int	true	"vault id"
+//	@Success	200	{object}	CredentialsResponse
+//	@Failure	403	{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/mcp/credentials [get]
+func (h *Handler) Credentials(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	credentials, err := h.service.Credentials(c.Request.Context(), userID, vaultID)
+	if err != nil {
+		h.fail(c, "list connector credentials", err)
+
+		return
+	}
+
+	c.JSON(http.StatusOK, credentialsResponse(credentials))
+}
+
+// RevokeCredentials signs the connector out without taking its key away.
+//
+//	@Summary	Revoke every connector credential
+//	@Tags		mcp
+//	@Security	BearerAuth
+//	@Param		id	path	int	true	"vault id"
+//	@Success	204
+//	@Failure	403	{object}	response.ErrorResponse
+//	@Router		/api/v1/vaults/{id}/mcp/credentials [delete]
+func (h *Handler) RevokeCredentials(c *gin.Context) {
+	userID, vaultID, ok := h.target(c)
+	if !ok {
+		return
+	}
+
+	if err := h.service.RevokeCredentials(c.Request.Context(), userID, vaultID); err != nil {
+		h.fail(c, "revoke connector credentials", err)
+
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 // Enable mints a connector identity for the vault.

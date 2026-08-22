@@ -176,6 +176,10 @@ type RateLimit struct {
 	// RegisterIP counts account creations from a single address. Registration is the one
 	// unauthenticated endpoint that runs Argon2id, twice, at 64 MiB
 	RegisterIP Rule `mapstructure:"register_ip"`
+	// OAuthIP counts dynamic client registrations from a single address. Claude registers
+	// itself on every fresh connection, so the endpoint has to stay open — and an endpoint
+	// that writes a row without a credential has to be counted
+	OAuthIP Rule `mapstructure:"oauth_ip"`
 }
 
 // Rule is the allowed number of requests per window
@@ -404,6 +408,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.rate_limit.invite_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.share_ip.limit", 60)
 	v.SetDefault("auth.rate_limit.share_ip.window", 15*time.Minute)
+	v.SetDefault("auth.rate_limit.oauth_ip.limit", 30)
+	v.SetDefault("auth.rate_limit.oauth_ip.window", 15*time.Minute)
 	v.SetDefault("auth.rate_limit.register_ip.limit", 20)
 	v.SetDefault("auth.rate_limit.register_ip.window", time.Hour)
 

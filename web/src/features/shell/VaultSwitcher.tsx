@@ -30,6 +30,7 @@ export function VaultSwitcher({
   onSecurity,
   onExport,
   onImport,
+  onConnectClaude,
 }: {
   onNewVault: () => void;
   /** Who the open vault is shared with, and the keys behind it: both belong to the vault,
@@ -41,6 +42,7 @@ export function VaultSwitcher({
   /** Reading one back in. It creates a vault, so it sits beside “New vault” rather than
       among the verbs that act on the one already open. */
   onImport: () => void;
+  onConnectClaude: () => void;
 }) {
   const { identity } = useSession();
   const { vaults, vaultId, loading, selectVault, setVaultIcon, setVaultLabel, removeVault } =
@@ -355,6 +357,24 @@ export function VaultSwitcher({
                     <Icon name="inbox" size={13} />
                   </span>
                   Import vault…
+                </button>
+
+                {/* A vault that hands its key to this server. It sits with the other two
+                    because it makes one, and it is worded so that nobody arrives at the
+                    dialog expecting an ordinary vault. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.action}
+                  onClick={() => {
+                    setOpen(false);
+                    onConnectClaude();
+                  }}
+                >
+                  <span className={styles.actionIcon}>
+                    <Icon name="bulb" size={13} />
+                  </span>
+                  Connect Claude…
                 </button>
 
                 <button

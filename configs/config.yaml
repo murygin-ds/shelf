@@ -62,6 +62,8 @@ auth:
     invite_ip: { limit: 20, window: 15m }
     share_ip: { limit: 60, window: 15m }
     register_ip: { limit: 20, window: 1h }
+    # Claude registers a client on every fresh connection, so this stays open and counted.
+    oauth_ip: { limit: 30, window: 15m }
 
 # The live editing socket. Turning it off costs latency, not correctness: the clients keep
 # polling, which is the channel they fall back to whenever the socket is down anyway.

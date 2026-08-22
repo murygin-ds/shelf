@@ -24,6 +24,10 @@ import (
 
 // Deps holds the dependencies of the v1 handlers.
 type Deps struct {
+	// Root is where routes that must answer at the host's root are mounted: the OAuth
+	// discovery documents live at /.well-known, which a client reads before it has any
+	// notion of an API version.
+	Root     gin.IRouter
 	Logger   *zap.Logger
 	Pool     *pgxpool.Pool
 	Auth     config.Auth
@@ -91,16 +95,35 @@ func Register(rg *gin.RouterGroup, deps Deps) *realtime.Hub {
 	// Mounted only when the connector is configured: a server that was never meant to hold a
 	// key should not advertise the way to give it one.
 	if deps.MCP.Enabled {
+		mcpRepo := postgres.NewMCPRepository(deps.Pool, announcer)
+
 		mcpService := mcp.NewService(mcp.Deps{
-			Repo:    postgres.NewMCPRepository(deps.Pool, announcer),
+			Repo:    mcpRepo,
+			Tokens:  mcpRepo,
+			OAuth:   mcpRepo,
 			Members: accessRepo,
 			Remover: accessRepo,
+			Vaults:  vaultService,
+			Live:    liveSessions(hub),
 			Hasher:  auth.NewHasher(deps.Auth.Argon2),
 			Config:  deps.MCP,
 			Logger:  deps.Logger,
 		})
 
 		mcpapi.NewHandler(mcpService, deps.Logger).RegisterRoutes(protected)
+
+		// Mounted outside the bearer middleware the rest of the API uses: an MCP credential
+		// is not an access token, and making the two interchangeable would turn a connector
+		// credential into a way into somebody's account.
+		mcpapi.NewTransport(mcpService, deps.MCP.PublicBaseURL, deps.Logger).RegisterRoutes(group)
+
+		oauth := mcpapi.NewOAuth(mcpService, deps.MCP.PublicBaseURL,
+			oauthLimit(deps.Auth.RateLimit), deps.Logger)
+		oauth.RegisterRoutes(group, protected)
+
+		if deps.Root != nil {
+			oauth.RegisterDiscovery(deps.Root)
+		}
 
 		deps.Logger.Warn("the MCP connector is enabled: vaults connected to it are readable by this server",
 			zap.String("public_base_url", deps.MCP.PublicBaseURL))
@@ -114,6 +137,26 @@ func Register(rg *gin.RouterGroup, deps Deps) *realtime.Hub {
 	// on a websocket, so the token comes in the first frame instead.
 	session := realtime.Session{Tokens: authService, Workspace: vaultService, Users: authService}
 	realtimeapi.NewHandler(hub, session, deps.HTTP, deps.Logger).RegisterRoutes(group)
+
+	return hub
+}
+
+// oauthLimit throttles dynamic client registration, the one connector endpoint that writes
+// without a credential.
+func oauthLimit(cfg config.RateLimit) middleware.Limiter {
+	if !cfg.Enabled {
+		return ratelimit.Nop{}
+	}
+
+	return ratelimit.New(cfg.OAuthIP.Limit, cfg.OAuthIP.Window)
+}
+
+// liveSessions hands the connector the hub, or nothing when the socket is off. A typed nil
+// would satisfy the interface and then panic on the first call, so the nil is explicit.
+func liveSessions(hub *realtime.Hub) mcp.Live {
+	if hub == nil {
+		return nil
+	}
 
 	return hub
 }

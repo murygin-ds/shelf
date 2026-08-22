@@ -11,6 +11,7 @@ import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
 import type { ImportPlan } from '@/lib/archive';
+import { claudeOsPlan } from '@/lib/claudeos';
 import { MAX_TAGS, normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
 import { isReadOnly } from '@/store/prefs';
@@ -198,6 +199,18 @@ interface WorkspaceState {
    */
   importVault: (
     plan: ImportPlan,
+    name: string,
+    identity: Identity,
+    onProgress?: (progress: transfer.ImportProgress) => void,
+  ) => Promise<transfer.ImportReport>;
+
+  /**
+   * Builds a vault laid out for Claude and moves to it.
+   *
+   * The tree is a plan like any other, so it travels the import path rather than a second
+   * one: the sealing, the ordering and the failure counting are already right there.
+   */
+  createClaudeVault: (
     name: string,
     identity: Identity,
     onProgress?: (progress: transfer.ImportProgress) => void,
@@ -1015,6 +1028,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     return report;
   },
+
+  createClaudeVault: async (name, identity, onProgress) =>
+    get().importVault(claudeOsPlan(name), name, identity, onProgress),
 
   flushOutbox: async () => {
     // One drain at a time, and everyone waits on the same one. The poll, the tab coming

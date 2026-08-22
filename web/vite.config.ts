@@ -23,6 +23,10 @@ export default defineConfig({
       // ws so the realtime socket upgrades through the dev server; without it the handshake
       // is answered by Vite rather than proxied, and only in dev.
       '/api': { target: 'http://localhost:8080', changeOrigin: false, ws: true },
+      // An MCP client reads these before it has a token, and they answer at the root rather
+      // than under /api. Without the proxy the dev server hands it index.html with a 200 and
+      // the connection fails with nothing to report.
+      '/.well-known': { target: 'http://localhost:8080', changeOrigin: false },
     },
   },
   test: {

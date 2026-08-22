@@ -11,6 +11,7 @@ import { SearchView } from '@/features/search/SearchView';
 import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { ExportModal } from '@/features/transfer/ExportModal';
+import ClaudeVaultModal from '@/features/claude/ClaudeVaultModal';
 import { ImportModal } from '@/features/transfer/ImportModal';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
@@ -53,6 +54,7 @@ export function Workspace() {
   const [securityOpen, setSecurityOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [claudeOpen, setClaudeOpen] = useState(false);
   const { ask, dialog } = useNamePrompt();
 
   const restoredVaultId = useShellHistory(identity);
@@ -149,6 +151,7 @@ export function Workspace() {
           onSecurity={() => setSecurityOpen(true)}
           onExport={() => setExportOpen(true)}
           onImport={() => setImportOpen(true)}
+          onConnectClaude={() => setClaudeOpen(true)}
         />
 
         <div className={styles.breadcrumb}>
@@ -283,6 +286,9 @@ export function Workspace() {
       {securityOpen ? <SecurityModal onClose={() => setSecurityOpen(false)} /> : null}
       {exportOpen ? <ExportModal onClose={() => setExportOpen(false)} /> : null}
       {importOpen ? <ImportModal onClose={() => setImportOpen(false)} /> : null}
+      {claudeOpen && identity ? (
+        <ClaudeVaultModal identity={identity} onClose={() => setClaudeOpen(false)} />
+      ) : null}
       {permissionsFolder ? (
         <PermissionsModal folder={permissionsFolder} onClose={() => setPermissionsFor(null)} />
       ) : null}

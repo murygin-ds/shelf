@@ -8,6 +8,7 @@ import type { Role } from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
+import * as mcp from '@/api/mcp';
 import { useWorkspace } from '@/store/workspace';
 import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
@@ -29,6 +30,10 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
   const [pending, setPending] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whether this vault has handed its key to the server. It changes what the footer is
+  // allowed to claim, and a footer that claims the wrong thing here is the worst kind of
+  // wrong: it is the line somebody reads to decide whether to trust the rest.
+  const [connected, setConnected] = useState(false);
   const [progress, setProgress] = useState<RekeyProgress | null>(null);
   const dismiss = useDismiss(onClose);
 
@@ -41,6 +46,8 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
   const reload = async () => {
     if (vaultId === null) return;
+
+    void mcp.connector(vaultId).then((found) => setConnected(found !== null));
 
     try {
       setMembers((await collab.listMembers(vaultId)).members);
@@ -330,7 +337,9 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
         <div className={styles.footer}>
           <span className={styles.footerNote}>
-            KEYS ARE SEALED PER MEMBER · THE SERVER HOLDS NONE OF THEM
+            {connected
+              ? 'KEYS ARE SEALED PER MEMBER · THIS SERVER HOLDS THE CONNECTOR’S'
+              : 'KEYS ARE SEALED PER MEMBER · THE SERVER HOLDS NONE OF THEM'}
           </span>
           <span className={styles.footerSpacer} />
           <button type="button" className={styles.done} onClick={onClose}>
