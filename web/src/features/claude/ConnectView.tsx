@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import { api } from '@/api/client';
 import * as mcp from '@/api/mcp';
+import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
 
@@ -22,7 +23,17 @@ interface ClientInfo {
  */
 export default function ConnectView() {
   const [params] = useSearchParams();
+  const { identity } = useSession();
   const vaults = useWorkspace((state) => state.vaults);
+  const loadVaults = useWorkspace((state) => state.load);
+  const loaded = useWorkspace((state) => state.loaded);
+
+  // An OAuth redirect is always a cold navigation: this route is a sibling of the workspace,
+  // never a child of it, so nothing has read the vault list yet. Without this the screen can
+  // only ever say there is nothing to grant.
+  useEffect(() => {
+    if (identity && !loaded) void loadVaults(identity);
+  }, [identity, loaded, loadVaults]);
 
   const clientID = params.get('client_id') ?? '';
   const redirectURI = params.get('redirect_uri') ?? '';
@@ -31,18 +42,34 @@ export default function ConnectView() {
   const state = params.get('state') ?? '';
 
   const [client, setClient] = useState<ClientInfo | null>(null);
+  const [unknownClient, setUnknownClient] = useState(false);
   const [connected, setConnected] = useState<number[]>([]);
   const [chosen, setChosen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!clientID) return;
+    if (!clientID) return undefined;
+
+    let cancelled = false;
+
+    // Reset first: navigating from one link to another must not leave the previous client's
+    // name above a different client's request.
+    setClient(null);
+    setUnknownClient(false);
 
     void api
       .get<ClientInfo>(`/oauth/client?client_id=${encodeURIComponent(clientID)}`)
-      .then(setClient)
-      .catch(() => setError('That client is not registered with this server.'));
+      .then((found) => {
+        if (!cancelled) setClient(found);
+      })
+      .catch(() => {
+        if (!cancelled) setUnknownClient(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [clientID]);
 
   // Only a vault that already has a connector can be granted: consenting is agreeing to let
@@ -69,6 +96,9 @@ export default function ConnectView() {
   const problem = (() => {
     if (!clientID || !redirectURI || !challenge) return 'This link is missing what it needs.';
     if (method !== 'S256') return 'This client asked for a challenge method this server refuses.';
+    // Until the registration resolves there is nothing to consent to, and an unresolved one
+    // must not leave Allow live over an address nobody registered.
+    if (unknownClient) return 'That client is not registered with this server.';
 
     return null;
   })();
@@ -97,6 +127,23 @@ export default function ConnectView() {
 
   const named = vaults.filter((vault) => connected.includes(vault.id));
 
+  // Denying sends the client the refusal OAuth defines, so it stops waiting rather than
+  // hanging on a window that was closed.
+  const deny = () => {
+    if (!redirectURI || problem) {
+      window.location.assign('/');
+
+      return;
+    }
+
+    const back = new URL(redirectURI);
+    back.searchParams.set('error', 'access_denied');
+
+    if (state) back.searchParams.set('state', state);
+
+    window.location.assign(back.toString());
+  };
+
   return (
     <div className={styles.overlay}>
       <div className={styles.modal}>
@@ -104,8 +151,9 @@ export default function ConnectView() {
           <div>
             <div className={styles.title}>Connect to Shelf</div>
             <div className={styles.subtitle}>
-              {client ? client.client_name || 'An MCP client' : 'Checking who is asking…'} wants to
-              reach one of your vaults
+              {problem
+                ? 'Nothing here can be approved'
+                : `${client ? client.client_name || 'An MCP client' : 'Checking who is asking…'} wants to reach one of your vaults`}
             </div>
           </div>
         </div>
@@ -113,7 +161,7 @@ export default function ConnectView() {
         <div className={styles.body}>
           {problem ? <div className={styles.error}>{problem}</div> : null}
 
-          {!problem && named.length === 0 ? (
+          {!problem && client && loaded && named.length === 0 ? (
             <div className={`${styles.note} ${styles.noteWarn}`}>
               <span className={styles.noteIcon}>
                 <Icon name="warn" size={13} />
@@ -125,7 +173,7 @@ export default function ConnectView() {
             </div>
           ) : null}
 
-          {!problem && named.length > 0 ? (
+          {!problem && client && named.length > 0 ? (
             <>
               <p className={styles.lede}>
                 Approving lets this client read
@@ -150,7 +198,10 @@ export default function ConnectView() {
               </div>
 
               <div className={styles.section}>RETURNING TO</div>
-              <code className={styles.code}>{redirectURI}</code>
+              {/* Block, not inline: overflow does not apply to an inline element, so an
+                  address longer than the modal would be clipped rather than scrolled —
+                  directly under the line telling somebody to read it. */}
+              <code className={`${styles.code} ${styles.codeBlock}`}>{redirectURI}</code>
 
               <div className={`${styles.note} ${styles.noteWarn}`}>
                 <span className={styles.noteIcon}>
@@ -168,12 +219,19 @@ export default function ConnectView() {
         </div>
 
         <div className={styles.footer}>
-          <span className={styles.footerNote}>THIS SERVER ALREADY HOLDS THAT VAULT’S KEY</span>
+          <span className={styles.footerNote}>
+            {problem || chosen === null ? '' : 'THIS SERVER ALREADY HOLDS THAT VAULT’S KEY'}
+          </span>
           <span className={styles.footerSpacer} />
+          {/* Refusing has to be as reachable as agreeing, and every error state above is
+              otherwise a screen with no way out of it. */}
+          <button type="button" className={styles.done} disabled={busy} onClick={deny}>
+            {problem ? 'Close' : 'Deny'}
+          </button>
           <button
             type="button"
             className={styles.primary}
-            disabled={busy || Boolean(problem) || chosen === null}
+            disabled={busy || Boolean(problem) || !client || chosen === null}
             onClick={() => void approve()}
           >
             {busy ? 'Approving…' : 'Allow'}

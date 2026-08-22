@@ -21,8 +21,11 @@ import (
 // grants nothing and a token cannot be pointed somewhere it was not issued for.
 const Path = "/mcp"
 
-// maxRequestBody matches the ciphertext ceiling a note body has to fit inside.
-const maxRequestBody = 4 << 20
+// maxRequestBody has to hold the largest body a tool accepts *after* JSON encoding, which is
+// larger than the body itself: every newline in a markdown note becomes two characters on the
+// wire. Sizing it to the ciphertext ceiling made the advertised limit unreachable for any
+// real note, and the refusal arrived as a transport error with no request id attached.
+const maxRequestBody = 2 * mcp.MaxBodyBytes
 
 type principalKey struct{}
 
@@ -159,6 +162,8 @@ func toolError(err error) error {
 	case errors.Is(err, mcp.ErrTooLarge), errors.Is(err, mcp.ErrPath):
 		// Already phrased for the caller; wrapping would only bury it.
 		return err
+	case errors.Is(err, vault.ErrDepthExceeded):
+		return errors.New("that path is deeper than the tree allows — put it somewhere shallower")
 	case errors.Is(err, vault.ErrForbidden):
 		return errors.New("the connector is not allowed to change that")
 	case errors.Is(err, vault.ErrNotFound):
@@ -168,13 +173,45 @@ func toolError(err error) error {
 	}
 }
 
-// logged reports a failure without ever putting a note's contents in the log.
+// logged records that a call failed, and what kind of failure it was — never the message.
+//
+// The messages here are built for the caller and carry paths, which are decrypted note and
+// folder names. A log is a durable plaintext artifact on a server whose whole claim is that
+// it stores none, so what goes in it is a class rather than a sentence.
 func (t *Transport) logged(tool string, connector *mcp.Connector, err error) error {
 	t.log.Warn("mcp tool failed",
 		zap.String("tool", tool),
 		zap.Int64("vault_id", connector.VaultID),
-		zap.String("reason", err.Error()),
+		zap.String("reason", reason(err)),
 	)
 
 	return toolError(err)
+}
+
+// reason names a failure without quoting it.
+func reason(err error) string {
+	switch {
+	case errors.Is(err, mcp.ErrPath):
+		return "path"
+	case errors.Is(err, mcp.ErrLocked):
+		return "locked"
+	case errors.Is(err, mcp.ErrBusy):
+		return "busy"
+	case errors.Is(err, mcp.ErrTooLarge):
+		return "too-large"
+	case errors.Is(err, vault.ErrVersionConflict):
+		return "conflict"
+	case errors.Is(err, vault.ErrScopeMismatch):
+		return "scope-mismatch"
+	case errors.Is(err, vault.ErrDepthExceeded):
+		return "too-deep"
+	case errors.Is(err, vault.ErrForbidden):
+		return "forbidden"
+	case errors.Is(err, vault.ErrNotFound):
+		return "not-found"
+	default:
+		// Unmapped means a bug rather than a caller mistake, and those are worth reading in
+		// full: nothing reaches here carrying a name.
+		return err.Error()
+	}
 }

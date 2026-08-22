@@ -19,6 +19,14 @@ import (
 // bound the browser uses, so a note Claude writes is one a person could have written.
 const MaxBodyBytes = 4*1024*1024 - envelope.PadBlock - 16
 
+// MaxNameBytes bounds a folder or note name. The browser meets this bound in the request
+// DTO; a connector calls the domain directly, so it has to meet it here.
+const MaxNameBytes = 200
+
+// MaxDepth is the depth the folder tree accepts. Checked before a path is created rather
+// than discovered partway down it.
+const MaxDepth = 32
+
 // Locked is the name given to a node whose key this connector does not hold. It is a state
 // rather than an error: a folder given its own key is simply outside what Claude may see,
 // and the tree says so instead of failing.

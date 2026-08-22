@@ -19,10 +19,7 @@ const ROOT = 'CLAUDE.md';
 const FOLDERS = {
   context: 'context',
   projects: 'projects',
-  template: 'projects/_template',
-  templateNotes: 'projects/_template/notes',
   skills: 'skills',
-  skillTemplate: 'skills/_template',
   memory: 'memory',
   inbox: 'inbox',
 } as const;
@@ -37,10 +34,7 @@ export function claudeOsPlan(vaultName: string, at: Date = new Date()): ImportPl
   const folders: ImportFolder[] = [
     folder(FOLDERS.context, null, 'context', 'book'),
     folder(FOLDERS.projects, null, 'projects', 'target'),
-    folder(FOLDERS.template, FOLDERS.projects, '_template', 'folder'),
-    folder(FOLDERS.templateNotes, FOLDERS.template, 'notes', 'doc'),
     folder(FOLDERS.skills, null, 'skills', 'bulb'),
-    folder(FOLDERS.skillTemplate, FOLDERS.skills, '_template', 'folder'),
     folder(FOLDERS.memory, null, 'memory', 'db'),
     folder(FOLDERS.inbox, null, 'inbox', 'inbox'),
   ];
@@ -51,11 +45,7 @@ export function claudeOsPlan(vaultName: string, at: Date = new Date()): ImportPl
     note('profile.md', FOLDERS.context, 'profile.md', profileDoc()),
     note('environment.md', FOLDERS.context, 'environment.md', environmentDoc()),
     note('projects.md', FOLDERS.projects, 'projects.md', projectsDoc()),
-    note('project-template', FOLDERS.template, 'CLAUDE.md', projectTemplateDoc()),
-    note('decisions.md', FOLDERS.template, 'decisions.md', decisionsDoc()),
-    note('notes.md', FOLDERS.templateNotes, 'notes.md', projectNotesDoc()),
     note('skills.md', FOLDERS.skills, 'skills.md', skillsDoc()),
-    note('SKILL.md', FOLDERS.skillTemplate, 'SKILL.md', skillTemplateDoc()),
     note('memory.md', FOLDERS.memory, 'memory.md', memoryDoc()),
     note(`${month}.md`, FOLDERS.memory, `${month}.md`, monthDoc(month)),
     note('inbox.md', FOLDERS.inbox, 'inbox.md', inboxDoc()),
@@ -99,8 +89,8 @@ write here is what you will still know in the next conversation.
 | Folder | What belongs there |
 | --- | --- |
 | \`context/\` | Standing facts about the person and their setup. Slow to change. |
-| \`projects/\` | One folder per project. Copy \`projects/_template/\` to start one. |
-| \`skills/\` | Repeatable procedures. Copy \`skills/_template/\` to write one. |
+| \`projects/\` | One folder per project, each with a \`CLAUDE.md\` and a \`decisions.md\`. |
+| \`skills/\` | Repeatable procedures, one folder each with a \`SKILL.md\`. |
 | \`memory/\` | A dated log of what happened and what was decided. |
 | \`inbox/\` | Anything captured without a home yet. A person sorts it later. |
 
@@ -188,7 +178,8 @@ function environmentDoc(): string {
 function projectsDoc(): string {
   return `# Starting a project
 
-Copy \`projects/_template/\` into \`projects/<name>/\` and fill in its \`CLAUDE.md\`.
+Make \`projects/<name>/\` and give it a \`CLAUDE.md\`. The Claude view has a button for it, and
+\`shelf_create_note\` does the same from a tool call.
 
 One folder per project, named the way the person names it out loud. Inside:
 
@@ -201,8 +192,9 @@ usually the only record of why something is the way it is.
 `;
 }
 
-function projectTemplateDoc(): string {
-  return `# <!-- Project name -->
+/** What a new project starts as. Written by the view, and by the template it came from. */
+export function projectSeed(name = '<!-- Project name -->'): string {
+  return `# ${name}
 
 **Status:** <!-- planning | active | paused | done -->
 **Updated:** <!-- YYYY-MM-DD -->
@@ -225,7 +217,8 @@ function projectTemplateDoc(): string {
 `;
 }
 
-function decisionsDoc(): string {
+/** What a new project's decision log starts as. */
+export function decisionsSeed(): string {
   return `# Decisions
 
 Newest first. One entry per decision, and only for decisions that would be expensive to
@@ -244,29 +237,23 @@ work, and the reasoning never is.
 `;
 }
 
-function projectNotesDoc(): string {
-  return `# Working notes
-
-One note per topic, named after the topic. These are allowed to be messy — \`decisions.md\`
-is where things go once they are settled.
-`;
-}
-
 function skillsDoc(): string {
   return `# Skills
 
 A skill is a procedure worth repeating exactly: a release checklist, a review pass, the way
 this person likes a particular kind of document written.
 
-Copy \`skills/_template/\` into \`skills/<name>/\` and fill in its \`SKILL.md\`.
+Make \`skills/<name>/\` and give it a \`SKILL.md\` with \`name\` and \`description\` in its
+frontmatter.
 
 Write one when you notice you have explained the same sequence twice.
 `;
 }
 
-function skillTemplateDoc(): string {
+/** What a new skill starts as. */
+export function skillSeed(name = '<!-- short-kebab-case -->'): string {
   return `---
-name: <!-- short-kebab-case -->
+name: ${name}
 description: <!-- One line. When should this be used, and when should it not? -->
 ---
 

@@ -48,8 +48,9 @@
   background: transparent;
   color: var(--text-quiet);
   cursor: pointer;
-  padding: 0;
-  margin-top: 2px;
+  /* The icon is 14px; the target somebody has to hit is not. */
+  padding: 6px;
+  margin: -4px -6px 0 0;
   display: grid;
   place-items: center;
 }
@@ -156,7 +157,9 @@
   cursor: pointer;
 }
 
-.role:hover {
+/* Not plain `.role:hover`: that outweighs `.roleOn` and erases the selection under the
+   pointer, which reads as the choice having been lost. */
+.role:not(.roleOn):hover {
   border-color: var(--border-hover);
 }
 
@@ -199,6 +202,13 @@
   line-height: 1.5;
   overflow-x: auto;
   white-space: pre;
+}
+
+/* A standalone code line has to be a block: overflow-x does nothing on an inline element,
+   so a long address would be clipped by the modal instead of scrolling inside it. */
+.codeBlock {
+  display: block;
+  margin-top: 8px;
 }
 
 .copy {

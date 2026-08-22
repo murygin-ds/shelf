@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import * as mcp from '@/api/mcp';
 import type { ImportProgress } from '@/api/transfer';
@@ -7,6 +7,7 @@ import * as ws from '@/api/workspace';
 import { useWorkspace } from '@/store/workspace';
 import Checkbox from '@/ui/Checkbox';
 import { useDismiss } from '@/ui/dismiss';
+import { useFocusTrap } from '@/ui/trap';
 import { Icon } from '@/ui/Icon';
 
 import styles from './claude.module.css';
@@ -38,6 +39,8 @@ const PHASES: Record<ImportProgress['phase'], string> = {
  */
 export default function ClaudeVaultModal({ identity, onClose }: Props) {
   const createClaudeVault = useWorkspace((state) => state.createClaudeVault);
+  const refreshVaults = useWorkspace((state) => state.refreshVaults);
+  const refreshConnector = useWorkspace((state) => state.refreshConnector);
 
   const [name, setName] = useState('Claude');
   const [role, setRole] = useState<mcp.ConnectorRole>('editor');
@@ -48,12 +51,24 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
 
-  const dismiss = useDismiss(busy ? () => {} : onClose);
+  const modal = useRef<HTMLDivElement>(null);
+
+  // Closing mid-create would leave a vault whose key was never handed over, which is the one
+  // outcome the beforeunload guard below exists to prevent. Every way out is held shut, not
+  // just the two that were easy to guard.
+  const close = () => {
+    if (!busy) onClose();
+  };
+
+  const dismiss = useDismiss(close);
+
+  useFocusTrap(modal);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !busy) onClose();
     };
+
 
     window.addEventListener('keydown', onKey);
 
@@ -90,6 +105,14 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
       const connector = await mcp.enable(vault, role, keyring);
       const credential = await mcp.issueCredential(vault.id, 'first client');
 
+      // The connector is a member now, so the switcher's "only you" and the missing SHARED
+      // badge are both wrong until the list is read again — and that badge is the one thing
+      // on that row somebody scans for.
+      await refreshVaults(identity);
+      // The sidebar offers the Claude view off this, so it has to know before the dialog
+      // closes rather than at the next vault switch.
+      await refreshConnector();
+
       setResult({
         vaultId: vault.id,
         name: vaultName,
@@ -108,7 +131,7 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
 
   return (
     <div className={styles.overlay} {...dismiss}>
-      <div className={styles.modal}>
+      <div ref={modal} className={styles.modal} role="dialog" aria-modal="true" tabIndex={-1}>
         <div className={styles.head}>
           <div>
             <div className={styles.title}>{result ? 'Claude is connected' : 'Connect Claude'}</div>
@@ -116,7 +139,7 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
               {result ? 'One vault, readable by this server' : 'A vault laid out as Claude’s memory'}
             </div>
           </div>
-          <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
+          <button type="button" className={styles.close} onClick={close} aria-label="Close">
             <Icon name="x" size={14} />
           </button>
         </div>

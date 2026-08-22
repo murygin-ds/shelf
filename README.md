@@ -402,6 +402,24 @@ blocked by the browser. Tokens live in their own table on purpose: rotation ther
 single-use and a replay burns the chain it belongs to, which must not be the same chain a
 browser session hangs from.
 
+### The view
+
+A connected vault gets a view of its own, next to Notes and Graph in the sidebar. It exists
+because a tree answers the wrong question here: "which files are there" is not what somebody
+wants from a vault used as a model's memory. What they want is which projects are moving,
+what was decided, what the model wrote since they last looked, and which of the standing
+facts are still blank — and the folders are only how those happen to be stored.
+
+So the view reads the vault as what it holds. Projects become cards with their status, their
+open steps and how many decisions they have logged; the log becomes a timeline; the standing
+facts become a checklist that says which are still scaffolding; and everything the connector
+wrote is listed on its own, newest first. Starting a project or a skill is a button rather
+than a folder to copy, which is why the template no longer ships a `_template/` to copy from.
+
+It costs nothing to open: everything on it is read out of the tree and the decrypted search
+index the tab already holds, so it shows exactly what the connector can see and asks the
+server for nothing extra.
+
 ### Two things the vault says to Claude itself
 
 The template a Claude vault is created with carries both in its root document, because a

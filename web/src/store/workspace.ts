@@ -4,6 +4,7 @@ import { ApiError, OfflineError } from '@/api/client';
 import { ErrorCode } from '@/api/types';
 import * as collab from '@/api/collab';
 import * as graphApi from '@/api/graph';
+import * as mcpApi from '@/api/mcp';
 import * as rekeyApi from '@/api/rekey';
 import * as transfer from '@/api/transfer';
 import * as ws from '@/api/workspace';
@@ -11,7 +12,7 @@ import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
 import type { ImportPlan } from '@/lib/archive';
-import { claudeOsPlan } from '@/lib/claudeos';
+import { claudeOsPlan, decisionsSeed, projectSeed, skillSeed } from '@/lib/claudeos';
 import { MAX_TAGS, normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
 import { isReadOnly } from '@/store/prefs';
@@ -35,7 +36,7 @@ export interface OpenNote {
   conflict: boolean;
 }
 
-export type View = 'editor' | 'search' | 'graph' | 'trash' | 'profile';
+export type View = 'editor' | 'search' | 'graph' | 'trash' | 'profile' | 'claude';
 
 // MAX_TABS bounds the strip. Past a dozen the labels are unreadable and the strip stops
 // being a way back to anything.
@@ -53,6 +54,14 @@ interface WorkspaceState {
   expanded: Set<number>;
   open: OpenNote | null;
   view: View;
+  /**
+   * The connector on the open vault, or null when there is none.
+   *
+   * Held here rather than fetched by whoever needs it: the sidebar decides whether to offer
+   * the Claude view, the view itself reads the same answer, and one of them asking while the
+   * other has not would make the tab disagree with itself.
+   */
+  connector: mcpApi.Connector | null;
   query: string;
   /** Decrypted, in memory only. Persisting it would put plaintext on disk. */
   index: IndexedNote[];
@@ -205,6 +214,16 @@ interface WorkspaceState {
   ) => Promise<transfer.ImportReport>;
 
   /**
+   * Re-reads the vault list. Needed after something changes a vault's membership from
+   * outside the actions that already refresh it — connecting Claude adds a member, and the
+   * switcher would otherwise keep saying "only you" until a reload.
+   */
+  refreshVaults: (identity: Identity) => Promise<void>;
+
+  /** Re-reads the connector on the open vault, after enabling or removing one. */
+  refreshConnector: () => Promise<void>;
+
+  /**
    * Builds a vault laid out for Claude and moves to it.
    *
    * The tree is a plan like any other, so it travels the import path rather than a second
@@ -215,9 +234,72 @@ interface WorkspaceState {
     identity: Identity,
     onProgress?: (progress: transfer.ImportProgress) => void,
   ) => Promise<transfer.ImportReport>;
+
+  /**
+   * Starts a project or a skill in the Claude vault: the folder and the documents that make
+   * it one, in the shape the view and the connector both read back.
+   *
+   * They throw rather than reporting into `error` — the view that calls them shows the
+   * failure next to the button that caused it.
+   */
+  createClaudeProject: (name: string, identity: Identity) => Promise<void>;
+  createClaudeSkill: (name: string, identity: Identity) => Promise<void>;
 }
 
 const emptyTree: ws.Tree = { folders: [], notes: [] };
+
+/**
+ * Makes a folder inside one of the Claude vault's top-level areas, creating the area itself
+ * if the vault predates it. Everything below leans on the same scope rule the sidebar uses:
+ * a child is sealed under its parent's key, and sending any other is refused.
+ */
+async function claudeArea(
+  get: () => WorkspaceState,
+  area: string,
+  name: string,
+): Promise<ws.FolderNode> {
+  const { vaultId, keyring, tree } = get();
+
+  if (vaultId === null || !keyring) throw new Error('open the vault first');
+  if (isReadOnly()) throw new Error('Read-only mode is on.');
+
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('give it a name');
+
+  if (tree.folders.some((folder) => folder.parentId === null && folder.name === trimmed)) {
+    throw new Error(`there is already something called ${trimmed}`);
+  }
+
+  const existing = tree.folders.find((folder) => folder.parentId === null && folder.name === area);
+
+  const parent =
+    existing ?? (await ws.createFolder(vaultId, null, area, scopeOf(get(), null), keyring));
+
+  if (tree.folders.some((folder) => folder.parentId === parent.id && folder.name === trimmed)) {
+    throw new Error(`${area} already has a ${trimmed}`);
+  }
+
+  return ws.createFolder(vaultId, parent.id, trimmed, ws.scopeOfNode(parent), keyring);
+}
+
+/** Creates one of a project's or skill's documents, with its starting text. */
+async function claudeDoc(
+  get: () => WorkspaceState,
+  folder: ws.FolderNode,
+  name: string,
+  body: string,
+  identity: Identity,
+): Promise<ws.NoteNode> {
+  const { vaultId, keyring } = get();
+
+  if (vaultId === null || !keyring) throw new Error('open the vault first');
+
+  const note = await ws.createNote(vaultId, folder.id, name, ws.scopeOfNode(folder), keyring);
+
+  await ws.writeNote(note, body, note.contentSeq, keyring, identity);
+
+  return note;
+}
 
 /**
  * How long a hint waits before it becomes a pull. A move that renames twenty notes arrives
@@ -270,6 +352,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   expanded: new Set(),
   open: null,
   view: 'editor',
+  connector: null,
   query: '',
   index: [],
   coverage: { covered: 0, total: 0 },
@@ -316,6 +399,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       trashed: emptyTree,
       index: [],
       cursor: 0,
+      // Cleared with the rest: the previous vault's connector would otherwise offer the
+      // Claude view over a vault that has none.
+      connector: null,
+      // The Claude view belongs to one vault; leaving it behind would show the next vault's
+      // tree under the previous vault's dashboard.
+      view: get().view === 'claude' ? 'editor' : get().view,
       error: null,
     });
 
@@ -339,6 +428,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
 
       await get().syncNow();
+      await get().refreshConnector();
     } catch (cause) {
       report(set, cause);
     } finally {
@@ -1027,6 +1117,31 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().selectVault(report.vaultId, identity);
 
     return report;
+  },
+
+  createClaudeProject: async (name, identity) => {
+    const folder = await claudeArea(get, 'projects', name);
+
+    await claudeDoc(get, folder, 'CLAUDE.md', projectSeed(name), identity);
+    await claudeDoc(get, folder, 'decisions.md', decisionsSeed(), identity);
+    await get().syncNow();
+  },
+
+  createClaudeSkill: async (name, identity) => {
+    const folder = await claudeArea(get, 'skills', name);
+
+    await claudeDoc(get, folder, 'SKILL.md', skillSeed(name), identity);
+    await get().syncNow();
+  },
+
+  refreshVaults: async (identity) => {
+    set({ vaults: await ws.listVaults(identity) });
+  },
+
+  refreshConnector: async () => {
+    const { vaultId } = get();
+
+    set({ connector: vaultId === null ? null : await mcpApi.connector(vaultId) });
   },
 
   createClaudeVault: async (name, identity, onProgress) =>

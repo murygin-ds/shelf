@@ -314,6 +314,7 @@ func (o *OAuth) approvalFailed(c *gin.Context, err error) {
 // client reading it is an OAuth client, not a Shelf one.
 func (o *OAuth) oauthError(c *gin.Context, status int, err error) {
 	code := "invalid_request"
+	description := err.Error()
 
 	switch {
 	case errors.Is(err, mcp.ErrInvalidGrant):
@@ -324,8 +325,29 @@ func (o *OAuth) oauthError(c *gin.Context, status int, err error) {
 		code = "invalid_request"
 	default:
 		o.log.Warn("oauth request failed", zap.Error(err))
+		// The message of an unmapped failure is for this log, not for a stranger.
+		description = "the request could not be completed"
+	}
+
+	// A sentinel's own text is the code; anything the wrapping added is what actually says
+	// what went wrong, and echoing the bare code back helps nobody debug a connection.
+	if trimmed := strings.TrimPrefix(description, code+": "); trimmed != description {
+		description = trimmed
+	} else if description == code {
+		description = defaultDescription(code)
 	}
 
 	c.Header("Cache-Control", "no-store")
-	c.AbortWithStatusJSON(status, gin.H{"error": code, "error_description": err.Error()})
+	c.AbortWithStatusJSON(status, gin.H{"error": code, "error_description": description})
+}
+
+func defaultDescription(code string) string {
+	switch code {
+	case "invalid_grant":
+		return "that code or refresh token is not usable — start the flow again"
+	case "invalid_client":
+		return "no client is registered under that client_id"
+	default:
+		return "the request is missing something it needs"
+	}
 }

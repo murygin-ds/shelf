@@ -281,6 +281,142 @@ func TestConnectorRefusesWhatItShould(t *testing.T) {
 	}
 }
 
+// The optimistic lock has no value that means "whatever it is now". A caller that does not
+// hold a sequence has not read the note, and the guard against overwriting somebody must not
+// be something a caller can opt out of by sending zero.
+func TestConnectorWriteHasNoBlindOverwrite(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	const path = "notes/locked"
+
+	if _, err := space.CreateNote(ctx, path, "what somebody wrote"); err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	read, err := space.ReadNote(ctx, path)
+	if err != nil {
+		t.Fatalf("ReadNote: %v", err)
+	}
+
+	for _, seq := range []int64{0, -1, read.ContentSeq - 1, read.ContentSeq + 1} {
+		if _, err := space.WriteNote(ctx, path, "clobbered", seq); !errors.Is(err, vault.ErrVersionConflict) {
+			t.Errorf("writing at sequence %d returned %v, want a conflict", seq, err)
+		}
+	}
+
+	after, err := space.ReadNote(ctx, path)
+	if err != nil {
+		t.Fatalf("ReadNote after: %v", err)
+	}
+
+	if after.Body != "what somebody wrote" {
+		t.Fatalf("a refused write still changed the note to %q", after.Body)
+	}
+
+	if _, err := space.WriteNote(ctx, path, "written properly", read.ContentSeq); err != nil {
+		t.Fatalf("the correct sequence was refused: %v", err)
+	}
+}
+
+// Names are sealed metadata, so the request-body cap the browser meets never runs here.
+func TestConnectorBoundsNamesAndDepth(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	long := strings.Repeat("n", mcp.MaxNameBytes+1)
+
+	if _, err := space.CreateNote(ctx, long, "x"); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("a %d-byte name was accepted: %v", len(long), err)
+	}
+
+	if _, err := space.CreateFolder(ctx, long); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("a %d-byte folder name was accepted: %v", len(long), err)
+	}
+
+	// Creating walks the path a level at a time, so a depth the tree will refuse has to be
+	// caught before the levels above it are written.
+	deep := strings.TrimSuffix(strings.Repeat("d/", mcp.MaxDepth+5), "/")
+
+	if _, err := space.CreateFolder(ctx, deep); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("a %d-level path was accepted: %v", mcp.MaxDepth+5, err)
+	}
+
+	var folders int
+
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM folders WHERE vault_id = $1`, f.vaultID).Scan(&folders); err != nil {
+		t.Fatalf("count folders: %v", err)
+	}
+
+	if folders != 0 {
+		t.Errorf("a refused path left %d folders behind", folders)
+	}
+}
+
+// A connector writes names a person then reads in a list. A right-to-left override makes
+// "gnp.exe" look like a picture, and a zero-width space makes two names look identical.
+func TestConnectorRefusesNamesThatLie(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	for name, path := range map[string]string{
+		"a right-to-left override": "report\u202egnp.exe.md",
+		"a zero-width space":       "inv\u200boice.md",
+		"a carriage return":        "one\rtwo.md",
+		"a null byte":              "one\x00two.md",
+		"an escape sequence":       "one\x1b[31mtwo.md",
+	} {
+		if _, err := space.CreateNote(ctx, path, "x"); !errors.Is(err, mcp.ErrPath) {
+			t.Errorf("%s was accepted in a name: %v", name, err)
+		}
+	}
+
+	// A tab is only whitespace, and a name with one in it is merely untidy.
+	if _, err := space.CreateNote(ctx, "one\ttwo.md", "x"); err != nil {
+		t.Errorf("a tab was refused: %v", err)
+	}
+}
+
+// A path is the only address these tools have, so one path cannot mean two things.
+func TestConnectorKeepsOnePathNamespace(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	if _, err := space.CreateFolder(ctx, "shared"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+
+	if _, err := space.CreateNote(ctx, "shared", "x"); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("a note took the path of a folder: %v", err)
+	}
+
+	if _, err := space.CreateNote(ctx, "taken.md", "x"); err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	if _, err := space.CreateFolder(ctx, "taken.md"); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("a folder took the path of a note: %v", err)
+	}
+
+	// Moving must not create the shadow folder either.
+	if _, err := space.CreateNote(ctx, "movable.md", "x"); err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	if _, err := space.MoveNote(ctx, "movable.md", "taken.md"); !errors.Is(err, mcp.ErrPath) {
+		t.Errorf("a move created a folder where a note already was: %v", err)
+	}
+}
+
 // Trashing hides a note from the tree without destroying anything.
 func TestConnectorTrashesRatherThanDestroys(t *testing.T) {
 	pool := connect(t)

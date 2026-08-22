@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"shelf/internal/envelope"
 	"shelf/internal/vault"
@@ -23,6 +24,17 @@ func (w *Workspace) CreateFolder(ctx context.Context, path string) (*Node, error
 	segments, err := split(path)
 	if err != nil {
 		return nil, err
+	}
+
+	// Checked before anything is written. Creation walks the path one level at a time, so a
+	// depth the tree will refuse halfway leaves the levels above it behind — the call fails
+	// and the vault changed anyway.
+	if len(segments) > MaxDepth {
+		return nil, fmt.Errorf("%w: %d levels, the tree holds %d", ErrPath, len(segments), MaxDepth)
+	}
+
+	if taken := built.notes[clean(path)]; taken != nil {
+		return nil, fmt.Errorf("%w: %s is a note", ErrPath, clean(path))
 	}
 
 	var (
@@ -80,6 +92,11 @@ func (w *Workspace) CreateNote(ctx context.Context, path, body string) (*Note, e
 
 	if _, taken := built.notes[clean(path)]; taken {
 		return nil, fmt.Errorf("%w: %s already exists", ErrPath, clean(path))
+	}
+
+	// One namespace for both kinds, because a path is the only address these tools have.
+	if _, taken := built.folders[clean(path)]; taken {
+		return nil, fmt.Errorf("%w: %s is a folder", ErrPath, clean(path))
 	}
 
 	var parent *folderAt
@@ -174,7 +191,10 @@ func (w *Workspace) WriteNote(ctx context.Context, path, body string, expectedSe
 		return nil, err
 	}
 
-	if expectedSeq > 0 && expectedSeq != at.file.ContentSeq {
+	// Exact, with no value that means "whatever it is now". A caller that does not hold a
+	// sequence has not read the note, and letting zero through would turn the one guard
+	// against overwriting somebody into an opt-in.
+	if expectedSeq != at.file.ContentSeq {
 		return nil, fmt.Errorf("%w: the note is at %d, you read %d",
 			vault.ErrVersionConflict, at.file.ContentSeq, expectedSeq)
 	}
@@ -389,7 +409,43 @@ func split(path string) ([]string, error) {
 		if segment == "." || segment == ".." {
 			return nil, fmt.Errorf("%w: %q is not a name", ErrPath, segment)
 		}
+
+		// Names are sealed metadata, so the server cannot bound them where it bounds
+		// everything else — the DTO cap the browser meets never runs on this path. Bounded
+		// here instead, at the same length the archive format allows.
+		if len(segment) > MaxNameBytes {
+			return nil, fmt.Errorf("%w: a name may be at most %d bytes", ErrPath, MaxNameBytes)
+		}
+
+		if bad, found := unrenderable(segment); found {
+			return nil, fmt.Errorf("%w: a name may not contain %q", ErrPath, bad)
+		}
 	}
 
 	return segments, nil
+}
+
+// unrenderable finds a character that would make a name display as something other than what
+// it is.
+//
+// A person naming their own note is their own business. A connector is not: it writes names
+// a person then reads in a list, and a right-to-left override turns "gnp.exe" into what looks
+// like a picture. Control characters do the same to a line of a terminal or a log.
+func unrenderable(segment string) (rune, bool) {
+	for _, r := range segment {
+		switch {
+		case r == '\t':
+			continue
+		case unicode.IsControl(r):
+			return r, true
+		// The bidi overrides and isolates, which reorder what follows them.
+		case r >= 0x202A && r <= 0x202E, r >= 0x2066 && r <= 0x2069:
+			return r, true
+		// A zero-width character makes two different names look identical.
+		case r == 0x200B, r == 0x200C, r == 0x200D, r == 0xFEFF:
+			return r, true
+		}
+	}
+
+	return 0, false
 }

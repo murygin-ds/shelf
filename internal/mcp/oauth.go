@@ -94,8 +94,8 @@ func (s *Service) RegisterClient(ctx context.Context, name string, redirects []s
 	}
 
 	for _, raw := range redirects {
-		if _, err := url.Parse(raw); err != nil {
-			return nil, fmt.Errorf("%w: %q is not a redirect_uri", ErrInvalidRequest, raw)
+		if err := usableRedirect(raw); err != nil {
+			return nil, err
 		}
 	}
 
@@ -141,6 +141,13 @@ func (s *Service) Authorize(
 
 	client, err := s.Client(ctx, clientID)
 	if err != nil {
+		return "", err
+	}
+
+	// Checked again rather than trusted from the row: registration is unauthenticated, this
+	// is the step that turns a redirect into a place an authorization code is sent, and a
+	// row written before this check existed must not become one.
+	if err := usableRedirect(redirectURI); err != nil {
 		return "", err
 	}
 
@@ -288,6 +295,36 @@ func verifies(verifier, challenge string) bool {
 	expected := base64.RawURLEncoding.EncodeToString(sum[:])
 
 	return subtle.ConstantTimeCompare([]byte(expected), []byte(challenge)) == 1
+}
+
+// usableRedirect refuses anything a browser would not treat as a navigation to another site.
+//
+// This is the load-bearing check of the whole flow. Registration takes no credential, the
+// consent screen navigates to whatever comes back, and the authorization code rides in the
+// query — so a scheme like javascript: or data: is script running on the vault's own origin,
+// and any other host is the code handed to somebody else. Two schemes are allowed: https
+// anywhere, and http on the loopback, which is the only way a native client can receive a
+// redirect at all.
+func usableRedirect(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%w: %q is not a redirect_uri", ErrInvalidRequest, raw)
+	}
+
+	if parsed.Fragment != "" || strings.Contains(raw, "#") {
+		return fmt.Errorf("%w: a redirect_uri may not carry a fragment", ErrInvalidRequest)
+	}
+
+	switch {
+	case parsed.Scheme == "https" && parsed.Host != "":
+		return nil
+	case parsed.Scheme == "http" && loopback(parsed):
+		return nil
+	default:
+		return fmt.Errorf(
+			"%w: a redirect_uri must be https, or http on the loopback; %q is neither",
+			ErrInvalidRequest, raw)
+	}
 }
 
 // allowedRedirect matches a redirect against what the client registered.

@@ -12,6 +12,7 @@ import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { ExportModal } from '@/features/transfer/ExportModal';
 import ClaudeVaultModal from '@/features/claude/ClaudeVaultModal';
+import ClaudeView from '@/features/claude/ClaudeView';
 import { ImportModal } from '@/features/transfer/ImportModal';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
@@ -215,7 +216,9 @@ export function Workspace() {
         />
 
         <div className={styles.canvas}>
-          {view === 'search' ? (
+          {view === 'claude' ? (
+            <ClaudeView />
+          ) : view === 'search' ? (
             <SearchView />
           ) : view === 'graph' ? (
             <GraphView />
