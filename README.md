@@ -576,6 +576,14 @@ service refuses to start instead.
 resource metadata has to name the same URL the person typed, and a proxy that rewrites Host
 would otherwise break discovery in a way nothing here can see.
 
+With `mcp.enabled` off, none of the connector routes are mounted at all. The client asks
+`GET /api/v1/features` before it offers to connect anything, because a route that was never
+mounted answers exactly like one that is broken — and finding out afterwards would mean a
+vault created for a connector that cannot be attached to it.
+
+`docker-compose.yml` passes all three through, so a deployment turns the connector on by
+setting them in the environment rather than by editing the image.
+
 ### Rate limiting
 
 A token bucket sits on the endpoints where a secret can be guessed

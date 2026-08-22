@@ -80,6 +80,24 @@ function open(dto: ConnectorDto): Connector {
   };
 }
 
+/**
+ * Whether this build will serve a connector at all.
+ *
+ * It is off by default and its routes are not mounted when it is, so without asking first the
+ * client cannot tell a feature that is switched off from one that is broken — and it would
+ * find out by making a vault and then failing to connect it.
+ */
+export async function available(): Promise<boolean> {
+  try {
+    const { connector } = await api.get<{ connector: boolean }>('/features');
+
+    return connector;
+  } catch {
+    // An older server has no features document. It also has no connector.
+    return false;
+  }
+}
+
 /** Reads the connector on a vault, or null when there is none. */
 export async function connector(vaultId: number): Promise<Connector | null> {
   try {

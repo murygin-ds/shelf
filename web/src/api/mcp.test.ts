@@ -165,6 +165,33 @@ describe('enabling a connector', () => {
     ).rejects.toThrow();
   });
 
+  // The connector is off by default and its routes are not mounted when it is. Asking first
+  // is what keeps the wizard from making a vault it then cannot connect.
+  it('asks the server whether a connector can be served at all', async () => {
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ connector: true, realtime: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await expect(mcp.available()).resolves.toBe(true);
+
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ connector: false, realtime: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await expect(mcp.available()).resolves.toBe(false);
+
+    // A server too old to have the document has no connector either.
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 404 }));
+
+    await expect(mcp.available()).resolves.toBe(false);
+  });
+
   it('treats a vault with no connector as a state rather than a failure', async () => {
     vi.stubGlobal('fetch', async () => new Response('{}', { status: 404 }));
 

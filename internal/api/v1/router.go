@@ -2,6 +2,8 @@
 package v1
 
 import (
+	"net/http"
+
 	"shelf/internal/access"
 	"shelf/internal/api/middleware"
 	accessapi "shelf/internal/api/v1/access"
@@ -46,6 +48,16 @@ func Register(rg *gin.RouterGroup, deps Deps) *realtime.Hub {
 	// built once and shared rather than reconstructed per feature.
 	authService := auth.NewService(postgres.NewAuthRepository(deps.Pool), deps.Auth, deps.Logger)
 	authapi.NewHandler(authService, authLimits(deps.Auth.RateLimit), deps.Logger).RegisterRoutes(group)
+
+	// What this build will actually do, so the client can offer only what exists. Without it
+	// a feature turned off in the configuration looks to the browser exactly like a feature
+	// that is broken — a 404 on a route it had no way to know was never mounted.
+	group.GET("/features", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"connector": deps.MCP.Enabled,
+			"realtime":  deps.Realtime.Enabled,
+		})
+	})
 
 	// The hub is built before the repositories so it can hear about a commit, and told
 	// about the services afterwards, when they exist. A nil announcer is silence: with the

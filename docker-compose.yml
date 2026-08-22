@@ -43,6 +43,12 @@ services:
       # either mints an ephemeral one and invalidates every token on restart, or refuses to
       # start at all outside app.env=local — and both look like the image being broken.
       SHELF_AUTH_SECRET: ${SHELF_AUTH_SECRET:-}
+      # The Claude connector, off unless all three are set. Without them the routes are not
+      # mounted at all, and the client is told so rather than discovering it as a 404 after
+      # it has already made a vault.
+      SHELF_MCP_ENABLED: ${SHELF_MCP_ENABLED:-false}
+      SHELF_MCP_SECRET: ${SHELF_MCP_SECRET:-}
+      SHELF_MCP_PUBLIC_BASE_URL: ${SHELF_MCP_PUBLIC_BASE_URL:-}
     ports:
       - "${SHELF_HTTP_PORT:-8080}:8080"
 

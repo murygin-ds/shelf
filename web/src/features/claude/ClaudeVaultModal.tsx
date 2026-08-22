@@ -50,6 +50,12 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  // undefined while the answer is still coming: the button must not be live before it.
+  const [available, setAvailable] = useState<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    void mcp.available().then(setAvailable);
+  }, []);
 
   const modal = useRef<HTMLDivElement>(null);
 
@@ -90,9 +96,13 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
     setBusy(true);
     setError(null);
 
+    let made = false;
+
     try {
       const vaultName = name.trim() || 'Claude';
       const report = await createClaudeVault(vaultName, identity, setProgress);
+
+      made = true;
 
       // Read back rather than trusted from the report: the connector has to be sealed
       // against the scope the server actually recorded.
@@ -122,7 +132,15 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
         secret: credential.secret,
       });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'that did not work');
+      const why = cause instanceof Error ? cause.message : 'that did not work';
+
+      // The vault is made first and connected second. Saying only that it failed would leave
+      // somebody looking for a vault they had been told was not created.
+      setError(
+        made
+          ? `The vault was created but could not be connected: ${why}. It is in the vault menu — connect it again from there, or delete it.`
+          : why,
+      );
     } finally {
       setBusy(false);
       setProgress(null);
@@ -147,7 +165,9 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
         <div className={styles.body}>
           {result ? <Done result={result} /> : null}
 
-          {result ? null : (
+          {!result && available === false ? <Unavailable /> : null}
+
+          {result || available === false ? null : (
             <>
               <p className={styles.lede}>
                 This creates a vault holding a ready-made structure — context, projects, skills,
@@ -222,18 +242,20 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
 
         <div className={styles.footer}>
           <span className={styles.footerNote}>
-            {result ? 'THE CREDENTIAL IS SHOWN ONCE' : 'REVOCABLE FROM THE VAULT MENU'}
+            {result ? 'THE CREDENTIAL IS SHOWN ONCE' : null}
+            {!result && available === true ? 'REVOCABLE FROM THE VAULT MENU' : null}
+            {!result && available === false ? 'NOTHING WAS CREATED' : null}
           </span>
           <span className={styles.footerSpacer} />
-          {result ? (
+          {result || available === false ? (
             <button type="button" className={styles.done} onClick={onClose}>
-              Done
+              {result ? 'Done' : 'Close'}
             </button>
           ) : (
             <button
               type="button"
               className={styles.primary}
-              disabled={busy || !understood || !noSecrets}
+              disabled={busy || !understood || !noSecrets || available !== true}
               onClick={() => void create()}
             >
               {busy ? 'Creating…' : 'Create and connect'}
@@ -242,6 +264,49 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * What the dialog says on a server that does not serve a connector.
+ *
+ * Shown instead of the form rather than after it: the vault is made first and connected
+ * second, so a server that cannot do the second half must not be allowed to do the first.
+ */
+function Unavailable() {
+  return (
+    <>
+      <p className={styles.lede}>
+        This server is not set up to serve a connector, so a vault made here could not be
+        connected to Claude. Nothing has been created.
+      </p>
+
+      <div className={`${styles.note} ${styles.noteWarn}`}>
+        <span className={styles.noteIcon}>
+          <Icon name="warn" size={13} />
+        </span>
+        <span>
+          It is off by default, because it is the one feature that hands this server a key.
+          Turning it on is three settings and a restart.
+        </span>
+      </div>
+
+      <div className={styles.section}>WHAT TO SET</div>
+      <code className={`${styles.code} ${styles.codeBlock}`}>
+        {[
+          'SHELF_MCP_ENABLED=true',
+          '# at least 32 characters, and never in configs/config.yaml',
+          'SHELF_MCP_SECRET=$(openssl rand -hex 32)',
+          '# exactly the address Claude will be given',
+          'SHELF_MCP_PUBLIC_BASE_URL=https://shelf.example.com',
+        ].join('\n')}
+      </code>
+
+      <p className={styles.lede} style={{ marginTop: 10 }}>
+        The secret has no fallback anywhere, local included: one generated at startup would
+        make every connector key already stored unreadable after the first restart.
+      </p>
+    </>
   );
 }
 
