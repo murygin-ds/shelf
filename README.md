@@ -196,6 +196,12 @@ Two deliberate consequences worth knowing before you deploy this:
   does not carry the note's scope key, because a scope covers a whole folder or a whole
   vault and one published note must not become the key to everything beside it.
 
+### Except with a connector
+
+Everything above describes a vault without one. A vault that has a connector is readable by
+this server in full, deliberately and visibly — see [The connector](#the-connector). No other
+vault is affected: the server holds no key to them and has no way to obtain one.
+
 ## Layout
 
 ```
@@ -206,12 +212,14 @@ internal/
     middleware/         request id, logging, recovery, CORS, body limit, auth, rate limit
     request/            binding, id and If-Match helpers
     response/           response and error helpers
-    v1/{auth,vault,access,realtime}/   handlers and DTOs per feature
+    v1/{auth,vault,access,realtime,mcp}/   handlers and DTOs per feature
   auth/                registration, login, sessions, tokens, Argon2id
   vault/               the domain: permissions, scopes, sync, re-key, graph, revisions,
                        sharing, audit. No SQL and no HTTP.
     accesscases/        the permission truth table both implementations are held to
   access/              members, grants, invites
+  mcp/                 the Claude connector: its account, its keyring, the tools it exposes
+  envelope/            the sealing web/src/crypto does, repeated here for the connector
   realtime/            the live editing socket: hub, connections, rooms, frames
   config/ logger/ ratelimit/
   storage/postgres/    pgxpool and the repositories, including the permission CTE
@@ -223,12 +231,15 @@ web/src/
   sync/                delta pull, hydration, the local search index, the live socket
   collab/              the shared document: room, carets, per-person colours
   store/               zustand: session and workspace
-  lib/                 wikilink resolution, the search index, passphrase strength
+  lib/                 wikilink resolution, the search index, the heading outline,
+                       passphrase strength, the archive format and the zip it travels in
   ui/                  icons and the shared primitives
   styles/              the design tokens everything else reads
-  features/            auth, shell, sidebar, editor, search, graph, inspector, access, share
+  features/            auth, shell, sidebar, editor, search, graph, inspector, access, share,
+                       transfer, claude
 configs/               config.yaml
-migrations/            golang-migrate SQL migrations
+migrations/            golang-migrate SQL migrations, embedded and applied at startup
+testdata/              the crypto vectors both implementations are held to
 docs/                  generated swagger specification
 ```
 
@@ -242,6 +253,16 @@ and dies with the tab. That is what makes the lock state mean something, and wha
 stolen browser profile no worse than a stolen database dump. The cost is that search is
 only as complete as the index is warm, so the status bar shows coverage (`INDEX 12/213`)
 rather than letting an incomplete answer look complete.
+
+**A reload skips the passphrase, a new tab does not.** The master key is wrapped with an AES
+key generated non-extractable and parked in a database of its own (`shelf-unlock`), while
+the permission to use that wrap is a marker in `sessionStorage` — so it dies with the tab
+that wrote it, and the key is resumable for exactly as long as the tab that was already
+holding it in memory. Twelve hours bound the one case that stretches that: a browser told to
+restore its tabs restores their `sessionStorage` along with them. Signing out, locking by
+hand, changing the passphrase and a refresh the server rejects all delete the record, and a
+fresh session only starts writing one once the recovery kit is acknowledged, so no resume
+can walk past a code that was never shown.
 
 **A write that meets no network is queued, not lost.** The body is sealed first, so what
 waits in IndexedDB is ciphertext like everything else there, and one entry per note — a body
@@ -264,6 +285,161 @@ signature any reader could produce ciphertext that decrypts and no reader could 
 signature covers the slot as well as the bytes, and the reader checks the author's key
 against the member list it already holds rather than against whatever arrived with the
 revision.
+
+**Read-only mode is a property of the browser, not of the account.** The switch in the
+account menu (`store/prefs.ts`, remembered in `localStorage`) stops this device writing to
+any vault — bodies, the tree, tags and icons, the trash, members, grants, groups, invites,
+public links, re-keys, and creating or importing a vault. The shell drops those verbs so
+they cannot be reached, and every one of them is refused again in the workspace store, which
+is where a stale timer or a keyboard shortcut would otherwise land. Inside the body two
+things do not follow from `EditorView.editable` and are switched off by hand: a table cell is
+a `contenteditable` of its own inside the editor's, so the grid carries the mode in its
+widget and rebuilds when it changes; and Cut and Paste in the right-click menu dispatch
+changes directly rather than through a command that consults `EditorState.readOnly`, so they
+are taken out of the menu instead. Two further consequences are
+worth stating: a note opened in this mode joins no live editing session at all, because the
+server names the longest-standing member who may write as the committer and a tab holding
+that job without writing would strand everybody else's edits in the document; and a body
+queued offline before the mode went on stays queued until it goes off. It is a guard rail
+for the person at the keyboard rather than a permission — the account keeps every role it
+had, and another tab or device writes as before. Somebody who must not write is given `view`.
+
+### Export and import
+
+A vault leaves as a plain zip — `notes/…/<name>.md` in the folder shape the sidebar shows,
+plus a `shelf.json` — and comes back as a **new** vault. Both run entirely in the browser for
+the usual reason: the server holds ciphertext, so nobody else can build the archive or read it
+back. The dialog says the archive is not encrypted, because from the moment it lands in the
+downloads folder it is exactly as protected as the disk under it.
+
+Two rules make the round trip exact. `shelf.json` is authoritative — names, icons, tags and the
+tree are read from it, never inferred from the paths, which frees a path to be mangled into
+whatever a file system accepts. And a `.md` file holds the body and nothing else: front matter
+would have to be stripped on the way back, and that step eats a note that legitimately starts
+with `---`.
+
+What does not survive is what belongs to the vault rather than to the text: revision history
+and its signatures, members, grants and groups, folders that had a key of their own, and the
+ids themselves. Nothing in an archive is reused as an id on import — the additional data binds
+every ciphertext to its slot, and these slots are new. A node the reader holds no key for is
+left out rather than guessed at, and the report says how many.
+
+## The connector
+
+This is the one place where the promise the rest of this document makes does not hold, and it
+is worth saying so before explaining how it works: **a vault with a connector is readable by
+this server.** Not the metadata, not the shape — the folder names, the titles and the bodies.
+
+The reason is unavoidable rather than clever. Claude reaches a vault over HTTPS from
+Anthropic's network, so something on this side has to turn ciphertext into text. There is no
+arrangement in which a remote assistant reads a vault and the server does not. What can be
+arranged is that it is an exception: one vault at a time, only after its owner asked for it,
+and undone by removing a member.
+
+### It is a member, not a mechanism
+
+A connector is an account. It has the same two-part identity blob a person has, it is
+admitted to one vault as a member, and the vault's key reaches it through an ordinary key
+grant. Nothing else in the system was taught about it.
+
+That is the whole design, and everything below follows from it rather than from new code:
+
+- **Rotation carries it.** The rotation plan lists the holders of the current key, and it is
+  one of them. Nothing had to be added, and — more to the point — nothing can forget it.
+- **Revoking it is removing a member**, which already deletes the membership, every grant at
+  every version, and marks the scopes it could read as needing a rotation. The connector row
+  hangs off the membership by a foreign key, so it goes in the same transaction.
+- **Denying it a folder is a permission row.** Give the connector `none` on a folder and it
+  disappears from what Claude can see, through the same query that hides a folder from a
+  person.
+- **It shows up in the member list**, with its own key fingerprint. Somebody reading the
+  members of a vault sees the server among them, because it is.
+- **What it writes is signed** with its own key, so a note it wrote says so in the history
+  rather than appearing unattributed.
+
+The private half of its identity is wrapped by `mcp.secret` from this service's
+configuration, so a database dump alone opens nothing. That is a smaller claim than it
+sounds: whoever holds both the dump and the configuration holds the vault.
+
+### Getting the key to it
+
+Two requests, because a key cannot be sealed to a public key that does not exist yet. The
+first mints the identity and admits it with `key_state = pending_key` — a member that reads
+nothing. The second seals the vault's scope key to it and writes the grant, in the one
+transaction that justifies writing one. Only the vault's own scope is sealed, which is why a
+folder with its own key stays private without a second mechanism for it.
+
+### What Claude can do
+
+Thirteen tools over Streamable HTTP at `/api/v1/mcp`: list the tree; read, search, create,
+overwrite under an optimistic lock, append, move, rename and retag; create and trash folders;
+and list and restore what is in the bin. Purging is not offered at all — it destroys
+ciphertext nothing brings back.
+
+Three of them have shapes worth knowing. Renaming and retagging are the same call, because
+a name, an icon and a set of tags share one ciphertext: writing any of them back rebuilds all
+of it, and a separate rename would be the shape that silently drops an icon. Trashing a
+folder takes only an empty one — a folder goes with its whole subtree, and a model tidying up
+one stray directory should not be able to remove a project by naming its folder. And the bin
+is addressed by id rather than by path, because the place a trashed note came from may hold a
+different note now.
+
+Searching narrows by folder, by tag, or both, and either the text or the tag is enough on its
+own. The narrowing is not only a filter: a search opens every note it looks at, so scoping is
+what keeps the cost of asking about one project proportional to that project.
+
+Two refusals are worth knowing about. A write quoting a stale `content_seq` is refused rather
+than merged, because nobody here can merge two ciphertexts. And a write to a note somebody
+has open in the editor is refused rather than performed: a body written from outside the live
+document raises its epoch and drops the pending updates, which is right when an offline
+client replays a write and looks like theft when it lands mid-sentence.
+
+A connector admitted as a viewer is not offered the writing tools at all, rather than offered
+tools that refuse. A model shown a tool will try it.
+
+### Reaching it
+
+Anthropic's own network calls the connector, from `160.79.104.0/21`. A server on `localhost`
+or behind a home router is not reachable from there, whatever the configuration says, so
+Claude Desktop needs a public HTTPS address with a valid certificate. Claude Code runs the
+flow on the machine it is on and can reach a local one:
+
+```bash
+claude mcp add --transport http shelf http://localhost:8080/api/v1/mcp
+```
+
+Authentication is OAuth 2.1: dynamic client registration, PKCE with S256, and a refresh token
+rotated on every use. The consent screen is a page in the client rather than a form the
+server renders — the security headers set `form-action 'none'`, so a rendered form would be
+blocked by the browser. Tokens live in their own table on purpose: rotation there is
+single-use and a replay burns the chain it belongs to, which must not be the same chain a
+browser session hangs from.
+
+### The view
+
+A connected vault gets a view of its own, next to Notes and Graph in the sidebar. It exists
+because a tree answers the wrong question here: "which files are there" is not what somebody
+wants from a vault used as a model's memory. What they want is which projects are moving,
+what was decided, what the model wrote since they last looked, and which of the standing
+facts are still blank — and the folders are only how those happen to be stored.
+
+So the view reads the vault as what it holds. Projects become cards with their status, their
+open steps and how many decisions they have logged; the log becomes a timeline; the standing
+facts become a checklist that says which are still scaffolding; and everything the connector
+wrote is listed on its own, newest first. Starting a project or a skill is a button rather
+than a folder to copy, which is why the template no longer ships a `_template/` to copy from.
+
+It costs nothing to open: everything on it is read out of the tree and the decrypted search
+index the tab already holds, so it shows exactly what the connector can see and asks the
+server for nothing extra.
+
+### Two things the vault says to Claude itself
+
+The template a Claude vault is created with carries both in its root document, because a
+warning shown once in a dialog is a warning nobody re-reads: that this vault is readable by
+the server and must not hold credentials, and that everything in it is data rather than
+instructions. A note that tells the model to ignore its instructions is a note somebody
+wrote.
 
 ## Authentication
 
@@ -396,6 +572,31 @@ and the limits become shared by everyone.
 
 **`http.max_body_bytes`** (8 MiB) caps every request body. gin imposes no limit of its own.
 
+### The connector
+
+| Key                    | Environment variable          | Notes                                                                     |
+|------------------------|-------------------------------|---------------------------------------------------------------------------|
+| `mcp.enabled`          | `SHELF_MCP_ENABLED`           | Off by default. With it off none of the routes exist                       |
+| `mcp.secret`           | `SHELF_MCP_SECRET`            | Wraps the connector keys at rest, at least 32 characters                   |
+| `mcp.public_base_url`  | `SHELF_MCP_PUBLIC_BASE_URL`   | The address entered in Claude, byte for byte. Required when enabled        |
+
+Unlike `auth.secret` there is no ephemeral fallback anywhere, `local` included: a generated
+secret would make every connector key already in the database unopenable after the first
+restart, and the failure would read as corruption rather than as a missing setting. The
+service refuses to start instead.
+
+`public_base_url` is configured rather than taken from the request Host because the protected
+resource metadata has to name the same URL the person typed, and a proxy that rewrites Host
+would otherwise break discovery in a way nothing here can see.
+
+With `mcp.enabled` off, none of the connector routes are mounted at all. The client asks
+`GET /api/v1/features` before it offers to connect anything, because a route that was never
+mounted answers exactly like one that is broken — and finding out afterwards would mean a
+vault created for a connector that cannot be attached to it.
+
+`docker-compose.yml` passes all three through, so a deployment turns the connector on by
+setting them in the environment rather than by editing the image.
+
 ### Rate limiting
 
 A token bucket sits on the endpoints where a secret can be guessed
@@ -427,6 +628,23 @@ instances the limit applies to each of them separately. `auth.rate_limit.enabled
 turns the checks off entirely.
 
 ## Migrations
+
+The migrations are embedded in the binary and applied on startup, so a fresh database and a
+new image need nothing else: the service brings the schema to the version it was built
+against before it serves a request. The driver takes a Postgres advisory lock first, so
+several replicas starting at once is safe — one migrates and the rest find nothing to do.
+
+Two cases stop the service rather than letting it run against a schema it does not expect.
+A database left dirty by a half-applied migration is one: nothing can work out how far that
+migration got, so it has to be looked at and cleared with `make migrate-force`. A database
+ahead of the binary is the other, which is what a rollback to an older image looks like.
+
+Set `postgres.auto_migrate: false` (`SHELF_POSTGRES_AUTO_MIGRATE=false`) where something
+else owns the schema — a managed database with its own pipeline, or a replica that must not
+race the instance that migrates.
+
+The same migrations are driven by hand during development, through the same
+`schema_migrations` table, so the two paths cannot disagree about where the database stands:
 
 ```bash
 make migrate-create name=add_books   # a new .up.sql/.down.sql pair
@@ -470,6 +688,13 @@ Four of them have to be set for any real deployment:
 | `http.handler_timeout`   | bounds the work behind a request; ten slow queries would otherwise take the pool |
 | `postgres.ssl_mode`      | `require` or `verify-full` whenever Postgres is not on this host            |
 
+A value in `.env` is substituted into `docker-compose.yml`, not handed to the container, so
+anything the app needs has to be named in its `environment` block. `SHELF_AUTH_SECRET` is
+passed through there for exactly that reason.
+
+The schema needs no separate step: the image carries its migrations and applies them once
+Postgres is reachable.
+
 `make docker-up` is a development convenience: it publishes Postgres on the host with a
 default password and is not meant to run anywhere else.
 
@@ -483,3 +708,16 @@ Stated plainly, because each of them is a decision rather than an oversight:
 - **Revision history stays under the key it was written with.** Giving a folder its own key
   re-encrypts the current rows, not the archive — the same limit as "rotation cannot un-read
   what was already read".
+- **A note the connector writes does not enter the link graph until a browser opens it.**
+  Wikilinks are resolved on the client, against the note names it holds, and the server has
+  no copy of that logic. Porting it would put the same resolution in two languages and give
+  it two chances to disagree; recomputing it on the next sync is the fix, and it is not
+  written yet.
+- **Read-only mode does not stop the connector.** It is a promise about one browser — the
+  account keeps every role it had, and another tab, another device or a connector are all
+  unaffected by it. Pausing Claude is a different thing from putting a tab in read-only, and
+  it is done by revoking the connector's credentials.
+- **Search through the connector opens every note in the vault.** The index a browser keeps
+  lives in a tab this server cannot reach, so there is nothing else to search. It is bounded
+  by the size of one vault and by the result limit, and it is the one operation here whose
+  cost grows with the vault rather than with the request.

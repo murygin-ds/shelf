@@ -10,11 +10,17 @@ import { ProfileView } from '@/features/profile/ProfileView';
 import { SearchView } from '@/features/search/SearchView';
 import { TrashView } from '@/features/trash/TrashView';
 import { Sidebar } from '@/features/sidebar/Sidebar';
+import { ExportModal } from '@/features/transfer/ExportModal';
+import ClaudeVaultModal from '@/features/claude/ClaudeVaultModal';
+import ClaudeView from '@/features/claude/ClaudeView';
+import { ImportModal } from '@/features/transfer/ImportModal';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { summarize } from '@/sync/status';
 import { Icon } from '@/ui/Icon';
 import { NamePrompt, useNamePrompt } from '@/ui/NamePrompt';
+import { tip } from '@/ui/Tooltip';
 
 import { AccountMenu } from './AccountMenu';
 import { CommandPalette } from './CommandPalette';
@@ -42,10 +48,14 @@ export function Workspace() {
     load,
   } = workspace;
 
+  const { readOnly, setReadOnly } = usePrefs();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [permissionsFor, setPermissionsFor] = useState<number | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [claudeOpen, setClaudeOpen] = useState(false);
   const { ask, dialog } = useNamePrompt();
 
   const restoredVaultId = useShellHistory(identity);
@@ -112,7 +122,10 @@ export function Workspace() {
   // vault, so every create verb in the shell is a no-op until one exists. The first one is
   // therefore not a choice — this prompt has no cancel and stays up until a vault is made.
   // `loaded` gates it: an empty list before the first read is just an unanswered request.
-  const needsFirstVault = loaded && vaults.length === 0;
+  //
+  // Read-only is the one way out of it: a prompt with no cancel, in front of a mode that
+  // refuses the very thing it asks for, would be a wall.
+  const needsFirstVault = loaded && vaults.length === 0 && !readOnly;
 
   return (
     <div className={styles.app}>
@@ -137,6 +150,9 @@ export function Workspace() {
           onNewVault={newVault}
           onMembers={() => setMembersOpen(true)}
           onSecurity={() => setSecurityOpen(true)}
+          onExport={() => setExportOpen(true)}
+          onImport={() => setImportOpen(true)}
+          onConnectClaude={() => setClaudeOpen(true)}
         />
 
         <div className={styles.breadcrumb}>
@@ -161,6 +177,18 @@ export function Workspace() {
         </div>
 
         <div className={styles.topbarRight}>
+          {readOnly ? (
+            <button
+              type="button"
+              className={styles.readOnly}
+              {...tip('Nothing on this device writes to any vault. Click to turn it off.')}
+              onClick={() => setReadOnly(false)}
+            >
+              <Icon name="eye" size={12} />
+              READ ONLY
+            </button>
+          ) : null}
+
           <AccountMenu />
         </div>
       </div>
@@ -188,7 +216,9 @@ export function Workspace() {
         />
 
         <div className={styles.canvas}>
-          {view === 'search' ? (
+          {view === 'claude' ? (
+            <ClaudeView />
+          ) : view === 'search' ? (
             <SearchView />
           ) : view === 'graph' ? (
             <GraphView />
@@ -209,10 +239,14 @@ export function Workspace() {
               </div>
               <p className={styles.emptyLede}>
                 {vault
-                  ? 'Pick a note from the sidebar, or add one. Titles and bodies are encrypted here before anything is sent.'
-                  : 'Create a vault to start. Its key is generated on this device and sealed to your own public key.'}
+                  ? readOnly
+                    ? 'Pick a note from the sidebar. Read-only mode is on, so nothing here can be changed from this device.'
+                    : 'Pick a note from the sidebar, or add one. Titles and bodies are encrypted here before anything is sent.'
+                  : readOnly
+                    ? 'There is nothing to read yet, and read-only mode is on — turn it off to create the first vault.'
+                    : 'Create a vault to start. Its key is generated on this device and sealed to your own public key.'}
               </p>
-              {!vault ? (
+              {!vault && !readOnly ? (
                 <button type="button" className={styles.primaryButton} onClick={newVault}>
                   New vault
                 </button>
@@ -253,6 +287,11 @@ export function Workspace() {
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
       {membersOpen ? <MembersModal onClose={() => setMembersOpen(false)} /> : null}
       {securityOpen ? <SecurityModal onClose={() => setSecurityOpen(false)} /> : null}
+      {exportOpen ? <ExportModal onClose={() => setExportOpen(false)} /> : null}
+      {importOpen ? <ImportModal onClose={() => setImportOpen(false)} /> : null}
+      {claudeOpen && identity ? (
+        <ClaudeVaultModal identity={identity} onClose={() => setClaudeOpen(false)} />
+      ) : null}
       {permissionsFolder ? (
         <PermissionsModal folder={permissionsFolder} onClose={() => setPermissionsFor(null)} />
       ) : null}

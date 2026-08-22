@@ -6,6 +6,7 @@ const places: Place[] = [
   { vaultId: null, view: 'editor', noteId: null, query: '' },
   { vaultId: 3, view: 'editor', noteId: null, query: '' },
   { vaultId: 3, view: 'editor', noteId: 17, query: '' },
+  { vaultId: 3, view: 'claude', noteId: null, query: '' },
   { vaultId: 3, view: 'graph', noteId: null, query: '' },
   { vaultId: 3, view: 'trash', noteId: null, query: '' },
   { vaultId: 3, view: 'profile', noteId: null, query: '' },
@@ -32,6 +33,7 @@ describe('place', () => {
 
   it('leaves the note out of the views that do not show one', () => {
     expect(pathOf({ vaultId: 3, view: 'graph', noteId: 17, query: '' })).toBe('/v/3/graph');
+    expect(pathOf({ vaultId: 3, view: 'claude', noteId: 17, query: '' })).toBe('/v/3/claude');
     expect(placeOf('/v/3/graph', '')).toEqual({
       vaultId: 3,
       view: 'graph',

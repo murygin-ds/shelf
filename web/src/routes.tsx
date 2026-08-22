@@ -6,6 +6,7 @@ import { Recover } from '@/features/auth/Recover';
 import { RecoveryKit } from '@/features/auth/RecoveryKit';
 import { SignIn } from '@/features/auth/SignIn';
 import { SignUp } from '@/features/auth/SignUp';
+import ConnectView from '@/features/claude/ConnectView';
 import { PublicNote } from '@/features/share/PublicNote';
 import { Workspace } from '@/features/shell/Workspace';
 import { useSession } from '@/store/session';
@@ -18,6 +19,10 @@ function RequireUnlocked({ children }: { children: ReactElement }) {
   const location = useLocation();
 
   if (status === 'kit') return <Navigate to={KIT_PATH} replace />;
+
+  // Nothing is drawn while the tab opens its unlock record. Redirecting on the way would
+  // flash the unlock screen and spend `from` on a navigation that is about to be undone.
+  if (status === 'resuming') return null;
 
   if (status !== 'unlocked') {
     // Carried so unlocking lands back on the note that was on screen rather than at the root.
@@ -37,6 +42,7 @@ function RequireAnonymous({ children }: { children: ReactElement }) {
   const status = useSession((state) => state.status);
 
   if (status === 'kit') return <Navigate to={KIT_PATH} replace />;
+  if (status === 'resuming') return null;
 
   return status === 'unlocked' ? <Navigate to="/" replace /> : children;
 }
@@ -74,6 +80,16 @@ export function AppRoutes() {
       {/* A public link belongs to whoever holds it, so this route knows nothing about
           sessions. The secret is in the fragment and never reaches the server. */}
       <Route path="/share" element={<PublicNote />} />
+      {/* Where an OAuth client is sent to be approved. It needs the keyring, because it
+          names the vaults being granted and their names are sealed. */}
+      <Route
+        path="/connect"
+        element={
+          <RequireUnlocked>
+            <ConnectView />
+          </RequireUnlocked>
+        }
+      />
       <Route
         path="/*"
         element={

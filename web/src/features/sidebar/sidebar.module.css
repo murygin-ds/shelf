@@ -129,7 +129,21 @@
 
 /* Tree */
 
+/*
+ * The block a dragged row can be dropped into: the vault heading and every row under it.
+ * Anywhere in here that is not a row means the vault root, and the outline only appears while
+ * the root is the destination under the hand.
+ */
+.tree {
+  border-radius: var(--radius);
+}
+
+.treeTarget {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 .row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -145,6 +159,8 @@
   cursor: pointer;
   color: var(--text-muted);
   text-align: left;
+  /* A row carried past its neighbours would otherwise sweep a selection across them. */
+  user-select: none;
 }
 
 .row:hover {
@@ -163,6 +179,20 @@
 .rowLocked {
   color: var(--text-disabled);
   cursor: not-allowed;
+}
+
+/* The row under the hand. It stays in place — the tree does not reflow until the drop — so
+   it has to read as picked up rather than as merely hovered. */
+.rowMoving {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+/* The folder that would take the drop. Only ever set on a destination the server will
+   accept, so the absence of it is the refusal. */
+.rowTarget {
+  background: var(--surface-active);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .indent {
@@ -219,10 +249,30 @@
   flex: none;
 }
 
+/*
+ * The verbs sit over the end of the name rather than beside it. Laid out in the flow they
+ * take 118px, which a folder three levels down does not have: the indent and the buttons
+ * together left its name nothing at all. The two layers reproduce the row's own hover
+ * colour — a translucent veil over the panel — so the strip reads as part of the row in
+ * either tone, and the gradient hands the name back its last few pixels.
+ */
 .rowActions {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  bottom: 0;
   display: none;
+  align-items: center;
   gap: 2px;
-  flex: none;
+  padding-left: 14px;
+  background:
+    linear-gradient(to right, transparent, rgba(255, 255, 255, 0.05) 14px),
+    linear-gradient(to right, transparent, var(--panel) 14px);
+  pointer-events: none;
+}
+
+.rowActive .rowActions {
+  background: linear-gradient(to right, transparent, var(--surface-active) 14px);
 }
 
 .row:hover .rowActions {
@@ -233,6 +283,7 @@
   width: 22px;
   height: 22px;
   display: grid;
+  pointer-events: auto;
   place-items: center;
   border: 0;
   border-radius: var(--radius-sm);

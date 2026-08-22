@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { type MenuEntry, useContextMenu } from '@/ui/ContextMenu';
@@ -18,9 +19,18 @@ const HEAD_H = 56;
  * from an icon.
  */
 export function AccountMenu() {
-  const { user, status, signOut, lock } = useSession();
+  const { user, identity, status, signOut, lock } = useSession();
   const setView = useWorkspace((state) => state.setView);
+  const saveNote = useWorkspace((state) => state.saveNote);
+  const { readOnly, setReadOnly } = usePrefs();
   const { open: openMenu, menu } = useContextMenu();
+
+  // Whatever is typed and not yet sealed goes out before the door closes. After it the
+  // autosave is refused, and an unsaved body would sit in the editor with nowhere to land
+  // until somebody typed into it again.
+  const freeze = () => {
+    void saveNote(identity ?? undefined).finally(() => setReadOnly(true));
+  };
 
   const name = user?.display_name ?? '';
   const initials =
@@ -45,6 +55,14 @@ export function AccountMenu() {
       ),
     },
     { label: 'Profile', icon: 'user', separated: true, onSelect: () => setView('profile') },
+    // Not a permission and not a lock: the keys stay open and every vault stays readable,
+    // but nothing on this device writes to any of them until it is turned off again.
+    {
+      label: 'Read-only mode',
+      icon: 'eye',
+      ...(readOnly ? { hint: 'ON' } : {}),
+      onSelect: () => (readOnly ? setReadOnly(false) : freeze()),
+    },
     // The keys drop but the session stays, so this is not a way out — it is the lock the
     // top bar used to carry as an icon of its own.
     { label: 'Lock keys', icon: 'lock', onSelect: lock },

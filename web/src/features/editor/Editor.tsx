@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
 import { allTags } from '@/lib/search';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon, type IconName } from '@/ui/Icon';
@@ -16,6 +17,9 @@ import styles from './editor.module.css';
 
 /** Long enough that typing does not turn into one request per keystroke. */
 const AUTOSAVE_MS = 1200;
+
+/** How far the pointer travels before a press on a tab counts as a move rather than a click. */
+const DRAG_SLOP_PX = 4;
 
 export function Editor() {
   const {
@@ -34,13 +38,17 @@ export function Editor() {
     setIcon,
     openNote,
     openInBackground,
+    moveTab,
     closeTab,
     saveAsCopy,
   } = useWorkspace();
   const identity = useSession((state) => state.identity);
   const user = useSession((state) => state.user);
+  const frozen = usePrefs((state) => state.readOnly);
   const [title, setTitle] = useState(open?.note.name ?? '');
   const [picker, setPicker] = useState<PickerTarget | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const strip = useRef<HTMLDivElement | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const { open: openMenu, menu } = useContextMenu();
 
@@ -66,14 +74,19 @@ export function Editor() {
 
   // The live session for the note on screen. It is opened here rather than in openNote
   // because the identity lives in the session store, and this is where the two meet.
+  //
+  // Read-only is one of the things that ends it: switching the mode on with a room already
+  // up would leave this tab holding the committer's job. The teardown writes the document
+  // back on the way out, which is the last thing this device writes — refusing that would
+  // strand text that was typed while writing was still allowed.
   const noteId = open?.note.id;
   useEffect(() => {
-    if (noteId === undefined || !identity || !user) return;
+    if (noteId === undefined || !identity || !user || frozen) return;
 
     void startEditing(identity, { userId: user.id, name: user.display_name });
 
     return () => stopEditing();
-  }, [noteId, identity, user, startEditing, stopEditing]);
+  }, [noteId, identity, user, frozen, startEditing, stopEditing]);
 
   // Debounced autosave, plus an explicit ⌘S for people who do not trust one. With a live
   // session both are no-ops: the committer writes the body back on its own schedule, and
@@ -115,8 +128,45 @@ export function Editor() {
     if (openId !== keep) closeTab(openId);
   };
 
+  // Reordering runs on pointer events rather than on the drag-and-drop API: a tab is a pair
+  // of buttons, and a native drag started on one of those is at the browser's discretion.
+  // The listeners are on the window because a hand moving a tab leaves the strip freely, and
+  // a drag that ends out there still has to end.
+  const grab = (event: React.PointerEvent, id: number) => {
+    if (event.button !== 0) return;
+
+    const from = event.clientX;
+    // The strip as it stood when the tab was picked up. Frozen on purpose: the slots shift
+    // as the tab travels through them, and measuring the thing that is moving makes the
+    // answer depend on whether the browser has painted the last move yet.
+    const edges = Array.from(strip.current?.children ?? []).map(
+      (slot) => slot.getBoundingClientRect().right,
+    );
+    let armed = false;
+
+    const move = (moved: PointerEvent) => {
+      if (!armed && Math.abs(moved.clientX - from) < DRAG_SLOP_PX) return;
+
+      armed = true;
+      setDragging(id);
+      moveTab(id, slotAt(edges, moved.clientX));
+    };
+
+    const drop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', drop);
+      window.removeEventListener('pointercancel', drop);
+      setDragging(null);
+    };
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', drop);
+    window.addEventListener('pointercancel', drop);
+  };
+
   const note = open.note;
-  const readOnly = open.locked || note.permission === 'view' || note.permission === 'comment';
+  const readOnly =
+    frozen || open.locked || note.permission === 'view' || note.permission === 'comment';
 
   /**
    * Resolved here rather than in the editor, and by the same rule the graph uses: titles are
@@ -146,14 +196,17 @@ export function Editor() {
     <div className={styles.pane}>
       {menu}
 
-      <div className={styles.tabs}>
+      <div className={styles.tabs} ref={strip}>
         {tabs.map((tab) => {
           const active = tab.id === note.id;
 
           return (
             <span
               key={tab.id}
-              className={`${styles.tab} ${active ? styles.tabActive : ''}`}
+              data-tab={tab.id}
+              className={`${styles.tab} ${active ? styles.tabActive : ''} ${
+                dragging === tab.id ? styles.tabMoving : ''
+              }`}
               // Middle-click closes the tab. The mousedown has to be swallowed too, or the
               // browser starts its own autoscroll on the way to the click.
               onMouseDown={(event) => {
@@ -185,6 +238,9 @@ export function Editor() {
               <button
                 type="button"
                 className={styles.tabOpen}
+                onPointerDown={(event) => grab(event, tab.id)}
+                // A tab that was dragged is opened too, as it is in every browser: the press
+                // that moved it is still a press on it.
                 onClick={() => {
                   if (!active) void openNote(tab);
                 }}
@@ -249,7 +305,10 @@ export function Editor() {
               E2E
             </span>
             <span className={styles.metaSeparator}>·</span>
-            <span>{note.permission.toUpperCase()}</span>
+            {/* The mode outranks the permission here: what the reader may do with this note
+                and what this device will do with it are the same line, and in read-only the
+                second one is the answer. */}
+            <span>{frozen ? 'READ ONLY' : note.permission.toUpperCase()}</span>
             {open.dirty ? (
               <>
                 <span className={styles.metaSeparator}>·</span>
@@ -283,9 +342,18 @@ export function Editor() {
               onChange={editBody}
               onBlur={() => void saveNote(identity ?? undefined)}
               onOpenLink={openLink}
-              onContextMenu={(event, view, pos) =>
-                openMenu(event, editorMenu(view, pos, (link) => openLink(link.target, link.where)))
-              }
+              onContextMenu={(event, view, pos) => {
+                const items = editorMenu(view, pos, (link) => openLink(link.target, link.where));
+
+                // Nothing to offer — reading, with no selection and no link under the
+                // pointer. Suppressing the platform menu is only worth doing when something
+                // takes its place, so here it is left alone.
+                if (items.length === 0) return false;
+
+                openMenu(event, items);
+
+                return true;
+              }}
               onTableMenu={(event, ref) => openMenu(event, tableMenu(ref))}
             />
           )}
@@ -304,14 +372,18 @@ export function Editor() {
                   >
                     Discard mine and reload
                   </button>
-                  <button
-                    type="button"
-                    className={styles.conflictButton}
-                    disabled={saving}
-                    onClick={() => void saveAsCopy(identity ?? undefined)}
-                  >
-                    Save mine as a new note
-                  </button>
+                  {/* A conflict cannot arise while read-only is on, but one raised before it
+                      went on is still on screen — and keeping this copy means writing one. */}
+                  {frozen ? null : (
+                    <button
+                      type="button"
+                      className={styles.conflictButton}
+                      disabled={saving}
+                      onClick={() => void saveAsCopy(identity ?? undefined)}
+                    >
+                      Save mine as a new note
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={styles.conflictButton}
@@ -329,6 +401,13 @@ export function Editor() {
       {picker ? <IconPicker target={picker} onClose={() => setPicker(null)} /> : null}
     </div>
   );
+}
+
+/** The slot a pointer at `x` is over, given each slot's right edge. Past the end is the end. */
+function slotAt(edges: number[], x: number): number {
+  const at = edges.findIndex((edge) => x < edge);
+
+  return at < 0 ? edges.length - 1 : at;
 }
 
 function relative(iso: string): string {

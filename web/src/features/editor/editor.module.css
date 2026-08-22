@@ -23,11 +23,23 @@
   font: inherit;
   font-size: 12.5px;
   color: var(--text);
+  /* A tab being dragged past its neighbours would otherwise sweep a selection across them. */
+  user-select: none;
 }
 
 /* The accent underline marks the tab you are in, not every tab that is open. */
 .tabActive {
   box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+/* The tab under the hand: it changes slots as the pointer crosses them, so it has to stay
+   the one thing in the strip that is obviously being moved. */
+.tabMoving {
+  background: var(--surface-active);
+}
+
+.tabMoving .tabOpen {
+  cursor: grabbing;
 }
 
 .tabName {

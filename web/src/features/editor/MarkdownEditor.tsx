@@ -29,6 +29,7 @@ import { vaultContext, type VaultContext } from './context';
 import { formatKeymap, wrapOnType } from './format';
 import { codeColours, noteLanguage } from './language';
 import { editorTheme, livePreview } from './livepreview';
+import { bindEditor, refresh } from './reveal';
 import { tableGrid, tableMenu, type TableCellRef } from './table';
 import { wikilinkAt } from './wikilink';
 
@@ -74,7 +75,8 @@ export interface MarkdownEditorProps {
   onChange: (body: string) => void;
   onBlur: () => void;
   onOpenLink: (target: string, where: LinkWhere) => void;
-  onContextMenu: (event: MouseEvent, view: EditorView, pos: number) => void;
+  /** False when it has nothing to offer, which hands the event back to the platform menu. */
+  onContextMenu: (event: MouseEvent, view: EditorView, pos: number) => boolean;
   /** The right button inside a rendered table, which has its own verbs. */
   onTableMenu: (event: MouseEvent, ref: TableCellRef) => void;
   className?: string | undefined;
@@ -133,6 +135,11 @@ export function MarkdownEditor({
     const room = latest.current.collab;
 
     const listen = (update: ViewUpdate) => {
+      // The outline marks the heading at the top of the viewport, and text arriving above
+      // the fold moves it without any scrolling. Before the room check: what is on screen is
+      // a fact about this editor, whoever is writing the text.
+      if (update.docChanged || update.geometryChanged) refresh();
+
       // With a live session the room reports the text, because it also has to report the
       // edits that arrive from other people — and those never pass through here.
       if (room) {
@@ -162,10 +169,12 @@ export function MarkdownEditor({
     };
 
     return EditorState.create({
-      // With a room the document comes from the Y.Text, and CodeMirror is told to start
-      // empty: yCollab fills it from the shared state, and seeding it here as well would
-      // insert the body a second time.
-      doc: room ? '' : doc,
+      // With a room the Y.Text is the document, so the state starts from what it holds
+      // rather than from the store's copy. yCollab only relays changes from here on — it
+      // does not fill the editor — so starting empty would leave the note blank until
+      // somebody typed, and every edit would then be positioned against text CodeMirror
+      // could not see.
+      doc: room ? room.text.toString() : doc,
       extensions: [
         // A shared document has no local history. ⌘Z on one would take back whatever the
         // stack happened to hold, including somebody else's sentence; Y.UndoManager undoes
@@ -251,9 +260,7 @@ export function MarkdownEditor({
             const { from, to } = instance.state.selection.main;
             if (at < from || at > to) instance.dispatch({ selection: { anchor: at } });
 
-            latest.current.onContextMenu(event, instance, at);
-
-            return true;
+            return latest.current.onContextMenu(event, instance, at);
           },
         }),
         EditorView.updateListener.of(listen),
@@ -268,11 +275,13 @@ export function MarkdownEditor({
     const instance = new EditorView({ parent, state: stateFor(latest.current.value) });
 
     view.current = instance;
+    bindEditor(instance);
 
     return () => {
       instance.destroy();
       view.current = null;
       deferred.current = null;
+      bindEditor(null);
     };
   }, [stateFor]);
 
@@ -295,6 +304,8 @@ export function MarkdownEditor({
     // which `editBody` would then mark dirty and save.
     instance.setState(stateFor(latest.current.value));
     deferred.current = null;
+    // A different note under the same editor, which `setState` notifies nobody about.
+    refresh();
   }, [docId, collab, stateFor]);
 
   // An external body. The dependency is the STRING: the store hands out a new `open` object

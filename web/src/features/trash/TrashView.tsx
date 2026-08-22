@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { usePrefs } from '@/store/prefs';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
 
@@ -14,6 +15,7 @@ import styles from './trash.module.css';
  */
 export function TrashView() {
   const { vaultId, trashed, loadTrash, restore, purge } = useWorkspace();
+  const readOnly = usePrefs((state) => state.readOnly);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -84,33 +86,37 @@ export function TrashView() {
                   <span className={styles.meta}>{kind === 'folder' ? 'FOLDER' : 'NOTE'}</span>
                 )}
 
-                <button
-                  type="button"
-                  className={styles.action}
-                  disabled={busy}
-                  onClick={() => void act(() => restore(node.id, kind))}
-                >
-                  Restore
-                </button>
+                {readOnly ? null : (
+                  <>
+                    <button
+                      type="button"
+                      className={styles.action}
+                      disabled={busy}
+                      onClick={() => void act(() => restore(node.id, kind))}
+                    >
+                      Restore
+                    </button>
 
-                {confirming === key ? (
-                  <button
-                    type="button"
-                    className={`${styles.action} ${styles.destructive}`}
-                    disabled={busy}
-                    onClick={() => void act(() => purge(node.id, kind))}
-                  >
-                    Destroy for good
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.action}
-                    disabled={busy}
-                    onClick={() => setConfirming(key)}
-                  >
-                    Delete forever
-                  </button>
+                    {confirming === key ? (
+                      <button
+                        type="button"
+                        className={`${styles.action} ${styles.destructive}`}
+                        disabled={busy}
+                        onClick={() => void act(() => purge(node.id, kind))}
+                      >
+                        Destroy for good
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.action}
+                        disabled={busy}
+                        onClick={() => setConfirming(key)}
+                      >
+                        Delete forever
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             );
@@ -119,9 +125,9 @@ export function TrashView() {
       </div>
 
       <p className={styles.note}>
-        Restoring a folder brings back what was inside it. Deleting forever destroys the
-        ciphertext — there is no copy anywhere that could bring it back, here or on the
-        server.
+        {readOnly
+          ? 'Read-only mode is on: this is the list and nothing more. Turn it off in the account menu to restore anything or destroy it for good.'
+          : 'Restoring a folder brings back what was inside it. Deleting forever destroys the ciphertext — there is no copy anywhere that could bring it back, here or on the server.'}
       </p>
     </div>
   );

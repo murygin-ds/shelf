@@ -72,6 +72,26 @@
   gap: 8px;
 }
 
+/* The mode is invisible everywhere else — verbs are simply absent — so it says so here. */
+.readOnly {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--warn);
+  cursor: pointer;
+}
+
+.readOnly:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .avatar {
   width: 26px;
   height: 26px;

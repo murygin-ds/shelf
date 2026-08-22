@@ -389,6 +389,24 @@ func (h *Hub) NoteInvalidated(fileID int64) {
 	}
 }
 
+// Editing reports whether anybody holds this note open right now.
+//
+// It is what lets a body written from outside the document refuse rather than take somebody
+// else's unsaved keystrokes with it: a write that carries no document raises the epoch and
+// drops the pending log, which is right for an offline replay and looks like theft when it
+// lands in the middle of a sentence somebody is still typing.
+//
+// A false negative is possible and harmless — a session opening in the same instant is not
+// yet in a room — and the answer is only ever used to refuse, never to permit.
+func (h *Hub) Editing(fileID int64) bool {
+	r := h.lookupRoom(fileID)
+	if r == nil {
+		return false
+	}
+
+	return len(r.everyone()) > 0
+}
+
 // Limiter throttles one connection's writes. Implemented by ratelimit.Limiter.
 type Limiter interface {
 	Allow(key string) (bool, time.Duration)

@@ -5,6 +5,7 @@ import * as collab from '@/api/collab';
 import * as groupsApi from '@/api/groups';
 import type { RekeyProgress } from '@/api/rekey';
 import type { FolderNode, Permission } from '@/api/workspace';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { useDismiss } from '@/ui/dismiss';
@@ -39,8 +40,13 @@ export function PermissionsModal({
   const [progress, setProgress] = useState<RekeyProgress | null>(null);
   const dismiss = useDismiss(onClose);
 
+  const readOnly = usePrefs((state) => state.readOnly);
+
   const vault = vaults.find((v) => v.id === vaultId);
-  const canManage = folder.permission === 'own';
+  // Every verb in here is a grant, a revocation or a re-key, so read-only turns the whole
+  // panel into what it already is for a member who cannot manage the folder: a statement of
+  // who has access.
+  const canManage = folder.permission === 'own' && !readOnly;
 
   // The folder sits under the vault's key until it is given one of its own, which is what
   // makes a narrowing here server-enforced rather than cryptographic.
@@ -77,7 +83,7 @@ export function PermissionsModal({
   }, [vaultId, folder.id]);
 
   const apply = async (member: collab.MemberDto, permission: Permission) => {
-    if (vaultId === null || !vault || !keyring) return;
+    if (vaultId === null || !vault || !keyring || readOnly) return;
 
     setBusy(true);
     setError(null);
@@ -135,7 +141,7 @@ export function PermissionsModal({
   // A group's key is its own, so the folder key is sealed to the group's public point
   // rather than to any person's — one seal, whoever joins later.
   const applyToGroup = async (group: groupsApi.Group, permission: Permission) => {
-    if (vaultId === null || !keyring) return;
+    if (vaultId === null || !keyring || readOnly) return;
 
     setBusy(true);
     setError(null);
@@ -167,7 +173,7 @@ export function PermissionsModal({
   };
 
   const clear = async (grantId: number) => {
-    if (vaultId === null) return;
+    if (vaultId === null || readOnly) return;
 
     try {
       await collab.deleteGrant(vaultId, grantId);

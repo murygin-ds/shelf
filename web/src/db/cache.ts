@@ -142,8 +142,16 @@ export async function readTree(
     database.getAllFromIndex('notes', 'vault', vaultId),
   ]);
 
-  return { folders: folders.map((row) => row.value), notes: notes.map((row) => row.value) };
+  // Trashed rows are dropped on the way in, but a build that kept them left some behind and
+  // the delta that announced their deletion is long past the cursor by now.
+  return {
+    folders: folders.map((row) => row.value).filter(live),
+    notes: notes.map((row) => row.value).filter(live),
+  };
 }
+
+/** A node still in the tree. The trash is a separate list, read from the server on demand. */
+const live = (node: FolderDto | FileDto) => node.deleted_at === null;
 
 export async function applyDelta(
   vaultId: number,
@@ -154,12 +162,24 @@ export async function applyDelta(
   const database = await open();
   const tx = database.transaction(['folders', 'notes', 'bodies'], 'readwrite');
 
+  // A node that entered the trash arrives here as an ordinary change carrying `deleted_at`,
+  // and caching it as-is would put it straight back into the tree it was just removed from.
+  // Its body stays: the trash is reversible, and a restore that has it is a restore without
+  // a round trip.
   for (const folder of folders) {
-    await tx.objectStore('folders').put({ vaultId, id: folder.id, value: folder });
+    if (folder.deleted_at === null) {
+      await tx.objectStore('folders').put({ vaultId, id: folder.id, value: folder });
+    } else {
+      await tx.objectStore('folders').delete([vaultId, folder.id]);
+    }
   }
 
   for (const note of notes) {
-    await tx.objectStore('notes').put({ vaultId, id: note.id, value: note });
+    if (note.deleted_at === null) {
+      await tx.objectStore('notes').put({ vaultId, id: note.id, value: note });
+    } else {
+      await tx.objectStore('notes').delete([vaultId, note.id]);
+    }
   }
 
   // A purged node leaves nothing behind on the server, so its cached body has to go too.

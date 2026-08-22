@@ -1,0 +1,267 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal {
+  width: 560px;
+  max-width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--text-quiet);
+  margin-top: 3px;
+}
+
+.close {
+  border: 0;
+  background: transparent;
+  color: var(--text-quiet);
+  cursor: pointer;
+  padding: 0;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+}
+
+.close:hover {
+  color: var(--text);
+}
+
+.body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.lede {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-body);
+}
+
+.section {
+  margin: 18px 0 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-body);
+}
+
+/* The one thing about an export that cannot be undone by closing the dialog. */
+.noteWarn {
+  border-color: #3a3226;
+  background: #14110c;
+  color: #d8c8a8;
+}
+
+.noteIcon {
+  margin-top: 2px;
+  flex: none;
+}
+
+.list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.field {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+.input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.input:focus {
+  border-color: var(--focus-border);
+}
+
+/* The file input itself is never shown: it cannot be styled, and the button says more. */
+.file {
+  display: none;
+}
+
+.picker {
+  margin-top: 14px;
+  width: 100%;
+  padding: 22px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  color: var(--text-body);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.picker:hover,
+.pickerOver {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pickerHint {
+  font-size: 11.5px;
+  color: var(--text-quiet);
+}
+
+.summary {
+  margin-top: 14px;
+  padding: 12px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.summaryTitle {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.summaryMeta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-quiet);
+}
+
+.error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #3a2a2a;
+  border-radius: var(--radius-md);
+  background: #150f10;
+  font-size: 12.5px;
+  color: #d8b6b6;
+}
+
+/* A vault-sized transfer runs for a while; a bare spinner would look like a hang. */
+.progress {
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-inset);
+}
+
+.footerNote {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-label);
+}
+
+.footerSpacer {
+  flex: 1;
+}
+
+.primary {
+  height: 36px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.done {
+  height: 32px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-chip);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.done:hover {
+  background: var(--surface-chip-hover);
+}

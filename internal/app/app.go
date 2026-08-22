@@ -46,6 +46,17 @@ func Run(ctx context.Context) error {
 		zap.String("database", cfg.Postgres.Database),
 	)
 
+	// After the pool, so an unreachable database is reported as one rather than as a
+	// migration failure, and before the router, so no request is served against a schema
+	// this binary was not built for.
+	if cfg.Postgres.AutoMigrate {
+		if err := postgres.Migrate(cfg.Postgres, log); err != nil {
+			return fmt.Errorf("migrate postgres: %w", err)
+		}
+	} else {
+		log.Info("automatic migration is off, the schema is assumed to be current")
+	}
+
 	router, err := api.NewRouter(api.Deps{Config: cfg, Logger: log, Pool: pool})
 	if err != nil {
 		return fmt.Errorf("init router: %w", err)

@@ -128,6 +128,10 @@ export function editorMenu(
   const selected = !view.state.selection.main.empty;
   const link = wikilinkAt(view.state, pos);
   const clipboard = typeof navigator !== 'undefined' && Boolean(navigator.clipboard);
+  // The formatting verbs answer with a null spec while the state is read-only, so they are
+  // already inert — but Paste and Cut dispatch changes of their own, and an entry that does
+  // nothing is worse than one that is not there.
+  const writable = clipboard && !view.state.readOnly;
 
   const head: MenuEntry[] = link
     ? [
@@ -189,7 +193,7 @@ export function editorMenu(
     ],
   };
 
-  const paste: MenuEntry[] = clipboard
+  const paste: MenuEntry[] = writable
     ? [
         {
           label: 'Paste',
@@ -211,6 +215,28 @@ export function editorMenu(
       ]
     : [];
 
+  const copy: MenuEntry[] = clipboard
+    ? [
+        {
+          label: 'Copy',
+          icon: 'copy',
+          hint: `${MOD}C`,
+          separated: !writable,
+          onSelect: () => {
+            const { from, to } = view.state.selection.main;
+
+            void navigator.clipboard.writeText(view.state.doc.sliceString(from, to)).catch(() => undefined);
+            view.focus();
+          },
+        },
+      ]
+    : [];
+
+  // Reading: everything below either writes or is inert, so what is left is where a link
+  // goes and what can be taken out of the note. An empty list is not a menu — the caller
+  // hands the event back to the platform when nothing is offered.
+  if (view.state.readOnly) return [...head, ...(selected ? copy : [])];
+
   if (!selected) {
     return [
       ...head,
@@ -223,7 +249,7 @@ export function editorMenu(
     ];
   }
 
-  const cut: MenuEntry[] = clipboard
+  const cut: MenuEntry[] = writable
     ? [
         {
           label: 'Cut',
@@ -235,17 +261,6 @@ export function editorMenu(
 
             void navigator.clipboard.writeText(view.state.doc.sliceString(from, to)).catch(() => undefined);
             view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } });
-            view.focus();
-          },
-        },
-        {
-          label: 'Copy',
-          icon: 'copy',
-          hint: `${MOD}C`,
-          onSelect: () => {
-            const { from, to } = view.state.selection.main;
-
-            void navigator.clipboard.writeText(view.state.doc.sliceString(from, to)).catch(() => undefined);
             view.focus();
           },
         },
@@ -281,6 +296,7 @@ export function editorMenu(
     lists,
     { label: 'Link to a note', icon: 'link', onSelect: run(wrapWikilink) },
     ...cut,
+    ...copy,
     ...paste,
   ];
 }

@@ -1,6 +1,13 @@
 import { redo, undo } from '@codemirror/commands';
 import { syntaxTree } from '@codemirror/language';
-import { Facet, StateField, type EditorState, type Extension, type Range } from '@codemirror/state';
+import {
+  EditorState,
+  Facet,
+  StateField,
+  type Extension,
+  type Range,
+  type TransactionSpec,
+} from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 
@@ -157,38 +164,90 @@ function modelOf(state: EditorState, table: SyntaxNode): TableModel | null {
 }
 
 /** The extent of the table covering `pos`, looked up fresh rather than remembered. */
-function tableAt(state: EditorState, pos: number): SyntaxNode | null {
-  let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 1);
+function tableAt(state: EditorState, pos: number, side: -1 | 1 = 1): SyntaxNode | null {
+  let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, side);
 
   while (node && node.name !== 'Table') node = node.parent;
 
   return node;
 }
 
+/**
+ * The table the document ends on, if it ends on one.
+ *
+ * A block replacement covering the last line leaves the position after it with no DOM of its
+ * own. The caret can still be moved there, and CodeMirror will report it there, but the
+ * browser draws it in the nearest editable spot it can find — a line above the table — and
+ * that is where the next keystroke is written. A lone blank line under the table is no way
+ * out either: a caret on it writes another row.
+ */
+export function trailingTable(state: EditorState): SyntaxNode | null {
+  const last = state.doc.lineAt(state.doc.length);
+  const end = last.from > 0 && last.text.trim() === '' ? last.from - 1 : last.to;
+
+  const node = tableAt(state, end, -1);
+
+  return node && node.to >= end ? node : null;
+}
+
+/**
+ * Whether `pos` sits on the blank line a table ends against — the line markdown reads as one
+ * more row of it the moment anything is written there.
+ */
+export function rowUnderTable(state: EditorState, pos: number): boolean {
+  const line = state.doc.lineAt(pos);
+  if (line.from === 0 || line.text.trim() !== '') return false;
+
+  const node = tableAt(state, line.from - 1, -1);
+
+  return !!node && node.to === line.from - 1;
+}
+
 class TableWidget extends WidgetType {
   constructor(
     private readonly model: TableModel,
     private readonly source: string,
+    /**
+     * Whether the cells take the caret.
+     *
+     * It has to be part of the widget rather than read at each keystroke: a cell is a
+     * `contenteditable` of its own inside the editor's, so `EditorView.editable` — which is
+     * what read-only drops — says nothing about it. Without this the grid stays writable
+     * while the prose around it has stopped being.
+     */
+    private readonly readOnly: boolean,
   ) {
     super();
   }
 
   override eq(other: TableWidget): boolean {
-    return other.source === this.source;
+    return other.source === this.source && other.readOnly === this.readOnly;
   }
 
+  /**
+   * The `<table>` goes inside a box of its own rather than being the widget itself, because
+   * the air around it has to be padding. CodeMirror measures a block widget with
+   * `getBoundingClientRect`, which does not see margins: spacing the grid with one would
+   * leave the height map short by that much for every table above a line, and a click on the
+   * lower part of that line would resolve to the block below it.
+   */
   override toDOM(view: EditorView): HTMLElement {
-    const table = document.createElement('table');
+    const table = document.createElement('div');
     table.className = 'cm-md-grid';
     // The widget sits inside the editor's own contenteditable, so it has to opt out of it
     // explicitly; the cells then opt back in one at a time.
     table.contentEditable = 'false';
 
-    const head = table.appendChild(document.createElement('thead'));
-    head.appendChild(rowDOM(this.model.header, 'th', this.model.aligns));
+    const grid = table.appendChild(document.createElement('table'));
+    const editable = !this.readOnly;
 
-    const body = table.appendChild(document.createElement('tbody'));
-    for (const row of this.model.rows) body.appendChild(rowDOM(row, 'td', this.model.aligns));
+    const head = grid.appendChild(document.createElement('thead'));
+    head.appendChild(rowDOM(this.model.header, 'th', this.model.aligns, editable));
+
+    const body = grid.appendChild(document.createElement('tbody'));
+    for (const row of this.model.rows) {
+      body.appendChild(rowDOM(row, 'td', this.model.aligns, editable));
+    }
 
     table.addEventListener('keydown', (event) => onKey(event, view, table));
     table.addEventListener('contextmenu', (event) => onContextMenu(event, view, table));
@@ -220,7 +279,11 @@ class TableWidget extends WidgetType {
       if (cells.length !== texts.length) return false;
 
       cells.forEach((cell, column) => {
-        // Never the focused one: it holds the caret, and rewriting its text moves it.
+        // The one thing that is set even on the focused cell: read-only arriving while the
+        // caret is in a cell is exactly the case that has to take the caret away.
+        cell.contentEditable = String(!this.readOnly);
+
+        // Otherwise never the focused one: it holds the caret, and rewriting its text moves it.
         if (cell === document.activeElement) return;
 
         const text = texts[column] ?? '';
@@ -254,6 +317,8 @@ function modelAt(view: EditorView, table: HTMLElement): { node: SyntaxNode; mode
 }
 
 function rewrite(view: EditorView, table: HTMLElement, change: (model: TableModel) => void): void {
+  if (view.state.readOnly) return;
+
   // Whatever is half-typed in a cell goes in first, or the rewrite would drop it.
   commit(view, table);
 
@@ -306,6 +371,8 @@ export function removeRow(ref: TableCellRef, at: number): void {
  * would still be a paragraph break nobody asked for.
  */
 export function removeTable(ref: TableCellRef): void {
+  if (ref.view.state.readOnly) return;
+
   const found = modelAt(ref.view, ref.table);
   if (!found) return;
 
@@ -324,14 +391,14 @@ export function removeTable(ref: TableCellRef): void {
   });
 }
 
-function rowDOM(cells: string[], tag: 'th' | 'td', aligns: Align[]): HTMLElement {
+function rowDOM(cells: string[], tag: 'th' | 'td', aligns: Align[], editable: boolean): HTMLElement {
   const row = document.createElement('tr');
 
   cells.forEach((text, index) => {
     const cell = row.appendChild(document.createElement(tag));
 
     cell.textContent = text;
-    cell.contentEditable = 'true';
+    cell.contentEditable = String(editable);
     cell.spellcheck = false;
     cell.style.textAlign = aligns[index] ?? 'left';
   });
@@ -349,8 +416,16 @@ function readDOM(table: HTMLElement, aligns: Align[]): TableModel {
   return { header, rows: body, aligns };
 }
 
-/** Writes what the cells say back into the document, as one replacement of the block. */
+/**
+ * Writes what the cells say back into the document, as one replacement of the block.
+ *
+ * This is the only way a grid reaches the document, so it is where read-only is enforced:
+ * `EditorState.readOnly` is consulted by editing commands, and a dispatch of plain changes
+ * is not one of them.
+ */
 function commit(view: EditorView, table: HTMLElement): boolean {
+  if (view.state.readOnly) return false;
+
   const from = view.posAtDOM(table);
   const node = tableAt(view.state, from);
   if (!node) return false;
@@ -391,6 +466,10 @@ function onContextMenu(event: MouseEvent, view: EditorView, table: HTMLElement):
   const cell = (event.target as HTMLElement | null)?.closest('th, td');
   const handler = view.state.facet(tableMenu);
   if (!cell || !handler) return;
+
+  // Every verb this menu has writes. Left alone, the event reaches the editor's own handler
+  // and the body menu opens over the grid, which is the right answer while reading.
+  if (view.state.readOnly) return;
 
   event.preventDefault();
   event.stopPropagation();
@@ -464,12 +543,26 @@ function onKey(event: KeyboardEvent, view: EditorView, table: HTMLElement): void
     return;
   }
 
+  // Down out of the bottom row and up out of the header are the way out of a table that ends
+  // or opens a note, where the document has no line on that side to reach for.
+  if (event.key === 'ArrowDown' && at + columns >= cells.length) {
+    event.preventDefault();
+
+    exit(view, table, 'below');
+    return;
+  }
+
+  if (event.key === 'ArrowUp' && at < columns) {
+    event.preventDefault();
+
+    exit(view, table, 'above');
+    return;
+  }
+
   if (event.key === 'Escape') {
     event.preventDefault();
 
-    commit(view, table);
-    view.focus();
-    exitBelow(view, table);
+    exit(view, table, 'below');
   }
 }
 
@@ -480,40 +573,73 @@ function onKey(event: KeyboardEvent, view: EditorView, table: HTMLElement): void
  * continuation of it, so a caret parked there turns the next thing written into another
  * row — the sentence after the table silently becomes part of it.
  */
-function exitBelow(view: EditorView, table: HTMLElement): void {
-  const node = tableAt(view.state, view.posAtDOM(table));
-  if (!node) return;
-
-  const doc = view.state.doc;
+export function exitBelow(state: EditorState, node: SyntaxNode): TransactionSpec {
+  const doc = state.doc;
 
   if (node.to >= doc.length) {
-    view.dispatch({
+    return {
       changes: { from: doc.length, insert: '\n\n' },
       selection: { anchor: doc.length + 2 },
-    });
-    return;
+      scrollIntoView: true,
+    };
   }
 
   const under = doc.lineAt(node.to + 1);
 
+  // Something is already written there: push it down and land on it, now separated.
   if (under.text.trim() !== '') {
-    // Something is already written there: push it down and land on it, now separated.
-    view.dispatch({
+    return {
       changes: { from: under.from, insert: '\n' },
       selection: { anchor: under.from + 1 },
-    });
-    return;
+      scrollIntoView: true,
+    };
   }
 
   if (under.to >= doc.length) {
-    view.dispatch({
+    return {
       changes: { from: doc.length, insert: '\n' },
       selection: { anchor: doc.length + 1 },
-    });
-    return;
+      scrollIntoView: true,
+    };
   }
 
-  view.dispatch({ selection: { anchor: doc.lineAt(under.to + 1).from } });
+  return { selection: { anchor: doc.lineAt(under.to + 1).from }, scrollIntoView: true };
+}
+
+/**
+ * The same upwards, for the table a note opens with — which is the same trap read the other
+ * way round, with the added twist that there is no empty page above the first block to click
+ * on at all.
+ */
+export function exitAbove(state: EditorState, node: SyntaxNode): TransactionSpec {
+  if (node.from === 0) {
+    return { changes: { from: 0, insert: '\n\n' }, selection: { anchor: 0 }, scrollIntoView: true };
+  }
+
+  const over = state.doc.lineAt(node.from - 1);
+
+  // A heading sits directly above the table it introduces; landing on it would put the caret
+  // in someone else's line rather than in a line of one's own.
+  if (over.text.trim() !== '') {
+    return {
+      changes: { from: over.to, insert: '\n' },
+      selection: { anchor: over.to + 1 },
+      scrollIntoView: true,
+    };
+  }
+
+  return { selection: { anchor: over.from }, scrollIntoView: true };
+}
+
+/** Leaves the grid for the document around it, taking whatever is half-typed along. */
+function exit(view: EditorView, table: HTMLElement, where: 'above' | 'below'): void {
+  commit(view, table);
+  view.focus();
+
+  const node = tableAt(view.state, view.posAtDOM(table));
+  if (!node) return;
+
+  view.dispatch(where === 'below' ? exitBelow(view.state, node) : exitAbove(view.state, node));
 }
 
 /**
@@ -525,7 +651,9 @@ function appendRow(table: HTMLElement, columns: number): void {
   const body = table.querySelector('tbody');
   if (!body) return;
 
-  body.appendChild(rowDOM(Array.from({ length: columns }, () => ''), 'td', []));
+  // Only ever reached from a keystroke inside a cell, which is to say from a grid that
+  // takes the caret in the first place.
+  body.appendChild(rowDOM(Array.from({ length: columns }, () => ''), 'td', [], true));
 }
 
 function build(state: EditorState): DecorationSet {
@@ -548,7 +676,7 @@ function build(state: EditorState): DecorationSet {
       found.push(
         Decoration.replace({
           block: true,
-          widget: new TableWidget(model, state.doc.sliceString(node.from, node.to)),
+          widget: new TableWidget(model, state.doc.sliceString(node.from, node.to), state.readOnly),
         }).range(node.from, node.to),
       );
 
@@ -561,8 +689,62 @@ function build(state: EditorState): DecorationSet {
 
 const grid = StateField.define<DecorationSet>({
   create: (state) => build(state),
-  update: (value, tr) => (tr.docChanged ? build(tr.state) : value),
+  // Rebuilt when the mode changes as well as when the text does: read-only is reconfigured
+  // into a live editor — the note on screen can become unwritable without a keystroke — and
+  // the widgets carry it.
+  update: (value, tr) =>
+    tr.docChanged || tr.startState.readOnly !== tr.state.readOnly ? build(tr.state) : value,
   provide: (field) => EditorView.decorations.from(field),
 });
 
-export const tableGrid: Extension = [grid];
+/**
+ * The empty page under a trailing table, turned into the line that is missing there.
+ *
+ * Clicking below the last block is how a paragraph gets added to the end of a note, and a
+ * trailing table is the one thing that breaks it: the click resolves to the position after
+ * the table, which no caret can occupy, and the typing lands somewhere above instead.
+ */
+const groundBelow = EditorView.domEventHandlers({
+  mousedown: (event, view) => {
+    if (event.button !== 0 || view.state.readOnly) return false;
+
+    const node = trailingTable(view.state);
+    if (!node) return false;
+
+    // Strictly under the grid: a click on the table itself belongs to the cell it hit.
+    const rect = view.coordsAtPos(node.to);
+    if (!rect || event.clientY <= rect.bottom) return false;
+
+    event.preventDefault();
+    view.dispatch(exitBelow(view.state, node));
+    view.focus();
+
+    return true;
+  },
+});
+
+/**
+ * Keeps what is written under a table out of it.
+ *
+ * In GFM the line a table ends against is one more row of it as soon as it holds anything, so
+ * a sentence typed on the blank line below the grid does not appear under the table — it
+ * appears inside it, as a row. Nothing on screen says why, because the pipes it was written
+ * between are never shown. So the first thing written there opens a line of its own first.
+ */
+const roomUnder = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged || !tr.isUserEvent('input')) return tr;
+
+  let at: number | null = null;
+
+  tr.changes.iterChanges((fromA, _toA, fromB, _toB, inserted) => {
+    // A leading newline already is the blank line; there is nothing to make room for.
+    if (at !== null || inserted.line(1).text === '') return;
+    if (!rowUnderTable(tr.startState, fromA)) return;
+
+    at = tr.state.doc.lineAt(fromB).from;
+  });
+
+  return at === null ? tr : [tr, { changes: { from: at, insert: '\n' }, sequential: true }];
+});
+
+export const tableGrid: Extension = [grid, groundBelow, roomUnder];

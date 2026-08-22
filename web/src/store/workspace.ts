@@ -4,13 +4,18 @@ import { ApiError, OfflineError } from '@/api/client';
 import { ErrorCode } from '@/api/types';
 import * as collab from '@/api/collab';
 import * as graphApi from '@/api/graph';
+import * as mcpApi from '@/api/mcp';
 import * as rekeyApi from '@/api/rekey';
+import * as transfer from '@/api/transfer';
 import * as ws from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
-import { normalizeTag, type IndexedNote } from '@/lib/search';
+import type { ImportPlan } from '@/lib/archive';
+import { claudeOsPlan, decisionsSeed, projectSeed, skillSeed } from '@/lib/claudeos';
+import { MAX_TAGS, normalizeTag, type IndexedNote } from '@/lib/search';
 import { resolveWikilinks } from '@/lib/wikilinks';
+import { isReadOnly } from '@/store/prefs';
 import type { PeerDto } from '@/api/realtime';
 import { createSession, type EditingSession } from '@/collab/session';
 import { b64ToBytes } from '@/crypto/bytes';
@@ -31,15 +36,15 @@ export interface OpenNote {
   conflict: boolean;
 }
 
-export type View = 'editor' | 'search' | 'graph' | 'trash' | 'profile';
+export type View = 'editor' | 'search' | 'graph' | 'trash' | 'profile' | 'claude';
 
 // MAX_TABS bounds the strip. Past a dozen the labels are unreadable and the strip stops
 // being a way back to anything.
 const MAX_TABS = 12;
 
-// Meta is one ciphertext the server caps at 8 KiB. A note that cannot be saved because of
-// its tag list would be the worst way to find that out, so the list is bounded well short.
-const MAX_TAGS = 24;
+// Mirrors the CHECK on folders.depth. Only a guard here: it bounds the walk up a tree the
+// server would have refused to nest any deeper.
+const MAX_DEPTH = 32;
 
 interface WorkspaceState {
   vaults: ws.Vault[];
@@ -49,6 +54,14 @@ interface WorkspaceState {
   expanded: Set<number>;
   open: OpenNote | null;
   view: View;
+  /**
+   * The connector on the open vault, or null when there is none.
+   *
+   * Held here rather than fetched by whoever needs it: the sidebar decides whether to offer
+   * the Claude view, the view itself reads the same answer, and one of them asking while the
+   * other has not would make the tab disagree with itself.
+   */
+  connector: mcpApi.Connector | null;
   query: string;
   /** Decrypted, in memory only. Persisting it would put plaintext on disk. */
   index: IndexedNote[];
@@ -116,6 +129,15 @@ interface WorkspaceState {
   /** Replays every body written while the network was gone. */
   flushOutbox: () => Promise<void>;
   rename: (node: ws.FolderNode | ws.NoteNode, kind: 'folder' | 'file', name: string) => Promise<void>;
+  /**
+   * Relocates a node under a folder, or to the vault root when `parentId` is null. A move the
+   * server would refuse is dropped here instead of being sent — see `movable`.
+   */
+  move: (
+    node: ws.FolderNode | ws.NoteNode,
+    kind: 'folder' | 'file',
+    parentId: number | null,
+  ) => Promise<void>;
   setIcon: (
     node: ws.FolderNode | ws.NoteNode,
     kind: 'folder' | 'file',
@@ -151,6 +173,12 @@ interface WorkspaceState {
    * body: a tab is a `NoteNode` and a promise to come back, not a loaded document.
    */
   openInBackground: (note: ws.NoteNode) => void;
+  /**
+   * Sets a tab down at `to`, counted in the strip as it stands. From then on the order is
+   * the reader's rather than the order the notes were opened in — including for `fit`, which
+   * still drops from the left when the strip overflows.
+   */
+  moveTab: (noteId: number, to: number) => void;
   closeTab: (noteId: number) => void;
   purge: (id: number, kind: 'folder' | 'file') => Promise<void>;
   setView: (view: View) => void;
@@ -165,9 +193,113 @@ interface WorkspaceState {
     identity: Identity,
     onProgress?: (progress: rekeyApi.RekeyProgress) => void,
   ) => Promise<void>;
+  /**
+   * Reads the open vault out as a plain archive. Everything in it is decrypted here — that is
+   * what makes it readable anywhere, and what the dialog has to say out loud.
+   */
+  exportVault: (
+    onProgress?: (progress: transfer.ExportProgress) => void,
+  ) => Promise<transfer.VaultExport>;
+  /**
+   * Builds a new vault from an archive and moves to it.
+   *
+   * Both actions throw rather than reporting into `error`: the dialog that started them is
+   * still up, and it holds the progress and the failure the banner behind it cannot show.
+   */
+  importVault: (
+    plan: ImportPlan,
+    name: string,
+    identity: Identity,
+    onProgress?: (progress: transfer.ImportProgress) => void,
+  ) => Promise<transfer.ImportReport>;
+
+  /**
+   * Re-reads the vault list. Needed after something changes a vault's membership from
+   * outside the actions that already refresh it — connecting Claude adds a member, and the
+   * switcher would otherwise keep saying "only you" until a reload.
+   */
+  refreshVaults: (identity: Identity) => Promise<void>;
+
+  /** Re-reads the connector on the open vault, after enabling or removing one. */
+  refreshConnector: () => Promise<void>;
+
+  /**
+   * Builds a vault laid out for Claude and moves to it.
+   *
+   * The tree is a plan like any other, so it travels the import path rather than a second
+   * one: the sealing, the ordering and the failure counting are already right there.
+   */
+  createClaudeVault: (
+    name: string,
+    identity: Identity,
+    onProgress?: (progress: transfer.ImportProgress) => void,
+  ) => Promise<transfer.ImportReport>;
+
+  /**
+   * Starts a project or a skill in the Claude vault: the folder and the documents that make
+   * it one, in the shape the view and the connector both read back.
+   *
+   * They throw rather than reporting into `error` — the view that calls them shows the
+   * failure next to the button that caused it.
+   */
+  createClaudeProject: (name: string, identity: Identity) => Promise<void>;
+  createClaudeSkill: (name: string, identity: Identity) => Promise<void>;
 }
 
 const emptyTree: ws.Tree = { folders: [], notes: [] };
+
+/**
+ * Makes a folder inside one of the Claude vault's top-level areas, creating the area itself
+ * if the vault predates it. Everything below leans on the same scope rule the sidebar uses:
+ * a child is sealed under its parent's key, and sending any other is refused.
+ */
+async function claudeArea(
+  get: () => WorkspaceState,
+  area: string,
+  name: string,
+): Promise<ws.FolderNode> {
+  const { vaultId, keyring, tree } = get();
+
+  if (vaultId === null || !keyring) throw new Error('open the vault first');
+  if (isReadOnly()) throw new Error('Read-only mode is on.');
+
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('give it a name');
+
+  if (tree.folders.some((folder) => folder.parentId === null && folder.name === trimmed)) {
+    throw new Error(`there is already something called ${trimmed}`);
+  }
+
+  const existing = tree.folders.find((folder) => folder.parentId === null && folder.name === area);
+
+  const parent =
+    existing ?? (await ws.createFolder(vaultId, null, area, scopeOf(get(), null), keyring));
+
+  if (tree.folders.some((folder) => folder.parentId === parent.id && folder.name === trimmed)) {
+    throw new Error(`${area} already has a ${trimmed}`);
+  }
+
+  return ws.createFolder(vaultId, parent.id, trimmed, ws.scopeOfNode(parent), keyring);
+}
+
+/** Creates one of a project's or skill's documents, with its starting text. */
+async function claudeDoc(
+  get: () => WorkspaceState,
+  folder: ws.FolderNode,
+  name: string,
+  body: string,
+  identity: Identity,
+): Promise<ws.NoteNode> {
+  const { vaultId, keyring } = get();
+
+  if (vaultId === null || !keyring) throw new Error('open the vault first');
+
+  const note = await ws.createNote(vaultId, folder.id, name, ws.scopeOfNode(folder), keyring);
+
+  await ws.writeNote(note, body, note.contentSeq, keyring, identity);
+
+  return note;
+}
 
 /**
  * How long a hint waits before it becomes a pull. A move that renames twenty notes arrives
@@ -181,8 +313,34 @@ const HINT_DEBOUNCE_MS = 200;
  */
 let liveSession: live.LiveSession | null = null;
 
+/**
+ * What a write-back needs to know about the note it speaks for.
+ *
+ * It travels with the session rather than being read from `open`, because the last commit of
+ * a session lands after the note was closed — that is what the commit on the way out is —
+ * and the sequence it has to carry cannot be looked up once the editor has moved on.
+ */
+interface CommitTarget {
+  note: ws.NoteNode;
+  contentSeq: number;
+}
+
 /** The editing session for the note on screen, for the same reason. */
-let editing: { noteId: number; session: EditingSession } | null = null;
+let editing: { target: CommitTarget; session: EditingSession } | null = null;
+
+/**
+ * The session that has stopped and is still writing back. The next one waits for it: its
+ * write moves the sequence a new session has to start from, and a session that starts behind
+ * is refused on every commit it ever makes.
+ */
+let settling: Promise<void> = Promise.resolve();
+
+/**
+ * Counts the sessions asked for, so a start suspended on a round trip can tell that it is no
+ * longer the one wanted. StrictMode asks twice on its own, and without this the first answer
+ * leaves a room open that nothing closes.
+ */
+let generation = 0;
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   vaults: [],
@@ -194,6 +352,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   expanded: new Set(),
   open: null,
   view: 'editor',
+  connector: null,
   query: '',
   index: [],
   coverage: { covered: 0, total: 0 },
@@ -240,6 +399,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       trashed: emptyTree,
       index: [],
       cursor: 0,
+      // Cleared with the rest: the previous vault's connector would otherwise offer the
+      // Claude view over a vault that has none.
+      connector: null,
+      // The Claude view belongs to one vault; leaving it behind would show the next vault's
+      // tree under the previous vault's dashboard.
+      view: get().view === 'claude' ? 'editor' : get().view,
       error: null,
     });
 
@@ -263,6 +428,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
 
       await get().syncNow();
+      await get().refreshConnector();
     } catch (cause) {
       report(set, cause);
     } finally {
@@ -271,6 +437,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   createVault: async (name, identity) => {
+    if (isReadOnly()) return;
+
     set({ loading: true, error: null });
 
     try {
@@ -285,6 +453,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   removeVault: async (vaultId, mode, identity) => {
+    if (isReadOnly()) return;
+
     set({ loading: true, error: null });
 
     try {
@@ -471,7 +641,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   addFolder: async (parentId, name) => {
     const { vaultId, keyring } = get();
-    if (vaultId === null || !keyring) return;
+    if (vaultId === null || !keyring || isReadOnly()) return;
 
     try {
       await ws.createFolder(vaultId, parentId, name, scopeOf(get(), parentId), keyring);
@@ -489,7 +659,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   addNote: async (folderId, title) => {
     const { vaultId, keyring } = get();
-    if (vaultId === null || !keyring) return;
+    if (vaultId === null || !keyring || isReadOnly()) return;
 
     try {
       const note = await ws.createNote(vaultId, folderId, title, scopeOf(get(), folderId), keyring);
@@ -555,14 +725,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     // No socket means no session, and the note stays on the path it has always had: type,
     // debounce, PUT. That is also what happens when the hub is down.
+    //
+    // Read-only stays out of the room entirely rather than joining as a watcher: the server
+    // names the longest standing member who may write as the committer, and a tab that took
+    // that job without writing would leave everybody else's edits in the document with
+    // nothing projecting them back into the body.
     if (!open || !keyring || vaultId === null || liveSession === null || open.locked) return;
-    if (editing?.noteId === open.note.id) return;
+    if (isReadOnly()) return;
+    if (editing?.target.note.id === open.note.id) return;
 
     get().stopEditing();
 
     const scope = ws.scopeOfNode(open.note);
     const key = keyring.get(scope.id, scope.version);
     if (!key) return;
+
+    const mine = ++generation;
 
     // Public keys of everyone who might have written an update, so a signature can be
     // checked before the update is merged. A member this list does not know produces
@@ -578,23 +756,35 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // merging text nobody can attribute.
     }
 
+    await settling;
+
+    // Both waits are round trips, and the note on screen may have moved under them — or this
+    // start may have been superseded by a later one. A session opened now would be a room
+    // nothing closes, holding a sequence for a note the editor no longer shows.
+    const onScreen = get().open;
+    if (mine !== generation || !onScreen || onScreen.note.id !== open.note.id) return;
+
+    // The sequence comes from the store rather than from `open` above: the session that just
+    // stopped writes on its way out, and that write is what moved it.
+    const target: CommitTarget = { note: onScreen.note, contentSeq: onScreen.contentSeq };
+
     const session = createSession({
-      note: open.note,
-      ref: ws.ref(open.note.vaultId, 'file', open.note.clientId, scope),
+      note: target.note,
+      ref: ws.ref(target.note.vaultId, 'file', target.note.clientId, scope),
       scope: { keyScopeId: scope.id, keyVersion: scope.version },
       key,
       identity,
       self,
-      body: open.body,
-      contentSeq: open.contentSeq,
-      canEdit: open.note.permission !== 'view' && open.note.permission !== 'comment',
+      body: onScreen.body,
+      contentSeq: target.contentSeq,
+      canEdit: target.note.permission !== 'view' && target.note.permission !== 'comment',
       send: (frame) => liveSession?.send(frame),
       authorKey: (userId) => authors.get(userId) ?? null,
-      commit: (text, folded) => commitBody(get, set, open.note.id, text, folded, identity),
+      commit: (text, folded) => commitBody(get, set, target, text, folded, identity),
       onBinding: (binding) => set({ collab: binding }),
       onText: (text) => {
         const current = get().open;
-        if (!current || current.note.id !== open.note.id) return;
+        if (!current || current.note.id !== target.note.id) return;
 
         // The text is the room's, so this is not an unsaved change: it feeds the title, the
         // search index and the wikilinks, and the committer's timer decides when it lands.
@@ -618,19 +808,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       },
     });
 
-    editing = { noteId: open.note.id, session };
+    editing = { target, session };
     session.join();
   },
 
   stopEditing: () => {
+    // Even with no session up: a start may be suspended on its round trips, and it has to
+    // learn that what it was asked for is no longer wanted.
+    generation += 1;
+
     if (!editing) return;
 
     const closing = editing;
     editing = null;
 
     // Whatever the room holds beyond the last commit belongs in the body before the tab
-    // stops speaking for it.
-    void closing.session.flush().finally(() => closing.session.close());
+    // stops speaking for it. The write outlives this call, and the next session waits for it
+    // rather than starting on a sequence it is about to move.
+    settling = closing.session
+      .flush()
+      .catch(() => undefined)
+      .finally(() => closing.session.close());
 
     set({ collab: null, peers: [], committer: false });
   },
@@ -646,21 +844,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ tabs: fit([...tabs, note], open?.note.id) });
   },
 
+  moveTab: (noteId, to) => {
+    set({ tabs: reorderTabs(get().tabs, noteId, to) });
+  },
+
   editBody: (body) => {
     const open = get().open;
-    if (!open) return;
+    if (!open || isReadOnly()) return;
 
     set({ open: { ...open, body, dirty: true, conflict: false } });
   },
 
   saveNote: async (identity) => {
     const { open, keyring, tree } = get();
-    if (!open || !keyring || !open.dirty || open.locked) return;
+    if (!open || !keyring || !open.dirty || open.locked || isReadOnly()) return;
 
     // With a live session the body is written back by the committer on its own schedule.
     // A second writer here would race the same If-Match and lose, turning every save into
     // a conflict banner.
-    if (editing?.noteId === open.note.id) return;
+    if (editing?.target.note.id === open.note.id) return;
 
     set({ saving: true });
 
@@ -797,7 +999,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setVaultLabel: async (vaultId, label, identity) => {
     const vault = get().vaults.find((candidate) => candidate.id === vaultId);
-    if (!vault) return;
+    if (!vault || isReadOnly()) return;
 
     try {
       await ws.setVaultLabel(vault, label, identity);
@@ -816,7 +1018,29 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  move: async (node, kind, parentId) => {
+    const { tree, vaults, vaultId } = get();
+
+    if (isReadOnly()) return;
+    if (!movable(tree, vaults.find((vault) => vault.id === vaultId), node, kind, parentId)) return;
+
+    try {
+      await ws.moveNode(node, kind, parentId);
+      await get().syncNow();
+
+      if (parentId !== null) {
+        const expanded = new Set(get().expanded);
+        expanded.add(parentId);
+        set({ expanded });
+      }
+    } catch (cause) {
+      reportChange(set, cause);
+    }
+  },
+
   trash: async (node, kind) => {
+    if (isReadOnly()) return;
+
     try {
       await (kind === 'folder' ? ws.trashFolder(node.id) : ws.trashNote(node.id));
 
@@ -836,6 +1060,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const { vaultId, vaults, tree, keyring } = get();
     const vault = vaults.find((v) => v.id === vaultId);
 
+    // These two throw rather than returning quietly: a modal is up, it is holding the
+    // progress, and it has somewhere to put the reason.
+    if (isReadOnly()) throw new Error('Read-only mode is on.');
     if (vaultId === null || !vault || !keyring) throw new Error('open a vault first');
 
     const plan = await rekeyApi.startRekey(
@@ -872,6 +1099,54 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().syncNow();
   },
 
+  exportVault: async (onProgress) => {
+    const { vaultId, vaults, tree, keyring } = get();
+    const vault = vaults.find((v) => v.id === vaultId);
+
+    if (!vault || !keyring) throw new Error('open a vault first');
+
+    return transfer.exportVault(vault, tree, keyring, onProgress);
+  },
+
+  importVault: async (plan, name, identity, onProgress) => {
+    if (isReadOnly()) throw new Error('Read-only mode is on.');
+
+    const report = await transfer.importVault(plan, name, identity, onProgress);
+
+    set({ vaults: await ws.listVaults(identity) });
+    await get().selectVault(report.vaultId, identity);
+
+    return report;
+  },
+
+  createClaudeProject: async (name, identity) => {
+    const folder = await claudeArea(get, 'projects', name);
+
+    await claudeDoc(get, folder, 'CLAUDE.md', projectSeed(name), identity);
+    await claudeDoc(get, folder, 'decisions.md', decisionsSeed(), identity);
+    await get().syncNow();
+  },
+
+  createClaudeSkill: async (name, identity) => {
+    const folder = await claudeArea(get, 'skills', name);
+
+    await claudeDoc(get, folder, 'SKILL.md', skillSeed(name), identity);
+    await get().syncNow();
+  },
+
+  refreshVaults: async (identity) => {
+    set({ vaults: await ws.listVaults(identity) });
+  },
+
+  refreshConnector: async () => {
+    const { vaultId } = get();
+
+    set({ connector: vaultId === null ? null : await mcpApi.connector(vaultId) });
+  },
+
+  createClaudeVault: async (name, identity, onProgress) =>
+    get().importVault(claudeOsPlan(name), name, identity, onProgress),
+
   flushOutbox: async () => {
     // One drain at a time, and everyone waits on the same one. The poll, the tab coming
     // back and the connection returning can all land together; two of them reading the same
@@ -893,7 +1168,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   // somewhere: a sibling note, saved under their own name, with nothing overwritten.
   saveAsCopy: async (identity) => {
     const { open, vaultId, keyring } = get();
-    if (!open || vaultId === null || !keyring) return;
+    if (!open || vaultId === null || !keyring || isReadOnly()) return;
 
     set({ saving: true });
 
@@ -950,6 +1225,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   restore: async (id, kind) => {
+    if (isReadOnly()) return;
+
     try {
       await (kind === 'folder' ? ws.restoreFolder(id) : ws.restoreNote(id));
       await get().loadTrash();
@@ -960,6 +1237,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   purge: async (id, kind) => {
+    if (isReadOnly()) return;
+
     try {
       await (kind === 'folder' ? ws.purgeFolder(id) : ws.purgeNote(id));
       await get().loadTrash();
@@ -1004,34 +1283,48 @@ let flushing: Promise<void> | null = null;
  * against the row the server holds. The difference is what travels beside the body — the
  * document state and the sequence it covers, which is what tells the server this write came
  * *through* the session rather than around it.
+ *
+ * The note comes from the session rather than from `open`, because the commit that matters
+ * most is the one on the way out: it is scheduled while the note is on screen and lands after
+ * it has closed. Reading the store then would find another note, or none, and drop the write
+ * — leaving the body behind the document until somebody opened the note again.
+ *
+ * Exported for the test that pins exactly that: the store cannot be driven into the state
+ * from the outside, because the live session it needs is opened by `watch`.
  */
-async function commitBody(
+export async function commitBody(
   get: () => WorkspaceState,
   set: Setter,
-  noteId: number,
+  target: CommitTarget,
   text: string,
   folded: ws.CRDTCommit,
   identity: Identity,
 ): Promise<void> {
-  const { open, keyring, tree } = get();
-  if (!open || !keyring || open.note.id !== noteId || open.locked) return;
+  const { keyring, tree } = get();
+  if (!keyring) return;
+
+  const { note } = target;
 
   set({ saving: true });
 
   try {
-    const sealed = await ws.sealNote(open.note, text, open.contentSeq, keyring, identity);
-    const contentSeq = await ws.sendNote(open.note.id, ws.withCommit(sealed, folded), open.contentSeq);
+    const sealed = await ws.sealNote(note, text, target.contentSeq, keyring, identity);
+    const contentSeq = await ws.sendNote(note.id, ws.withCommit(sealed, folded), target.contentSeq);
+
+    // The next commit of this session locks against what this one wrote, whether or not the
+    // note is still open.
+    target.contentSeq = contentSeq;
 
     const current = get().open;
-    if (current && current.note.id === noteId) {
+    if (current && current.note.id === note.id) {
       set({ open: { ...current, contentSeq, dirty: false, queued: false, conflict: false } });
     }
 
     await cache
       .writeBodies([
         {
-          vaultId: open.note.vaultId,
-          id: noteId,
+          vaultId: note.vaultId,
+          id: note.id,
           content: sealed.content,
           contentNonce: sealed.content_nonce,
           contentSeq,
@@ -1039,8 +1332,8 @@ async function commitBody(
       ])
       .catch(() => undefined);
 
-    const { resolved } = resolveWikilinks(text, tree.notes, noteId);
-    await graphApi.setLinks(noteId, resolved).catch(() => undefined);
+    const { resolved } = resolveWikilinks(text, tree.notes, note.id);
+    await graphApi.setLinks(note.id, resolved).catch(() => undefined);
   } catch (cause) {
     // A refused write-back leaves the document as the truth, which is where it already was.
     // The next commit tries again; a conflict is the room being replaced, and the reseed
@@ -1061,6 +1354,11 @@ async function commitBody(
 async function drain(get: () => WorkspaceState, set: Setter): Promise<void> {
   const { vaultId } = get();
   if (vaultId === null || !connectivity.isOnline()) return;
+
+  // Read-only holds the queue rather than dropping it: these are bodies the user wrote
+  // before the mode went on, they are still in the cache as ciphertext, and they go out on
+  // the first drain after it goes off.
+  if (isReadOnly()) return;
 
   // The queue is read rather than the counter: two tabs share one IndexedDB, and a write
   // parked by the other one is just as much this vault's work.
@@ -1123,13 +1421,14 @@ async function drain(get: () => WorkspaceState, set: Setter): Promise<void> {
   set({ queued: await cache.outboxSize(vaultId) });
 }
 
+/** Every verb that writes meta goes through here, and none of them run in read-only. */
 async function withKeyring(
   get: () => WorkspaceState,
   set: Setter,
   action: (keyring: ScopeKeyring) => Promise<void>,
 ): Promise<void> {
   const keyring = get().keyring;
-  if (!keyring) return;
+  if (!keyring || isReadOnly()) return;
 
   try {
     await action(keyring);
@@ -1153,6 +1452,22 @@ function fit(tabs: ws.NoteNode[], keep: number | undefined): ws.NoteNode[] {
   if (oldest < 0) return tabs.slice(-MAX_TABS);
 
   return fit([...tabs.slice(0, oldest), ...tabs.slice(oldest + 1)], keep);
+}
+
+/**
+ * The strip with one tab lifted out and set down at `to`, which counts slots in the strip as
+ * it stands — a drag reports the slot it is over, not the gap it left behind.
+ */
+export function reorderTabs(tabs: ws.NoteNode[], noteId: number, to: number): ws.NoteNode[] {
+  const from = tabs.findIndex((tab) => tab.id === noteId);
+  const moved = tabs[from];
+  const target = Math.min(Math.max(to, 0), tabs.length - 1);
+
+  if (!moved || from === target) return tabs;
+
+  const rest = tabs.filter((tab) => tab.id !== noteId);
+
+  return [...rest.slice(0, target), moved, ...rest.slice(target)];
 }
 
 /**
@@ -1330,6 +1645,61 @@ function describe(cause: unknown): string {
   }
 
   return cause instanceof Error ? cause.message : 'Something went wrong.';
+}
+
+/**
+ * Whether a node may be dropped on a folder, or on the root when `targetId` is null.
+ *
+ * The rule is the server's, asked before the drag rather than after: a destination whose key
+ * scope differs would leave the moved ciphertext unreadable to everyone there, and the server
+ * answers 409 rather than re-encrypting. Being able to say no while the row is still under the
+ * hand is what makes the refusal legible — the alternative is a toast after the drop.
+ *
+ * The scope test is what stops a node from leaving a folder that owns its key, and stops a
+ * folder that owns its own key from being moved at all. That is the model, not an oversight:
+ * the ciphertext under it is sealed to that scope.
+ */
+export function movable(
+  tree: ws.Tree,
+  vault: ws.Vault | undefined,
+  node: ws.FolderNode | ws.NoteNode,
+  kind: 'folder' | 'file',
+  targetId: number | null,
+): boolean {
+  if (!vault || node.locked || !writable(node.permission)) return false;
+
+  const from = kind === 'folder' ? (node as ws.FolderNode).parentId : (node as ws.NoteNode).folderId;
+  if (from === targetId) return false;
+
+  const target = targetId === null ? null : tree.folders.find((folder) => folder.id === targetId);
+  if (targetId !== null && !target) return false;
+
+  if (target ? target.locked || !writable(target.permission) : vault.role === 'viewer') return false;
+
+  // A folder cannot swallow itself, nor land anywhere inside its own subtree.
+  if (kind === 'folder' && target && descends(tree, target, node.id)) return false;
+
+  const destination = target ?? vault;
+
+  return destination.keyScopeId === node.keyScopeId && destination.keyVersion === node.keyVersion;
+}
+
+function writable(permission: ws.Permission): boolean {
+  return permission === 'edit' || permission === 'own';
+}
+
+/** True when `folder` is `ancestorId` or sits under it. Bounded by the depth the server allows. */
+function descends(tree: ws.Tree, folder: ws.FolderNode, ancestorId: number): boolean {
+  let current: ws.FolderNode | undefined = folder;
+
+  for (let step = 0; current && step <= MAX_DEPTH; step += 1) {
+    if (current.id === ancestorId) return true;
+
+    const parentId: number | null = current.parentId;
+    current = parentId === null ? undefined : tree.folders.find((f) => f.id === parentId);
+  }
+
+  return false;
 }
 
 /** Builds the tree the sidebar renders, in the order the design shows it. */

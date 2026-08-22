@@ -24,6 +24,8 @@ export function pathOf(place: Place): string {
 
       return `${root}/search${query ? `?q=${encodeURIComponent(query)}` : ''}`;
     }
+    case 'claude':
+      return `${root}/claude`;
     case 'graph':
       return `${root}/graph`;
     case 'trash':
@@ -44,6 +46,8 @@ export function placeOf(pathname: string, search: string): Place {
   switch (rest[0]) {
     case 'search':
       return { vaultId, view: 'search', noteId: null, query };
+    case 'claude':
+      return { vaultId, view: 'claude', noteId: null, query: '' };
     case 'graph':
       return { vaultId, view: 'graph', noteId: null, query: '' };
     case 'trash':

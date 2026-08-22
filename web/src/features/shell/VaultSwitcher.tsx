@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { Vault } from '@/api/workspace';
 import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
+import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { type ConfirmRequest, useConfirm } from '@/ui/Confirm';
@@ -27,16 +28,26 @@ export function VaultSwitcher({
   onNewVault,
   onMembers,
   onSecurity,
+  onExport,
+  onImport,
+  onConnectClaude,
 }: {
   onNewVault: () => void;
   /** Who the open vault is shared with, and the keys behind it: both belong to the vault,
       so they hang off the control that names it rather than off the account beside it. */
   onMembers: () => void;
   onSecurity: () => void;
+  /** Reading the open vault out as an archive. */
+  onExport: () => void;
+  /** Reading one back in. It creates a vault, so it sits beside “New vault” rather than
+      among the verbs that act on the one already open. */
+  onImport: () => void;
+  onConnectClaude: () => void;
 }) {
   const { identity } = useSession();
   const { vaults, vaultId, loading, selectVault, setVaultIcon, setVaultLabel, removeVault } =
     useWorkspace();
+  const readOnly = usePrefs((state) => state.readOnly);
 
   const [open, setOpen] = useState(false);
   const [picker, setPicker] = useState<PickerTarget | null>(null);
@@ -117,45 +128,65 @@ export function VaultSwitcher({
     });
   };
 
-  const menuFor = (item: Vault): MenuItem[] => [
-    ...(item.id === vaultId
-      ? []
-      : [{ label: 'Open', icon: 'arrow' as const, onSelect: () => choose(item) }]),
-    // The picker seals through the loaded keyring, which is the open vault's alone.
-    ...(item.id === vaultId && !item.locked
-      ? [{ label: 'Change icon', icon: 'star' as const, onSelect: changeIcon }]
-      : []),
-    // Only on vaults somebody else named. Your own you can simply rename.
-    ...(item.role === 'owner'
-      ? []
-      : [
-          {
-            label: item.label ? 'Edit label' : 'Add label',
-            icon: 'tag' as const,
-            onSelect: () => label(item),
-          },
-          ...(item.label
-            ? [
-                {
-                  label: 'Remove label',
-                  icon: 'x' as const,
-                  onSelect: () => {
-                    if (identity) void setVaultLabel(item.id, '', identity);
-                  },
-                },
-              ]
-            : []),
-        ]),
-    {
-      // An owner cannot walk out — the vault is theirs — and nobody else can destroy it.
+  const menuFor = (item: Vault): MenuItem[] => {
+    const open: MenuItem[] =
+      item.id === vaultId
+        ? []
+        : [{ label: 'Open', icon: 'arrow' as const, onSelect: () => choose(item) }];
+
+    // Everything below writes — the icon and the label to the vault, the last entry to the
+    // membership itself — so in read-only the menu is the way in and nothing else.
+    if (readOnly) return open;
+
+    return [
+      ...open,
+      // The picker seals through the loaded keyring, which is the open vault's alone.
+      ...(item.id === vaultId && !item.locked
+        ? [{ label: 'Change icon', icon: 'star' as const, onSelect: changeIcon }]
+        : []),
+      // Only on vaults somebody else named. Your own you can simply rename.
       ...(item.role === 'owner'
-        ? { label: 'Delete vault', icon: 'trash' as const }
-        : { label: 'Leave vault', icon: 'user' as const }),
-      danger: true,
-      separated: true,
-      onSelect: () => part(item),
-    },
-  ];
+        ? []
+        : [
+            {
+              label: item.label ? 'Edit label' : 'Add label',
+              icon: 'tag' as const,
+              onSelect: () => label(item),
+            },
+            ...(item.label
+              ? [
+                  {
+                    label: 'Remove label',
+                    icon: 'x' as const,
+                    onSelect: () => {
+                      if (identity) void setVaultLabel(item.id, '', identity);
+                    },
+                  },
+                ]
+              : []),
+          ]),
+      {
+        // An owner cannot walk out — the vault is theirs — and nobody else can destroy it.
+        ...(item.role === 'owner'
+          ? { label: 'Delete vault', icon: 'trash' as const }
+          : { label: 'Leave vault', icon: 'user' as const }),
+        danger: true,
+        separated: true,
+        onSelect: () => part(item),
+      },
+    ];
+  };
+
+  /**
+   * The row menu, unless there would be nothing in it — which is what read-only leaves on the
+   * vault already open, whose only entry is the way in. An empty panel is not a menu.
+   */
+  const openMenuFor = (event: MouseEvent, item: Vault) => {
+    const items = menuFor(item);
+
+    if (items.length) openRowMenu(event, items);
+    else event.preventDefault();
+  };
 
   const group = (title: string, items: Vault[]) =>
     items.length ? (
@@ -171,7 +202,7 @@ export function VaultSwitcher({
             vault={item}
             active={item.id === vaultId}
             onSelect={choose}
-            onMenu={(event) => openRowMenu(event, menuFor(item))}
+            onMenu={(event) => openMenuFor(event, item)}
           />
         ))}
       </>
@@ -192,7 +223,7 @@ export function VaultSwitcher({
         onClick={() => setOpen((value) => !value)}
         onContextMenu={(event) => {
           event.preventDefault();
-          if (vault) openRowMenu(event, menuFor(vault));
+          if (vault) openMenuFor(event, vault);
         }}
       >
         <VaultMark vault={vault} size={16} />
@@ -271,48 +302,111 @@ export function VaultSwitcher({
                   Keys &amp; history
                 </button>
 
-                <div className={styles.divider} />
+                {/* A locked vault has nothing readable to write out. */}
+                {!vault.locked ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.action}
+                    onClick={() => {
+                      setOpen(false);
+                      onExport();
+                    }}
+                  >
+                    <span className={styles.actionIcon}>
+                      <Icon name="box" size={13} />
+                    </span>
+                    Export vault…
+                  </button>
+                ) : null}
+
+                {readOnly ? null : <div className={styles.divider} />}
               </>
             ) : null}
 
-            <button
-              type="button"
-              role="menuitem"
-              className={styles.action}
-              onClick={() => {
-                setOpen(false);
-                onNewVault();
-              }}
-            >
-              <span className={styles.actionIcon}>
-                <Icon name="plus" size={13} />
-              </span>
-              New vault
-            </button>
+            {/* Two of these make a vault and the third joins one, which is a key grant
+                written on this account's behalf. None of them belong to a mode that writes
+                nothing; “Export vault…” above stays, because reading one out is a read. */}
+            {readOnly ? null : (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.action}
+                  onClick={() => {
+                    setOpen(false);
+                    onNewVault();
+                  }}
+                >
+                  <span className={styles.actionIcon}>
+                    <Icon name="plus" size={13} />
+                  </span>
+                  New vault
+                </button>
 
-            <button
-              type="button"
-              role="menuitem"
-              className={styles.action}
-              onClick={() => {
-                setOpen(false);
-                navigate('/join');
-              }}
-            >
-              <span className={styles.actionIcon}>
-                <Icon name="key" size={13} />
-              </span>
-              Join with code
-            </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.action}
+                  onClick={() => {
+                    setOpen(false);
+                    onImport();
+                  }}
+                >
+                  <span className={styles.actionIcon}>
+                    <Icon name="inbox" size={13} />
+                  </span>
+                  Import vault…
+                </button>
 
-            {vault && !vault.locked ? (
-              <button type="button" role="menuitem" className={styles.action} onClick={changeIcon}>
-                <span className={styles.actionIcon}>
-                  <Icon name="star" size={13} />
-                </span>
-                Change icon
-              </button>
-            ) : null}
+                {/* A vault that hands its key to this server. It sits with the other two
+                    because it makes one, and it is worded so that nobody arrives at the
+                    dialog expecting an ordinary vault. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.action}
+                  onClick={() => {
+                    setOpen(false);
+                    onConnectClaude();
+                  }}
+                >
+                  <span className={styles.actionIcon}>
+                    <Icon name="claude" size={13} />
+                  </span>
+                  Connect Claude…
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={styles.action}
+                  onClick={() => {
+                    setOpen(false);
+                    navigate('/join');
+                  }}
+                >
+                  <span className={styles.actionIcon}>
+                    <Icon name="key" size={13} />
+                  </span>
+                  Join with code
+                </button>
+
+                {vault && !vault.locked ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.action}
+                    onClick={changeIcon}
+                  >
+                    <span className={styles.actionIcon}>
+                      <Icon name="star" size={13} />
+                    </span>
+                    Change icon
+                  </button>
+                ) : null}
+              </>
+            )}
           </div>
         </>
       ) : null}
