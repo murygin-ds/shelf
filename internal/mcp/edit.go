@@ -4,12 +4,27 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"shelf/internal/envelope"
 	"shelf/internal/vault"
 )
+
+// Icons is the set a note icon may come from, in the order Icon.tsx lists them.
+//
+// Repeated here because the connector writes icons the browser renders, and one outside this
+// set renders as nothing at all — stored, invisible, and impossible to notice. Kept honest
+// by TestIconsMatchTheFrontend rather than by care.
+var Icons = []string{
+	"doc", "folder", "lock", "key", "shield", "eye", "star", "flag", "bolt", "bulb",
+	"book", "target", "code", "terminal", "db", "calendar", "clock", "user", "globe",
+	"hash", "tag", "layers", "inbox", "warn", "graph", "pin", "link", "circle",
+}
+
+// ErrIcon rejects an icon the tree could not draw.
+var ErrIcon = fmt.Errorf("that is not one of the icons")
 
 // tagShape is the frontend's rule, repeated because a tag written here is read there.
 var tagShape = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}_-]*$`)
@@ -325,7 +340,14 @@ func apply(current envelope.Meta, patch MetaPatch) (envelope.Meta, error) {
 	}
 
 	if patch.Icon != nil {
-		updated.Icon = strings.TrimSpace(*patch.Icon)
+		icon := strings.TrimSpace(*patch.Icon)
+
+		if icon != "" && !slices.Contains(Icons, icon) {
+			return envelope.Meta{}, fmt.Errorf("%w: %q — pick from %s",
+				ErrIcon, icon, strings.Join(Icons, ", "))
+		}
+
+		updated.Icon = icon
 	}
 
 	if patch.Tags != nil {

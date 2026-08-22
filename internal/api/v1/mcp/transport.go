@@ -161,7 +161,8 @@ func toolError(err error) error {
 			"unreadable there — leave it where it is")
 	case errors.Is(err, mcp.ErrNotEmpty):
 		return fmt.Errorf("%w — trash what is inside it first", err)
-	case errors.Is(err, mcp.ErrTooLarge), errors.Is(err, mcp.ErrPath), errors.Is(err, mcp.ErrTag):
+	case errors.Is(err, mcp.ErrTooLarge), errors.Is(err, mcp.ErrPath),
+		errors.Is(err, mcp.ErrTag), errors.Is(err, mcp.ErrIcon):
 		// Already phrased for the caller; wrapping would only bury it.
 		return err
 	case errors.Is(err, vault.ErrDepthExceeded):
@@ -205,6 +206,8 @@ func reason(err error) string {
 		return "not-empty"
 	case errors.Is(err, mcp.ErrTag):
 		return "tag"
+	case errors.Is(err, mcp.ErrIcon):
+		return "icon"
 	case errors.Is(err, vault.ErrVersionConflict):
 		return "conflict"
 	case errors.Is(err, vault.ErrScopeMismatch):

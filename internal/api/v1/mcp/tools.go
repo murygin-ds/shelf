@@ -97,6 +97,13 @@ type (
 	folderInput struct {
 		Path string `json:"path" jsonschema:"Folder path to create. Missing parents are created too."`
 	}
+
+	// Its own type rather than folderInput: the two calls take the same shape and mean
+	// opposite things, and a shared description can only be right about one of them.
+	trashFolderInput struct {
+		//nolint:lll // the description is the contract a model reads.
+		Path string `json:"path" jsonschema:"Path of the folder to move to the trash. It has to be empty — trash what is inside it first."`
+	}
 	folderOutput struct {
 		Folder nodeOut `json:"folder"`
 	}
@@ -138,7 +145,8 @@ type (
 	metaInput struct {
 		Path string `json:"path" jsonschema:"Path of the note or folder to change."`
 		Name string `json:"name,omitempty" jsonschema:"New name, one path segment. Omit to leave it. Use shelf_move_note to change the folder."`
-		Icon string `json:"icon,omitempty" jsonschema:"Icon name, or an empty string to remove it. Omit to leave it."`
+		//nolint:lll // the description is the contract a model reads.
+		Icon string `json:"icon,omitempty" jsonschema:"One of a fixed set of icon names; anything else is refused with the full list. An empty string removes it, and omitting it leaves it alone."`
 		//nolint:lll // the description is the contract a model reads.
 		Tags []string `json:"tags,omitempty" jsonschema:"The complete set of tags, replacing whatever is there. Lowercase, letters and digits then also - and _. Send an empty array to clear them; omit to leave them."`
 	}
@@ -358,7 +366,7 @@ func (t *Transport) writeTools(server *sdk.Server, connector *mcp.Connector) {
 		Name: "shelf_trash_folder",
 		Description: "Move an empty folder to the trash. Trash its notes first: a folder taken " +
 			"with its contents would remove a whole project by naming one directory.",
-	}, func(ctx context.Context, _ *sdk.CallToolRequest, in folderInput) (*sdk.CallToolResult, trashOutput, error) {
+	}, func(ctx context.Context, _ *sdk.CallToolRequest, in trashFolderInput) (*sdk.CallToolResult, trashOutput, error) {
 		workspace, err := t.open(ctx, connector)
 		if err != nil {
 			return nil, trashOutput{}, t.logged("shelf_trash_folder", connector, err)
