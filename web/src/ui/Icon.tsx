@@ -42,6 +42,7 @@ export type IconName =
   | 'chev'
   | 'down'
   | 'plus'
+  | 'minus'
   | 'search'
   | 'dots'
   | 'check'
@@ -119,6 +120,9 @@ export function IconSprite() {
         </symbol>
         <symbol id="i-plus" {...stroke}>
           <path d="M12 5.5v13M5.5 12h13" />
+        </symbol>
+        <symbol id="i-minus" {...stroke}>
+          <path d="M5.5 12h13" />
         </symbol>
         <symbol id="i-search" {...stroke}>
           <circle cx="10.45" cy="10.45" r="6.5" />
