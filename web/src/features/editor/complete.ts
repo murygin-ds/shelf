@@ -18,24 +18,40 @@ export function wikilinkSource(context: CompletionContext): CompletionResult | n
   const notes = context.state.facet(vaultContext).notes;
   if (!notes.length) return null;
 
+  // A title more than one note carries cannot say which is meant, so those are offered by
+  // path — which is the target resolution would pick them out by anyway.
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+
+  for (const note of notes) {
+    const title = note.name.trim().toLowerCase();
+
+    if (seen.has(title)) shared.add(title);
+    seen.add(title);
+  }
+
   return {
     from: typed.from + 2,
-    options: notes.map((note) => ({
-      label: note.name,
-      type: 'text',
-      apply: (view, _completion, from, to) => {
-        // `closeBrackets` has usually already put the closing pair there. Writing a second
-        // one would leave `]]]]`, and leaving none would leave half a link — which resolves
-        // to nothing and shows up as an unresolved title on the inspector panel.
-        const closed = view.state.doc.sliceString(to, to + 2) === ']]';
+    options: notes.map((note) => {
+      const text = shared.has(note.name.trim().toLowerCase()) ? (note.path ?? note.name) : note.name;
 
-        view.dispatch({
-          changes: { from, to, insert: closed ? note.name : `${note.name}]]` },
-          selection: { anchor: from + note.name.length + 2 },
-          userEvent: 'input.complete',
-        });
-      },
-    })),
+      return {
+        label: text,
+        type: 'text',
+        apply: (view, _completion, from, to) => {
+          // `closeBrackets` has usually already put the closing pair there. Writing a second
+          // one would leave `]]]]`, and leaving none would leave half a link — which resolves
+          // to nothing and shows up as an unresolved title on the inspector panel.
+          const closed = view.state.doc.sliceString(to, to + 2) === ']]';
+
+          view.dispatch({
+            changes: { from, to, insert: closed ? text : `${text}]]` },
+            selection: { anchor: from + text.length + 2 },
+            userEvent: 'input.complete',
+          });
+        },
+      };
+    }),
     validFor: /^[^\]\n|]*$/,
   };
 }

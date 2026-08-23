@@ -1,5 +1,7 @@
 import { Facet } from '@codemirror/state';
 
+import { linkTargets } from '@/lib/wikilinks';
+
 /**
  * What the editor needs to know about the vault around it.
  *
@@ -13,25 +15,23 @@ import { Facet } from '@codemirror/state';
 export interface NoteRef {
   id: number;
   name: string;
+  /** The note's full path, which is what tells two notes of the same name apart. */
+  path?: string;
 }
 
 export interface VaultContext {
   notes: readonly NoteRef[];
-  /** The same titles, lower-cased, so resolution is a lookup rather than a scan. */
-  titles: ReadonlySet<string>;
+  /** Titles and paths, folded, so resolution is a lookup rather than a scan. */
+  targets: ReadonlyMap<string, number>;
   tags: readonly string[];
 }
 
-export const EMPTY_CONTEXT: VaultContext = { notes: [], titles: new Set(), tags: [] };
+export const EMPTY_CONTEXT: VaultContext = { notes: [], targets: new Map(), tags: [] };
 
 export const vaultContext = Facet.define<VaultContext, VaultContext>({
   combine: (values) => values[0] ?? EMPTY_CONTEXT,
 });
 
 export function contextOf(notes: readonly NoteRef[], tags: readonly string[]): VaultContext {
-  return {
-    notes,
-    titles: new Set(notes.map((note) => note.name.trim().toLowerCase())),
-    tags,
-  };
+  return { notes, targets: linkTargets(notes), tags };
 }

@@ -9,7 +9,7 @@ import type { NoteNode } from '@/api/workspace';
 import { revealLine, topLine, watchTopLine } from '@/features/editor/reveal';
 import { headingAt, outline } from '@/lib/outline';
 import { allTags, extractTags, normalizeTag } from '@/lib/search';
-import { resolveWikilinks } from '@/lib/wikilinks';
+import { resolvables, resolveWikilinks } from '@/lib/wikilinks';
 import { usePrefs } from '@/store/prefs';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -139,7 +139,11 @@ function Links({ note }: { note: NoteNode }) {
   // Outgoing links come from the open body rather than from the server: they are resolved
   // here in the first place, and showing the server's copy would lag a keystroke behind.
   const body = open?.note.id === note.id ? open.body : '';
-  const { resolved, unresolved } = resolveWikilinks(body, tree.notes, note.id);
+  const { resolved, unresolved } = resolveWikilinks(
+    body,
+    resolvables(tree.folders, tree.notes),
+    note.id,
+  );
 
   return (
     <>

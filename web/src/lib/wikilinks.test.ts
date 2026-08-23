@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseWikilinks, resolveWikilinks } from './wikilinks';
+import {
+  linkTargets,
+  parseWikilinks,
+  resolvables,
+  resolveTarget,
+  resolveWikilinks,
+} from './wikilinks';
 
 const NOTES = [
   { id: 1, name: 'Roadmap' },
   { id: 2, name: 'launch plan' },
   { id: 3, name: 'Roadmap' },
+];
+
+// The shape the connector's tree has: one CLAUDE.md per project, which is exactly the case
+// a title cannot settle.
+const VAULT = [
+  { id: 1, name: 'CLAUDE.md', path: 'CLAUDE.md' },
+  { id: 2, name: 'profile.md', path: 'context/profile.md' },
+  { id: 3, name: 'CLAUDE.md', path: 'projects/shelf/CLAUDE.md' },
+  { id: 4, name: 'CLAUDE.md', path: 'projects/atlas/CLAUDE.md' },
 ];
 
 describe('parseWikilinks', () => {
@@ -54,5 +69,64 @@ describe('resolveWikilinks', () => {
     const { resolved } = resolveWikilinks('[[Roadmap]] [[Roadmap]] [[launch plan]]', NOTES, 1);
 
     expect(resolved).toEqual([2]);
+  });
+});
+
+describe('paths as link targets', () => {
+  it('tells repeated titles apart by path', () => {
+    const body = '[[projects/atlas/CLAUDE.md]] [[/projects/shelf/CLAUDE.md/]]';
+
+    expect(resolveWikilinks(body, VAULT).resolved).toEqual([4, 3]);
+  });
+
+  it('still settles a bare title on the older note', () => {
+    // The tie-break has to stay what it was: a person typing [[CLAUDE.md]] in the editor
+    // gets the same note the connector would resolve from the same text.
+    expect(resolveWikilinks('[[CLAUDE.md]]', VAULT).resolved).toEqual([1]);
+  });
+
+  it('prefers a path over a title that spells the same string', () => {
+    const notes = [
+      { id: 1, name: 'context/profile.md', path: 'decoy.md' },
+      { id: 2, name: 'profile.md', path: 'context/profile.md' },
+    ];
+
+    expect(resolveTarget('context/profile.md', linkTargets(notes))).toBe(2);
+  });
+
+  it('keeps an unmatched path on this device', () => {
+    const { resolved, unresolved } = resolveWikilinks('[[projects/gone/CLAUDE.md]]', VAULT);
+
+    expect(resolved).toEqual([]);
+    expect(unresolved).toEqual(['projects/gone/CLAUDE.md']);
+  });
+});
+
+describe('resolvables', () => {
+  const FOLDERS = [
+    { id: 10, parentId: null, name: 'projects' },
+    { id: 11, parentId: 10, name: 'shelf' },
+  ];
+
+  it('names each note by the folders above it', () => {
+    const notes = [
+      { id: 1, name: 'CLAUDE.md', folderId: null },
+      { id: 2, name: 'CLAUDE.md', folderId: 11 },
+    ];
+
+    expect(resolvables(FOLDERS, notes).map((note) => note.path)).toEqual([
+      'CLAUDE.md',
+      'projects/shelf/CLAUDE.md',
+    ]);
+  });
+
+  it('starts the path at the deepest folder that arrived', () => {
+    // A parent this reader cannot see is not an error: the notes under it are still notes,
+    // and a path missing its top is better than no path at all.
+    const orphan = [{ id: 11, parentId: 99, name: 'shelf' }];
+
+    expect(resolvables(orphan, [{ id: 1, name: 'notes.md', folderId: 11 }])[0]?.path).toBe(
+      'shelf/notes.md',
+    );
   });
 });

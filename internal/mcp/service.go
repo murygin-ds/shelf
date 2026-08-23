@@ -219,7 +219,7 @@ func (s *Service) Workspace(ctx context.Context, connector *Connector) (*Workspa
 		return nil, err
 	}
 
-	return Open(ctx, s.vaults, s.live, ring, identity, connector)
+	return Open(ctx, s.vaults, s.live, s.log, ring, identity, connector)
 }
 
 // owner is the guard on every change to a connector. Admitting a reader of a vault is one

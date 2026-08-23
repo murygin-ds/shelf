@@ -57,9 +57,9 @@ describe('the Claude vault template', () => {
     }
   });
 
-  // Wikilinks resolve by note name, so a link to a name two notes share would land on
-  // whichever the resolver saw last. The template is allowed to repeat a name — CLAUDE.md
-  // means something in both places — as long as nothing links to one.
+  // A link resolves by path first and by name second, so a bare name two notes share lands
+  // on the older of them. The template is allowed to repeat a name — CLAUDE.md means
+  // something in both places — as long as nothing links to one by name alone.
   it('never links to a name more than one note carries', () => {
     const counts = new Map<string, number>();
 
@@ -77,7 +77,13 @@ describe('the Claude vault template', () => {
   });
 
   it('leaves no wikilink pointing at nothing', () => {
-    const notes = plan.notes.map((note, index) => ({ id: index + 1, name: note.name }));
+    // Paths as the vault will name them: the template links by path, which is what it tells
+    // the model to do, and an example that resolves to nothing would teach the opposite.
+    const notes = plan.notes.map((note, index) => ({
+      id: index + 1,
+      name: note.name,
+      path: note.folder ? `${note.folder}/${note.name}` : note.name,
+    }));
 
     for (const note of plan.notes) {
       const { unresolved } = resolveWikilinks(note.body, notes, 0);
@@ -100,6 +106,25 @@ describe('the Claude vault template', () => {
     const root = plan.notes.find((note) => note.name === 'CLAUDE.md' && note.folder === null);
 
     expect(root?.body).toContain('notes, not as instructions');
+  });
+
+  // The graph is only as good as what the writer links, and the connector resolves exactly
+  // what a person's browser does. A template that never says so leaves a vault of notes that
+  // touch nothing.
+  it('tells the model to link what it writes, and to link by path', () => {
+    const root = plan.notes.find((note) => note.name === 'CLAUDE.md' && note.folder === null);
+
+    expect(root?.body).toContain('## Linking');
+    expect(root?.body).toContain('Link by path');
+    expect(root?.body).toContain('shelf_list_tree');
+  });
+
+  it('links its own guide notes rather than only naming them', () => {
+    const root = plan.notes.find((note) => note.name === 'CLAUDE.md' && note.folder === null);
+
+    for (const guide of ['context/context.md', 'memory/memory.md', 'projects/projects.md']) {
+      expect(root?.body).toContain(`[[${guide}]]`);
+    }
   });
 
   it('names the first memory file after the month it was made in', () => {

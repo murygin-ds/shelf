@@ -10,7 +10,7 @@ import {
   type PlannedNote,
   type Skipped,
 } from '@/lib/archive';
-import { resolveWikilinks } from '@/lib/wikilinks';
+import { resolvables, resolveWikilinks } from '@/lib/wikilinks';
 import { zip, type ZipEntry } from '@/lib/zip';
 
 import { ApiError, OfflineError } from './client';
@@ -231,7 +231,7 @@ export async function importVault(
     }
   }
 
-  await relink(imported, onProgress);
+  await relink(imported, [...folders.values()], onProgress);
 
   return {
     vaultId: vault.id,
@@ -245,16 +245,22 @@ export async function importVault(
 /**
  * Records the wikilink graph once every note exists.
  *
- * Links resolve by title, and titles came across exactly, so the graph the archive described
- * comes back — minus the edges pointing at notes that did not. A failure here is not worth
- * failing the import over: the bodies are written, only the graph is behind.
+ * Links resolve by path and by title, and both came across exactly, so the graph the archive
+ * described comes back — minus the edges pointing at notes that did not. The folders are
+ * needed for the same reason the connector reads the whole tree: a path is the names of a
+ * note's ancestors. A failure here is not worth failing the import over: the bodies are
+ * written, only the graph is behind.
  */
 async function relink(
   imported: ReadonlyArray<{ node: ws.NoteNode; body: string }>,
+  folders: readonly ws.FolderNode[],
   onProgress?: (progress: ImportProgress) => void,
 ): Promise<void> {
   const linking = imported.filter((entry) => entry.body.includes('[['));
-  const notes = imported.map((entry) => entry.node);
+  const notes = resolvables(
+    folders,
+    imported.map((entry) => entry.node),
+  );
 
   for (const [done, entry] of linking.entries()) {
     onProgress?.({ phase: 'links', done, total: linking.length });
