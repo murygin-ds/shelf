@@ -275,6 +275,19 @@ ciphertexts, and a queued copy that will be refused every time is not a copy wor
 throwing, which is why greyed rows in the tree and `••••••` in the graph fall out naturally
 rather than through a try/catch in forty places.
 
+**The graph is laid out in the tab, and the tab decides what is on screen.** Every note in
+the vault comes back as a node — `note_links` has no say in which notes exist — so most of an
+ordinary vault is dots nothing points at. Those are left out by default, counted in the
+legend and switched back on from the header. What remains settles under a force simulation
+on an unbounded plane, and a viewport transform decides which part of it the panel shows;
+both are pure functions with tests (`features/graph/layout.ts`, `viewport.ts`), because the
+component around them owns an animation loop, a pointer and a `ResizeObserver` and can only
+be looked at. Positions, that transform and the hover highlight are written straight onto
+the SVG rather than through React state — at a thousand notes a re-render per frame is the
+difference between sixty frames a second and a slideshow — and the loop stops when the graph
+comes to rest. Nothing about the arrangement is stored: a note pinned by hand stays where it
+was put until the view is left.
+
 **Writes carry an optimistic lock.** `PUT /files/{id}/content` takes `If-Match:
 <content_seq>` and also names the key version it sealed under — a re-key moves the row to a
 new key without touching that sequence, so a write held up across a rotation has to be

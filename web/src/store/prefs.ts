@@ -9,6 +9,7 @@ import { create } from 'zustand';
  */
 
 const READ_ONLY_KEY = 'shelf.read-only';
+const GRAPH_ORPHANS_KEY = 'shelf.graph-orphans';
 
 interface PrefsState {
   /**
@@ -22,13 +23,28 @@ interface PrefsState {
    */
   readOnly: boolean;
   setReadOnly: (readOnly: boolean) => void;
+  /**
+   * Whether the graph draws notes nothing links to.
+   *
+   * Off by default, and the one setting here that is about legibility rather than about
+   * what this browser may do: the server returns every note in the vault as a node, so in
+   * an ordinary vault the linked structure is a few dozen dots inside a cloud of hundreds
+   * of loose ones. The legend always says how many are being left out.
+   */
+  graphOrphans: boolean;
+  setGraphOrphans: (graphOrphans: boolean) => void;
 }
 
 export const usePrefs = create<PrefsState>((set) => ({
-  readOnly: stored(),
+  readOnly: stored(READ_ONLY_KEY),
   setReadOnly: (readOnly) => {
-    remember(readOnly);
+    remember(READ_ONLY_KEY, readOnly);
     set({ readOnly });
+  },
+  graphOrphans: stored(GRAPH_ORPHANS_KEY),
+  setGraphOrphans: (graphOrphans) => {
+    remember(GRAPH_ORPHANS_KEY, graphOrphans);
+    set({ graphOrphans });
   },
 }));
 
@@ -43,20 +59,21 @@ export function isReadOnly(): boolean {
   return usePrefs.getState().readOnly;
 }
 
-function stored(): boolean {
+function stored(key: string): boolean {
   try {
-    return localStorage.getItem(READ_ONLY_KEY) === '1';
+    return localStorage.getItem(key) === '1';
   } catch {
-    // Private mode, storage switched off, or a test with no DOM. Writable is the default.
+    // Private mode, storage switched off, or a test with no DOM. Off is the default, which
+    // for `readOnly` means writable and for the graph means the quieter picture.
     return false;
   }
 }
 
-function remember(readOnly: boolean): void {
+function remember(key: string, on: boolean): void {
   try {
-    if (readOnly) localStorage.setItem(READ_ONLY_KEY, '1');
-    else localStorage.removeItem(READ_ONLY_KEY);
+    if (on) localStorage.setItem(key, '1');
+    else localStorage.removeItem(key);
   } catch {
-    // The mode still holds for this tab; it just will not survive a reload.
+    // The setting still holds for this tab; it just will not survive a reload.
   }
 }

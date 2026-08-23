@@ -6,17 +6,28 @@
   overflow: hidden;
 }
 
+.pane:focus {
+  outline: none;
+}
+
+.pane:focus-visible {
+  outline: 1px solid var(--accent-focus);
+  outline-offset: -1px;
+}
+
 .head {
   display: flex;
   align-items: center;
+  gap: 12px;
   height: 42px;
   flex: none;
-  padding: 0 18px;
+  padding: 0 12px 0 18px;
   border-bottom: 1px solid var(--border);
 }
 
 .title,
-.legend {
+.legend,
+.toggle {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: var(--label-transform);
@@ -24,14 +35,79 @@
   color: var(--text-label);
 }
 
+.legend {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .spacer {
   flex: 1;
 }
 
+.tools {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 3px;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-quiet);
+  cursor: pointer;
+}
+
+.tool:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-body);
+}
+
+.tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.toggle {
+  height: 24px;
+  margin-right: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-quiet);
+  cursor: pointer;
+}
+
+.toggle[aria-pressed='true'] {
+  border-color: var(--accent-focus);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+}
+
+/* The world is unbounded and the transform on the inner group decides what is on screen, so
+   the element itself only has to fill the panel — no viewBox, no fixed drawing size. */
 .canvas {
+  display: block;
   flex: 1;
   width: 100%;
   min-height: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.canvas[data-grabbing] {
+  cursor: grabbing;
 }
 
 .edge {
@@ -71,6 +147,12 @@
   stroke-dasharray: 3 3;
 }
 
+/* A note the reader put somewhere by hand keeps a ring, so a layout that was arranged does
+   not look like one that merely settled that way. */
+.canvas [data-pinned] .dot {
+  stroke: var(--accent-text);
+}
+
 .label {
   fill: var(--text-quiet);
   font-family: var(--font-mono);
@@ -83,14 +165,51 @@
   fill: var(--text-body);
 }
 
-.note {
+/* Names are the first thing to collide — two neighbouring dots are enough — so they arrive
+   as the reader comes closer. Which tier is on is written on the canvas by the viewport. */
+.canvas[data-labels='off'] .label {
+  opacity: 0;
+}
+
+.canvas[data-labels='hubs'] [data-ref]:not([data-hub]) .label {
+  opacity: 0;
+}
+
+/* Hovering one note dims everything that is not it, its neighbours, or the lines between. */
+.canvas[data-dim] [data-ref],
+.canvas[data-dim] [data-edge] {
+  opacity: 0.18;
+}
+
+.canvas[data-dim] [data-ref][data-lit],
+.canvas[data-dim] [data-edge][data-lit] {
+  opacity: 1;
+}
+
+/* Written after the tiers and at their specificity: a lit name is readable at any zoom. */
+.canvas[data-labels] [data-ref][data-lit] .label {
+  opacity: 1;
+  fill: var(--text-body);
+}
+
+.foot {
   flex: none;
-  margin: 0;
   padding: 12px 18px 16px;
   border-top: 1px solid var(--border);
+}
+
+.note,
+.hint {
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-quiet);
+}
+
+.hint {
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--text-disabled);
 }
 
 .empty {
