@@ -77,6 +77,8 @@ type (
 	readOutput struct {
 		Note nodeOut `json:"note"`
 		Body string  `json:"body"`
+		//nolint:lll // the description is the contract a model reads.
+		PendingEdits bool `json:"pending_edits,omitempty" jsonschema:"The body is behind the note's live copy: somebody typed in the editor and the session ended before it was written back. Writing to the note is refused until it is opened in Shelf again."`
 	}
 
 	searchInput struct {
@@ -220,7 +222,9 @@ func (t *Transport) readTools(server *sdk.Server, connector *mcp.Connector) {
 			return nil, readOutput{}, t.logged("shelf_read_note", connector, err)
 		}
 
-		return nil, readOutput{Note: nodeOf(note.Node), Body: note.Body}, nil
+		return nil, readOutput{
+			Note: nodeOf(note.Node), Body: note.Body, PendingEdits: note.PendingEdits,
+		}, nil
 	})
 
 	sdk.AddTool(server, &sdk.Tool{

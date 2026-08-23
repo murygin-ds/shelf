@@ -43,6 +43,10 @@ const Locked = "(locked)"
 var (
 	// ErrBusy refuses a write to a note somebody is editing right now.
 	ErrBusy = errors.New("the note is being edited right now")
+	// ErrUnsettled refuses a write to a note whose live document holds edits its body does
+	// not. Nobody is in the room — the session ended without writing back — so the body on
+	// disk is behind text that still exists, and a write from here would drop it.
+	ErrUnsettled = errors.New("the note has edits that have not been written to its body yet")
 	// ErrTooLarge refuses a body that would not fit.
 	ErrTooLarge = errors.New("the body is too large")
 	// ErrPath reports a path that names nothing, or names the wrong kind of thing.
@@ -72,6 +76,7 @@ type Vaults interface {
 	RestoreFile(ctx context.Context, userID, fileID int64) error
 	RestoreFolder(ctx context.Context, userID, folderID int64) error
 	UpdateContent(ctx context.Context, userID, fileID int64, in vault.ContentUpdate) (*vault.File, error)
+	LiveDoc(ctx context.Context, userID, fileID int64) (*vault.CRDTDoc, error)
 	SetLinks(ctx context.Context, userID, fileID int64, to []int64) error
 	MoveFile(ctx context.Context, userID, fileID int64, in vault.Move) (*vault.File, error)
 	DeleteFile(ctx context.Context, userID, fileID int64) error
@@ -107,6 +112,10 @@ type Node struct {
 type Note struct {
 	Node
 	Body string
+	// PendingEdits marks a body the live document has moved past: somebody typed, the
+	// session ended before it wrote back, and what is here is the last version that landed.
+	// Reading it is fine; writing over it is what ErrUnsettled refuses.
+	PendingEdits bool
 }
 
 // Trashed is something in the bin, addressed by an id rather than a path.
@@ -377,10 +386,34 @@ func (w *Workspace) ReadNote(ctx context.Context, path string) (*Note, error) {
 		return nil, err
 	}
 
+	pending, err := w.pending(ctx, at.file.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	node := at.node
 	node.ContentSeq = file.ContentSeq
 
-	return &Note{Node: node, Body: body}, nil
+	return &Note{Node: node, Body: body, PendingEdits: pending}, nil
+}
+
+// pending reports edits the live document holds and the body does not.
+//
+// The log is what the room has accumulated since the last write-back, so anything in it is
+// text that exists and this body does not carry. A note nobody has ever opened in an editor
+// has no document at all, which is the common case and not a failure.
+func (w *Workspace) pending(ctx context.Context, fileID int64) (bool, error) {
+	doc, err := w.vaults.LiveDoc(ctx, w.userID, fileID)
+
+	switch {
+	case errors.Is(err, vault.ErrNotFound):
+		return false, nil
+
+	case err != nil:
+		return false, fmt.Errorf("read live document: %w", err)
+	}
+
+	return doc.PendingCount > 0, nil
 }
 
 // bodies hydrates the notes named, in batches the bulk read accepts.
