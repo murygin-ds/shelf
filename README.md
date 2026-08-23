@@ -148,6 +148,16 @@ session, so the document's epoch rises, its log is dropped, and the open tabs ar
 start again from what was just written. Unsent local edits do not survive that, and the
 conflict banner says so rather than letting a sentence disappear quietly.
 
+**What an invalidation leaves behind is not a document.** The row stays — the epoch has to go
+on rising, or an update still in flight against the replaced document would merge into its
+successor — but it holds no snapshot and no log, and the server answers a note in that state
+the way it answers one nobody has ever opened: no document here, seed one. The epoch travels
+in that answer, because it is inside the AAD of the snapshot the client seals, and a seed
+sealed under any other number would store something nobody can open. Handing the empty row
+over as a document instead is what would turn a write from outside the session into a lost
+note: the room adopts an empty text and the committer writes that emptiness back over the
+body that replaced it.
+
 **Carets are encrypted, names are not.** Where somebody's caret is gives away the length of
 the document and the place they are working in, so it travels sealed under the same key as
 the text. Who is in the room does not: the server already holds the membership and the
@@ -408,11 +418,18 @@ and in the browser (`internal/mcp/links.go` and `web/src/lib/wikilinks.ts`), bec
 holder of the key can turn a title into a note and both sides hold one. Without it everything
 Claude wrote would stay off the graph until a person opened each note and saved it again.
 
-Two refusals are worth knowing about. A write quoting a stale `content_seq` is refused rather
-than merged, because nobody here can merge two ciphertexts. And a write to a note somebody
+Three refusals are worth knowing about. A write quoting a stale `content_seq` is refused
+rather than merged, because nobody here can merge two ciphertexts. A write to a note somebody
 has open in the editor is refused rather than performed: a body written from outside the live
 document raises its epoch and drops the pending updates, which is right when an offline
-client replays a write and looks like theft when it lands mid-sentence.
+client replays a write and looks like theft when it lands mid-sentence. And a write to a note
+whose live document still owes its body a commit is refused for the same reason with nobody
+left in the room to notice — a tab that went away without writing back leaves what was typed
+in the log. The mark rides on the note itself, so every tool that answers with one carries
+`pending_edits` — the listing, the search, the read, and the move and rename that only touch
+its metadata. A model sees the body, or a snippet of it, knowing that it is not the whole of
+the note and that writing to it will be refused. A write that succeeds clears it by
+construction: there is nothing left in the log for the body not to carry.
 
 A connector admitted as a viewer is not offered the writing tools at all, rather than offered
 tools that refuse. A model shown a tool will try it.

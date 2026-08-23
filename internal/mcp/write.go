@@ -248,7 +248,13 @@ func (w *Workspace) MoveNote(ctx context.Context, path, folder string) (*Node, e
 		return nil, err
 	}
 
+	pending, err := w.pending(ctx, moved.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	node := w.noteNode(*moved, at.node.Name, join(clean(folder), at.node.Name))
+	node.PendingEdits = pending
 
 	return &node, nil
 }
@@ -285,6 +291,20 @@ func (w *Workspace) write(
 	// answer that does not throw away somebody's sentence mid-word.
 	if w.live != nil && w.live.Editing(file.ID) {
 		return nil, fmt.Errorf("%w: %s", ErrBusy, path)
+	}
+
+	// Nobody is in the room, and the room still owes the body a write: a tab that went away
+	// without committing leaves its typing in the log, and this body is behind it. The same
+	// invalidation would drop that log, so it is refused too — the difference from the case
+	// above is only that the person has already left, which makes it easier to lose and no
+	// less theirs.
+	pending, err := w.pending(ctx, file.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if pending {
+		return nil, fmt.Errorf("%w: %s", ErrUnsettled, path)
 	}
 
 	key := w.ring.Get(file.KeyScopeID, file.KeyVersion)

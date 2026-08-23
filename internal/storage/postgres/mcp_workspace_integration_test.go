@@ -55,6 +55,165 @@ func workspace(t *testing.T, f *fixture, repo *MCPRepository) *mcp.Workspace {
 	return opened
 }
 
+// A tab that goes away without writing its document back leaves the body behind text that
+// still exists: the log holds it, and only a client can fold it in. A write from here would
+// invalidate the document and take that log with it, and nobody is in the room to notice —
+// so the connector says what it sees when it reads, and refuses to write.
+func TestConnectorRefusesToWriteOverEditsNobodyWroteBack(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	repo := NewMCPRepository(pool, nil)
+	space := workspace(t, f, repo)
+	ctx := context.Background()
+
+	created, err := space.CreateNote(ctx, "inbox/draft", "half a sentence")
+	if err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	store := NewVaultRepository(pool, nil)
+
+	file, err := store.File(ctx, created.ID, f.userID)
+	if err != nil {
+		t.Fatalf("File: %v", err)
+	}
+
+	// Somebody opened the note and typed. Their session ended before the committer wrote
+	// the body back, so what they typed is only in the log.
+	if _, _, err := store.SeedCRDTDoc(ctx, vault.NewCRDTDoc{
+		FileID: file.ID, Epoch: vault.FirstEpoch, Snapshot: snapshot("state"),
+		KeyScopeID: file.KeyScopeID, KeyVersion: file.KeyVersion, ContentSeq: file.ContentSeq,
+	}, f.userID); err != nil {
+		t.Fatalf("seed the document: %v", err)
+	}
+
+	if _, err := store.AppendCRDTUpdate(ctx, vault.NewCRDTUpdate{
+		FileID: file.ID, Epoch: vault.FirstEpoch, Payload: snapshot("typed"),
+		KeyScopeID: file.KeyScopeID, KeyVersion: file.KeyVersion,
+	}, f.userID); err != nil {
+		t.Fatalf("append an update: %v", err)
+	}
+
+	// Reading is fine, and it says the body is not the whole story.
+	read, err := space.ReadNote(ctx, "inbox/draft")
+	if err != nil {
+		t.Fatalf("ReadNote: %v", err)
+	}
+
+	if !read.PendingEdits {
+		t.Error("the read did not say the body is behind the live copy")
+	}
+
+	// The listing and a search report the same thing: what is stored is not the whole note.
+	if _, err := space.CreateNote(ctx, "inbox/quiet", "half a sentence, written once"); err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	listed, err := space.Tree(ctx, "inbox")
+	if err != nil {
+		t.Fatalf("Tree: %v", err)
+	}
+
+	tree := map[string]bool{}
+	for _, node := range listed {
+		tree[node.Path] = node.PendingEdits
+	}
+
+	if !tree["inbox/draft"] {
+		t.Error("the listing did not say the edited note has unwritten edits")
+	}
+
+	if tree["inbox/quiet"] {
+		t.Error("the listing reported unwritten edits on a note nobody has opened")
+	}
+
+	hits, err := space.Search(ctx, mcp.Query{Text: "half a sentence"}, 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+
+	behind := map[string]bool{}
+	for _, hit := range hits {
+		behind[hit.Path] = hit.PendingEdits
+	}
+
+	if len(hits) != 2 {
+		t.Fatalf("the search found %d notes, want both", len(hits))
+	}
+
+	if !behind["inbox/draft"] {
+		t.Error("the hit for the edited note did not say its body is behind the live copy")
+	}
+
+	if behind["inbox/quiet"] {
+		t.Error("a note nobody has opened was reported as having unwritten edits")
+	}
+
+	// The note carries the mark wherever it goes: moving it and renaming it answer with it
+	// too, so a model that only touched its metadata still knows what it is holding.
+	moved, err := space.MoveNote(ctx, "inbox/draft", "archive")
+	if err != nil {
+		t.Fatalf("MoveNote: %v", err)
+	}
+
+	if !moved.PendingEdits {
+		t.Error("the moved note did not say its body is behind the live copy")
+	}
+
+	name := "draft-2"
+
+	renamed, err := space.SetMeta(ctx, "archive/draft", mcp.MetaPatch{Name: &name})
+	if err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+
+	if !renamed.PendingEdits {
+		t.Error("the renamed note did not say its body is behind the live copy")
+	}
+
+	if _, err := space.AppendNote(ctx, "archive/draft-2", " and more"); !errors.Is(err, mcp.ErrUnsettled) {
+		t.Errorf("appending over unwritten edits returned %v, want ErrUnsettled", err)
+	}
+
+	if _, err := space.WriteNote(ctx, "archive/draft-2", "clobbered", read.ContentSeq); !errors.Is(err, mcp.ErrUnsettled) {
+		t.Errorf("writing over unwritten edits returned %v, want ErrUnsettled", err)
+	}
+
+	// The refusal took nothing with it: what was typed is still there to be folded in.
+	doc, err := store.CRDTDoc(ctx, file.ID)
+	if err != nil {
+		t.Fatalf("read the document: %v", err)
+	}
+
+	if doc.PendingCount != 1 || doc.Epoch != vault.FirstEpoch {
+		t.Errorf("the document is at epoch %d with %d updates, want the one it had",
+			doc.Epoch, doc.PendingCount)
+	}
+
+	// Folding them into the body is the editor's job, and it lifts the refusal: there is
+	// nothing left that the body does not carry.
+	if _, err := store.UpdateFileContent(ctx, file.ID, vault.ContentUpdate{
+		Content:     snapshot("folded body"),
+		ExpectedSeq: read.ContentSeq,
+		KeyScopeID:  file.KeyScopeID,
+		KeyVersion:  file.KeyVersion,
+		CRDT: &vault.CRDTCommit{
+			Epoch: vault.FirstEpoch, UpToSeq: doc.LastSeq, Snapshot: snapshot("folded"),
+		},
+	}, f.userID); err != nil {
+		t.Fatalf("fold the log into the body: %v", err)
+	}
+
+	written, err := space.WriteNote(ctx, "archive/draft-2", "the connector's turn", read.ContentSeq+1)
+	if err != nil {
+		t.Fatalf("writing after the editor wrote back: %v", err)
+	}
+
+	if written.PendingEdits {
+		t.Error("the note still reports unwritten edits after they were written")
+	}
+}
+
 // busy stands in for the hub reporting that somebody holds a note open.
 type busy struct{ editing bool }
 

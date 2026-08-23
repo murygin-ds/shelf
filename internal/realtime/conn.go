@@ -238,12 +238,24 @@ func (c *conn) openNote(ctx context.Context, frame inbound, s Session) {
 	case errors.Is(err, vault.ErrNotFound):
 		// No document yet. Whoever can write may seed one; a reader waits for them to.
 		c.join(frame.FileID, ref)
-		c.send(absent(frame.FileID))
+		c.send(absent(frame.FileID, vault.FirstEpoch))
 
 		return
 
 	case err != nil:
 		c.fail(frame.FileID, "read live document", err)
+
+		return
+	}
+
+	// A document a body was written around keeps its row — the epoch has to go on rising —
+	// but describes nothing: no snapshot, no log. Handing that over is what turns a write
+	// from outside the session into a lost note, because the room adopts the empty text and
+	// the committer writes it back over the body that replaced it. It is a document nobody
+	// has started, and the answer to that is the one below.
+	if doc.Snapshot == nil {
+		c.join(frame.FileID, ref)
+		c.send(absent(frame.FileID, doc.Epoch))
 
 		return
 	}
@@ -282,6 +294,7 @@ func (c *conn) seedNote(ctx context.Context, frame inbound, s Session) {
 
 	doc, _, err := s.Workspace.SeedLiveDoc(ctx, c.userID, vault.NewCRDTDoc{
 		FileID:     frame.FileID,
+		Epoch:      frame.Epoch,
 		Snapshot:   vault.Blob{Ciphertext: frame.Payload, Nonce: frame.Nonce},
 		KeyScopeID: frame.KeyScopeID,
 		KeyVersion: frame.KeyVersion,

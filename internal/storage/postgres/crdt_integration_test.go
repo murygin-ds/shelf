@@ -354,6 +354,84 @@ func TestABodyWrittenAroundTheDocumentInvalidatesIt(t *testing.T) {
 	}
 }
 
+// The row an invalidation leaves behind is not a document — it holds no snapshot — and the
+// next session fills it rather than adopting it. Reading it back as a document is what turns
+// a body written from outside into a lost note: the session would start from empty text and
+// write that back over the body that replaced it.
+func TestSeedingFillsTheDocumentAWriteAroundEmptied(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleEditor)
+	repo := NewVaultRepository(pool, nil)
+	ctx := context.Background()
+
+	fileID := seededDoc(t, f, repo)
+
+	if _, err := repo.UpdateFileContent(ctx, fileID, body(f, 1, nil), f.userID); err != nil {
+		t.Fatalf("write body: %v", err)
+	}
+
+	// Sealed under the epoch a first document has, which this one is not: what it stored
+	// would open for nobody, so it is refused and the client starts over.
+	_, _, err := repo.SeedCRDTDoc(ctx, vault.NewCRDTDoc{
+		FileID: fileID, Epoch: 1, Snapshot: snapshot("stale"),
+		KeyScopeID: f.scopeID, KeyVersion: 1, ContentSeq: 2,
+	}, f.userID)
+	if !errors.Is(err, vault.ErrEpochMismatch) {
+		t.Errorf("seeding under the wrong epoch returned %v, want a mismatch", err)
+	}
+
+	// A client too old to name an epoch is answered as the stale copy it is, rather than
+	// told to start over: starting over would only bring it back here.
+	if _, _, err := repo.SeedCRDTDoc(ctx, vault.NewCRDTDoc{
+		FileID: fileID, Snapshot: snapshot("stale"),
+		KeyScopeID: f.scopeID, KeyVersion: 1, ContentSeq: 2,
+	}, f.userID); !errors.Is(err, vault.ErrVersionConflict) {
+		t.Errorf("seeding without an epoch returned %v, want a conflict", err)
+	}
+
+	doc, seeded, err := repo.SeedCRDTDoc(ctx, vault.NewCRDTDoc{
+		FileID: fileID, Epoch: 2, Snapshot: snapshot("restarted"),
+		KeyScopeID: f.scopeID, KeyVersion: 1, ContentSeq: 2,
+	}, f.userID)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if !seeded {
+		t.Error("the client that filled the document was told it lost a race")
+	}
+
+	// The epoch is kept rather than reset, so an update still in flight against what was
+	// replaced is refused instead of merged into its successor.
+	if doc.Epoch != 2 {
+		t.Errorf("the restarted document is at epoch %d, want the one the row had reached", doc.Epoch)
+	}
+
+	if doc.Snapshot == nil || string(doc.Snapshot.Ciphertext) != "restarted" {
+		t.Errorf("the document came back with snapshot %v", doc.Snapshot)
+	}
+
+	if doc.CommittedSeq != 2 {
+		t.Errorf("the document names body version %d, want the one it was seeded from", doc.CommittedSeq)
+	}
+
+	if _, err := repo.AppendCRDTUpdate(ctx, vault.NewCRDTUpdate{
+		FileID: fileID, Epoch: 1, Payload: snapshot("late"),
+		KeyScopeID: f.scopeID, KeyVersion: 1,
+	}, f.userID); !errors.Is(err, vault.ErrEpochMismatch) {
+		t.Errorf("an update against the replaced document returned %v, want a mismatch", err)
+	}
+
+	// And the one this session holds is taken, which is what says the document is live
+	// again rather than merely present.
+	if _, err := repo.AppendCRDTUpdate(ctx, vault.NewCRDTUpdate{
+		FileID: fileID, Epoch: 2, Payload: snapshot("typed"),
+		KeyScopeID: f.scopeID, KeyVersion: 1,
+	}, f.userID); err != nil {
+		t.Fatalf("append after the restart: %v", err)
+	}
+}
+
 // A commit from the live session folds the log into the snapshot it brought.
 func TestACommitFoldsTheLogAway(t *testing.T) {
 	pool := connect(t)

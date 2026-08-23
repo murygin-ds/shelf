@@ -23,6 +23,10 @@ export const store = {
 
   unverifiedEdit: 'An edit arrived that could not be verified, and it was not applied.',
 
+  /** The room refused this tab, or handed it a document it cannot open. Either way it is not
+   *  editing together with anybody, and the body it shows is the one it read. */
+  liveCopyUnavailable: 'The shared copy of this note would not open. Reload the page to try again.',
+
   offlineGone: 'A note written offline could not be restored: it no longer exists.',
   offlineKeyless: 'A note written offline could not be restored: its key is gone.',
   offlineKept: (name: string) =>

@@ -95,9 +95,15 @@ func (w *Workspace) setNoteMeta(ctx context.Context, built *tree, at *noteAt, pa
 		return nil, err
 	}
 
+	pending, err := w.pending(ctx, written.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	node := w.noteNode(*written, updated.Name, rename(at.node.Path, updated.Name))
 	node.Icon = updated.Icon
 	node.Tags = updated.Tags
+	node.PendingEdits = pending
 
 	return &node, nil
 }

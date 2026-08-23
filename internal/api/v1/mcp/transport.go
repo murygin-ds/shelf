@@ -154,6 +154,9 @@ func toolError(err error) error {
 		return fmt.Errorf("%w — read the note again and reapply your change to the current text", err)
 	case errors.Is(err, mcp.ErrBusy):
 		return fmt.Errorf("%w — somebody has it open in the editor; try again shortly", err)
+	case errors.Is(err, mcp.ErrUnsettled):
+		return fmt.Errorf("%w — open it in Shelf once so the editor writes those edits back, "+
+			"then read it again", err)
 	case errors.Is(err, mcp.ErrLocked):
 		return fmt.Errorf("%w — this part of the vault is sealed with a key the connector was not given", err)
 	case errors.Is(err, vault.ErrScopeMismatch):
@@ -200,6 +203,8 @@ func reason(err error) string {
 		return "locked"
 	case errors.Is(err, mcp.ErrBusy):
 		return "busy"
+	case errors.Is(err, mcp.ErrUnsettled):
+		return "unsettled"
 	case errors.Is(err, mcp.ErrTooLarge):
 		return "too-large"
 	case errors.Is(err, mcp.ErrNotEmpty):

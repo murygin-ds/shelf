@@ -23,8 +23,10 @@ type nodeOut struct {
 	// listed rather than hidden, so a model can tell "not there" from "not for you".
 	Locked bool `json:"locked,omitempty"`
 	// ContentSeq is the version a write has to quote back. Notes only.
-	ContentSeq int64     `json:"content_seq,omitempty"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ContentSeq int64 `json:"content_seq,omitempty"`
+	//nolint:lll // the description is the contract a model reads.
+	PendingEdits bool      `json:"pending_edits,omitempty" jsonschema:"The stored body is behind the note's live copy: somebody typed in the editor and the session ended before it was written back. Reading is fine; writing to the note is refused until it has been opened in Shelf again."`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // patch turns what was sent into what SetMeta reads: absent means "leave it", and the two
@@ -50,7 +52,8 @@ func (in metaInput) patch() mcp.MetaPatch {
 func nodeOf(n mcp.Node) nodeOut {
 	return nodeOut{
 		Path: n.Path, Kind: n.Kind, Name: n.Name, Icon: n.Icon, Tags: n.Tags,
-		Locked: n.Locked, ContentSeq: n.ContentSeq, UpdatedAt: n.UpdatedAt,
+		Locked: n.Locked, ContentSeq: n.ContentSeq, PendingEdits: n.PendingEdits,
+		UpdatedAt: n.UpdatedAt,
 	}
 }
 

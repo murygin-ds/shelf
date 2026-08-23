@@ -793,18 +793,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       onPeers: (peers, committer) => set({ peers, committer }),
       onNotice: (notice) => {
         if (notice.kind === 'reseed') {
-          // The document was replaced under this room — an offline body replayed, an older
-          // client, or a re-key. Whatever had not been written back is gone from the shared
-          // copy, and saying so is better than letting a sentence quietly disappear.
-          const current = get().open;
-          if (current) set({ open: { ...current, conflict: true } });
+          // The document was replaced under this room — a body written around it by the
+          // connector or an offline replay, or a re-key. Whatever had not been written back
+          // is gone from the shared copy, and saying so is better than letting a sentence
+          // quietly disappear. What this tab holds describes the document that is gone, so
+          // the note is read again and the session started over what the server now has:
+          // seeding the replacement from here would offer text the body has moved past.
+          void reopen(get, set, identity, self, target.note.id);
 
           return;
         }
 
         if (notice.kind === 'unverified') {
           set({ error: m.store.unverifiedEdit });
+
+          return;
         }
+
+        // The room could not stand the document up, so this tab is not editing with anybody
+        // and nothing will be written back from it. The code and the message are diagnostics
+        // and stay where they were written.
+        set({ error: m.store.liveCopyUnavailable });
       },
     });
 
@@ -1280,6 +1289,38 @@ type Setter = (partial: Partial<WorkspaceState>) => void;
 
 /** The drain in flight, if any. See `flushOutbox`. */
 let flushing: Promise<void> | null = null;
+
+/**
+ * Reads the note again and starts a fresh session over what the server now holds.
+ *
+ * The room says its document was replaced, so everything this tab has about it is about a
+ * document that no longer exists — including the body it would seed the replacement from.
+ * Reading first is what keeps that seed from starting the note over on text the server has
+ * already moved past.
+ */
+async function reopen(
+  get: () => WorkspaceState,
+  set: Setter,
+  identity: Identity,
+  self: { userId: number; name: string },
+  noteId: number,
+): Promise<void> {
+  const open = get().open;
+  if (!open || open.note.id !== noteId) return;
+
+  get().stopEditing();
+  await get().openNote(open.note);
+
+  const reloaded = get().open;
+  if (!reloaded || reloaded.note.id !== noteId) return;
+
+  // The banner outlives the reload: whatever this tab had not written back is gone from the
+  // shared copy, and a body that changes silently under somebody is worse than one that
+  // says so.
+  set({ open: { ...reloaded, conflict: true } });
+
+  await get().startEditing(identity, self);
+}
 
 /**
  * Writes back what the live document holds.

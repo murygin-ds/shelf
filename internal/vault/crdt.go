@@ -19,6 +19,11 @@ var (
 	ErrUpdateTooLarge = errors.New("an update is too large")
 )
 
+// FirstEpoch is what a document nobody has started will be stored at. A client sealing a
+// seed has to know the epoch in advance — it is inside the AAD — so the server names it in
+// the frame that says no document is there.
+const FirstEpoch int32 = 1
+
 // Growth ceilings on one document's log. The server cannot merge ciphertext, so these are
 // the only limits it can enforce without reading anything.
 const (
@@ -71,7 +76,11 @@ type CRDTUpdate struct {
 
 // NewCRDTDoc seeds a document from the body a client has just read.
 type NewCRDTDoc struct {
-	FileID     int64
+	FileID int64
+	// Epoch is the one the snapshot was sealed under, which the server named when it said
+	// no document was there. A seed for a document invalidated at epoch 3 has to arrive
+	// sealed under 3, or nobody would be able to open what it stored.
+	Epoch      int32
 	Snapshot   Blob
 	KeyScopeID int64
 	KeyVersion int32
@@ -94,11 +103,15 @@ type NewCRDTUpdate struct {
 // CRDTStore is the storage of live documents.
 type CRDTStore interface {
 	CRDTDoc(ctx context.Context, fileID int64) (*CRDTDoc, error)
-	// SeedCRDTDoc creates the document, or returns the one that already exists. The second
-	// result says which of the two happened: the loser of a race has to adopt what it is
-	// handed rather than merge its own copy into it.
+	// SeedCRDTDoc creates the document, refills one that a body written around it left
+	// empty, or returns the one that already holds a snapshot. The second result says
+	// whether this snapshot is the one that landed: the loser of a race has to adopt what
+	// it is handed rather than merge its own copy into it.
 	SeedCRDTDoc(ctx context.Context, in NewCRDTDoc, actorID int64) (*CRDTDoc, bool, error)
 	CRDTUpdates(ctx context.Context, fileID int64, epoch int32, since int64) ([]CRDTUpdate, error)
+	// PendingDocs names, among the notes given, the ones whose log is not empty. Filtered
+	// by what the caller may see, like every other read of several notes at once.
+	PendingDocs(ctx context.Context, vaultID, userID int64, fileIDs []int64) ([]int64, error)
 	AppendCRDTUpdate(ctx context.Context, in NewCRDTUpdate, actorID int64) (*CRDTUpdate, error)
 }
 
@@ -115,6 +128,23 @@ func (s *Service) LiveDoc(ctx context.Context, userID, fileID int64) (*CRDTDoc, 
 	}
 
 	return doc, nil
+}
+
+// PendingDocs names, among the notes given, the ones holding edits their body does not.
+//
+// One query for the whole batch: a search opens as many bodies as it was asked for, and
+// asking after each one's document separately would double that in round trips.
+func (s *Service) PendingDocs(ctx context.Context, userID, vaultID int64, fileIDs []int64) ([]int64, error) {
+	if _, err := s.member(ctx, vaultID, userID); err != nil {
+		return nil, err
+	}
+
+	pending, err := s.crdt.PendingDocs(ctx, vaultID, userID, fileIDs)
+	if err != nil {
+		return nil, translate(err, "read live documents")
+	}
+
+	return pending, nil
 }
 
 // LiveUpdates reads the log from a sequence the caller already holds.

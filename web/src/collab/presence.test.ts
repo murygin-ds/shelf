@@ -41,8 +41,24 @@ async function room(key: CryptoKey): Promise<{ room: Room; sent: Array<Record<st
     onNotice: () => {},
   });
 
-  // A document, so the room will publish rather than sit waiting for one.
-  await created.receive({ type: 'doc', file_id: FILE_ID, epoch: 1, snapshot_seq: 0, updates: [] });
+  // A document, so the room will publish rather than sit waiting for one. It is seeded the
+  // way the server has it seeded: a document frame carrying no snapshot is one that was
+  // invalidated, and the room starts over rather than adopting it.
+  await created.receive({ type: 'absent', file_id: FILE_ID, epoch: 1 });
+  await settle();
+
+  const seeded = sent.find((frame) => frame['type'] === 'seed');
+
+  await created.receive({
+    type: 'doc',
+    file_id: FILE_ID,
+    epoch: 1,
+    snapshot_seq: 0,
+    updates: [],
+    snapshot: String(seeded?.['payload'] ?? ''),
+    nonce: String(seeded?.['nonce'] ?? ''),
+  });
+  await settle();
 
   return { room: created, sent };
 }

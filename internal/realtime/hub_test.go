@@ -143,20 +143,65 @@ func (w *workspace) SeedLiveDoc(
 	defer w.mu.Unlock()
 
 	if existing, ok := w.docs[in.FileID]; ok {
+		// A row with no snapshot is not somebody's document: a body written around the
+		// session emptied it and left the epoch behind. Filling it keeps that epoch, and
+		// the seal has to have been made under it.
+		if existing.Snapshot != nil {
+			copied := *existing
+
+			return &copied, false, nil
+		}
+
+		if in.Epoch == 0 {
+			// A client that cannot name an epoch cannot seal one of these either.
+			return nil, false, vault.ErrVersionConflict
+		}
+
+		if in.Epoch != existing.Epoch {
+			return nil, false, vault.ErrEpochMismatch
+		}
+
+		existing.Snapshot = &in.Snapshot
+		existing.CommittedSeq = in.ContentSeq
+		existing.KeyScopeID, existing.KeyVersion = in.KeyScopeID, in.KeyVersion
+		existing.CreatedBy = &userID
+
 		copied := *existing
 
-		return &copied, false, nil
+		return &copied, true, nil
+	}
+
+	if in.Epoch != 0 && in.Epoch != vault.FirstEpoch {
+		return nil, false, vault.ErrEpochMismatch
 	}
 
 	doc := &vault.CRDTDoc{
 		FileID: in.FileID, KeyScopeID: in.KeyScopeID, KeyVersion: in.KeyVersion,
-		Epoch: 1, CommittedSeq: in.ContentSeq, Snapshot: &in.Snapshot, CreatedBy: &userID,
+		Epoch: vault.FirstEpoch, CommittedSeq: in.ContentSeq,
+		Snapshot: &in.Snapshot, CreatedBy: &userID,
 	}
 	w.docs[in.FileID] = doc
 
 	copied := *doc
 
 	return &copied, true, nil
+}
+
+// invalidate is what a body written around the document does to it: the row stays so the
+// epoch can go on rising, and everything it described is dropped.
+func (w *workspace) invalidate(fileID int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	doc, ok := w.docs[fileID]
+	if !ok {
+		return
+	}
+
+	doc.Epoch++
+	doc.Snapshot = nil
+	doc.SnapshotSeq, doc.LastSeq = 0, 0
+	delete(w.log, fileID)
 }
 
 func (w *workspace) AppendLiveUpdate(
