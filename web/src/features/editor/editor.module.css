@@ -103,6 +103,9 @@
   padding: 0;
 }
 
+/* The line used to shout because every string in it was typed in capitals. The capitals are
+   a property of the line, not of the words, so English keeps them and Russian — which reads
+   as shouting in caps rather than as a label — does not. */
 .meta {
   display: flex;
   align-items: center;
@@ -112,6 +115,7 @@
   font-size: 10.5px;
   color: var(--text-ghost);
   flex-wrap: wrap;
+  text-transform: var(--label-transform);
 }
 
 .metaSeparator {
@@ -207,13 +211,18 @@
   color: #d8c8a8;
 }
 
+/* Three outcomes, none of them abbreviated: the words are the only thing telling the reader
+   which one keeps their text. They wrap onto a second line rather than squeeze, because a
+   row of equally narrow buttons is exactly where the wrong one gets pressed. */
 .conflictActions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
 }
 
 .conflictButton {
+  flex: none;
   height: 28px;
   padding: 0 12px;
   border: 1px solid var(--border-strong);
@@ -222,6 +231,7 @@
   color: var(--text-secondary);
   font: inherit;
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 

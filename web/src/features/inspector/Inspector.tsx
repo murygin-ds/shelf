@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
-import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import { describe } from '@/api/errors';
 import * as graphApi from '@/api/graph';
 import * as revisionsApi from '@/api/revisions';
 import * as shareApi from '@/api/share';
 import type { NoteNode } from '@/api/workspace';
 import { revealLine, topLine, watchTopLine } from '@/features/editor/reveal';
+import { format, m } from '@/i18n';
 import { headingAt, outline } from '@/lib/outline';
 import { allTags, extractTags, normalizeTag } from '@/lib/search';
 import { resolvables, resolveWikilinks } from '@/lib/wikilinks';
@@ -21,11 +22,11 @@ type Tab = 'outline' | 'links' | 'tags' | 'history' | 'share';
 // The map comes first and opens by default: it is the one panel that says something about
 // the note being read rather than about the note as an object.
 const TABS: Array<{ id: Tab; label: string }> = [
-  { id: 'outline', label: 'OUTLINE' },
-  { id: 'links', label: 'LINKS' },
-  { id: 'tags', label: 'TAGS' },
-  { id: 'history', label: 'HISTORY' },
-  { id: 'share', label: 'SHARE' },
+  { id: 'outline', label: m.inspector.tabs.outline },
+  { id: 'links', label: m.inspector.tabs.links },
+  { id: 'tags', label: m.inspector.tabs.tags },
+  { id: 'history', label: m.inspector.tabs.history },
+  { id: 'share', label: m.inspector.tabs.share },
 ];
 
 export function Inspector({ note }: { note: NoteNode }) {
@@ -74,18 +75,15 @@ function Outline({ note }: { note: NoteNode }) {
   const here = headingAt(headings, line);
 
   if (open?.locked) {
-    return <p className={styles.empty}>A note this device holds no key for has no map.</p>;
+    return <p className={styles.empty}>{m.inspector.outline.locked}</p>;
   }
 
   return (
     <>
-      <p className={styles.section}>OUTLINE · {headings.length}</p>
+      <p className={styles.section}>{m.inspector.outline.section(headings.length)}</p>
 
       {headings.length === 0 ? (
-        <p className={styles.empty}>
-          No headings yet. Start a line with # and it shows up here, indented under the one
-          above it.
-        </p>
+        <p className={styles.empty}>{m.inspector.outline.empty}</p>
       ) : (
         headings.map((heading, index) => (
           <button
@@ -147,7 +145,7 @@ function Links({ note }: { note: NoteNode }) {
 
   return (
     <>
-      <p className={styles.section}>BACKLINKS · {found?.links.length ?? 0}</p>
+      <p className={styles.section}>{m.inspector.links.backlinks(found?.links.length ?? 0)}</p>
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
@@ -168,21 +166,17 @@ function Links({ note }: { note: NoteNode }) {
           </button>
         ))
       ) : (
-        <p className={styles.empty}>Nothing points here yet. Write [[a title]] in another note.</p>
+        <p className={styles.empty}>{m.inspector.links.empty}</p>
       )}
 
       {found && found.hidden > 0 ? (
-        <div className={styles.hidden}>
-          {found.hidden} more note{found.hidden === 1 ? '' : 's'} link{found.hidden === 1 ? 's' : ''}{' '}
-          here from somewhere you cannot see. The count is honest; the names are not yours to
-          have.
-        </div>
+        <div className={styles.hidden}>{m.inspector.links.hidden(found.hidden)}</div>
       ) : null}
 
       {resolved.length ? (
         <>
           <p className={styles.section} style={{ marginTop: 16 }}>
-            LINKS OUT · {resolved.length}
+            {m.inspector.links.out(resolved.length)}
           </p>
           {resolved.map((id) => {
             const target = tree.notes.find((candidate) => candidate.id === id);
@@ -204,10 +198,9 @@ function Links({ note }: { note: NoteNode }) {
 
       {unresolved.length ? (
         <div className={styles.hidden}>
-          {unresolved.length} link{unresolved.length === 1 ? '' : 's'} in this note match
-          nothing you can open: {unresolved.slice(0, 3).map((title) => `[[${title}]]`).join(', ')}
-          {unresolved.length > 3 ? '…' : ''}. Unmatched titles stay on this device — sending
-          them would publish the text.
+          {m.inspector.links.unresolved(unresolved.length)}{' '}
+          {unresolved.slice(0, 3).map((title) => `[[${title}]]`).join(', ')}
+          {unresolved.length > 3 ? '…' : '.'} {m.inspector.links.unresolvedTail}
         </div>
       ) : null}
     </>
@@ -265,7 +258,7 @@ function Tags({ note }: { note: NoteNode }) {
 
   return (
     <>
-      <p className={styles.section}>TAGS · {note.tags.length}</p>
+      <p className={styles.section}>{m.inspector.tags.section(note.tags.length)}</p>
 
       {note.tags.length ? (
         <div className={styles.chips}>
@@ -279,7 +272,7 @@ function Tags({ note }: { note: NoteNode }) {
                   type="button"
                   className={styles.chipRemove}
                   disabled={busy}
-                  aria-label={`Remove ${tag}`}
+                  aria-label={m.inspector.tags.remove(tag)}
                   onClick={() => void remove(tag)}
                 >
                   <Icon name="x" size={10} />
@@ -289,9 +282,7 @@ function Tags({ note }: { note: NoteNode }) {
           ))}
         </div>
       ) : (
-        <p className={styles.empty}>
-          No tags yet. They are sealed with the note’s name, so the server never sees them.
-        </p>
+        <p className={styles.empty}>{m.inspector.tags.empty}</p>
       )}
 
       {readOnly ? null : (
@@ -300,7 +291,7 @@ function Tags({ note }: { note: NoteNode }) {
             className={styles.input}
             value={draft}
             list="shelf-tag-suggestions"
-            placeholder="Add a tag"
+            placeholder={m.inspector.tags.add}
             spellCheck={false}
             disabled={busy}
             onChange={(event) => setDraft(event.target.value)}
@@ -322,7 +313,7 @@ function Tags({ note }: { note: NoteNode }) {
       {inline.length ? (
         <>
           <p className={styles.section} style={{ marginTop: 16 }}>
-            IN THE TEXT · {inline.length}
+            {m.inspector.tags.inText(inline.length)}
           </p>
           <div className={styles.chips}>
             {inline.map((tag) => (
@@ -337,9 +328,7 @@ function Tags({ note }: { note: NoteNode }) {
               </span>
             ))}
           </div>
-          <div className={styles.hidden}>
-            These are written into the note itself. Edit the text to change them.
-          </div>
+          <div className={styles.hidden}>{m.inspector.tags.inTextNote}</div>
         </>
       ) : null}
     </>
@@ -412,12 +401,12 @@ function History({ note }: { note: NoteNode }) {
 
   return (
     <>
-      <p className={styles.section}>VERSIONS · {list.length}</p>
+      <p className={styles.section}>{m.inspector.history.section(list.length)}</p>
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
       {list.length === 0 ? (
-        <p className={styles.empty}>No saved versions yet.</p>
+        <p className={styles.empty}>{m.inspector.history.empty}</p>
       ) : (
         list.map((revision) => (
           <button
@@ -428,9 +417,9 @@ function History({ note }: { note: NoteNode }) {
             onClick={() => void show(revision.id)}
           >
             <span className={styles.itemMain}>
-              {revision.authorName || 'a removed account'}
+              {revision.authorName || m.inspector.history.removedAuthor}
             </span>
-            <span className={styles.itemMeta}>{when(revision.createdAt)}</span>
+            <span className={styles.itemMeta}>{format.recent(revision.createdAt)}</span>
           </button>
         ))
       )}
@@ -438,9 +427,12 @@ function History({ note }: { note: NoteNode }) {
       {open ? (
         <>
           <p className={styles.section} style={{ marginTop: 16 }}>
-            VERSION {open.contentSeq} <Verdict authorship={open.authorship} />
+            {m.inspector.history.version(open.contentSeq)}{' '}
+            <Verdict authorship={open.authorship} />
           </p>
-          <div className={styles.preview}>{open.locked ? 'You hold no key for this version.' : open.body}</div>
+          <div className={styles.preview}>
+            {open.locked ? m.inspector.history.locked : open.body}
+          </div>
         </>
       ) : null}
     </>
@@ -455,13 +447,27 @@ function History({ note }: { note: NoteNode }) {
 function Verdict({ authorship }: { authorship: revisionsApi.RevisionBody['authorship'] }) {
   switch (authorship) {
     case 'valid':
-      return <span className={`${styles.badge} ${styles.badgeOk}`}>SIGNATURE OK</span>;
+      return (
+        <span className={`${styles.badge} ${styles.badgeOk}`}>
+          {m.inspector.history.signatureOk}
+        </span>
+      );
     case 'invalid':
-      return <span className={`${styles.badge} ${styles.badgeBad}`}>SIGNATURE FAILED</span>;
+      return (
+        <span className={`${styles.badge} ${styles.badgeBad}`}>
+          {m.inspector.history.signatureBad}
+        </span>
+      );
     case 'unknown-author':
-      return <span className={`${styles.badge} ${styles.badgeWarn}`}>AUTHOR UNKNOWN</span>;
+      return (
+        <span className={`${styles.badge} ${styles.badgeWarn}`}>
+          {m.inspector.history.authorUnknown}
+        </span>
+      );
     default:
-      return <span className={`${styles.badge} ${styles.badgeWarn}`}>UNSIGNED</span>;
+      return (
+        <span className={`${styles.badge} ${styles.badgeWarn}`}>{m.inspector.history.unsigned}</span>
+      );
   }
 }
 
@@ -543,19 +549,16 @@ function Share({ note }: { note: NoteNode }) {
   };
 
   if (!canShare) {
-    return <p className={styles.empty}>Only somebody who can manage this note may publish it.</p>;
+    return <p className={styles.empty}>{m.inspector.share.denied}</p>;
   }
 
   return (
     <>
-      <p className={styles.section}>PUBLIC LINKS · {links.filter((link) => link.live).length}</p>
-
-      <p className={styles.empty}>
-        Anyone with the link reads a copy of this note as it is now. The secret lives in
-        the part of the URL a browser never sends, so the server stores a digest and cannot
-        open what it is serving — and the link carries only this note, never the key to the
-        folder it sits in.
+      <p className={styles.section}>
+        {m.inspector.share.section(links.filter((link) => link.live).length)}
       </p>
+
+      <p className={styles.empty}>{m.inspector.share.lede}</p>
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
@@ -563,10 +566,7 @@ function Share({ note }: { note: NoteNode }) {
           verbs. A link that is already live stays live: turning a switch on here does not
           reach out and close what other people are reading. */}
       {frozen ? (
-        <div className={styles.hidden}>
-          Read-only mode is on, so this note cannot be published from here and existing links
-          cannot be revoked.
-        </div>
+        <div className={styles.hidden}>{m.inspector.share.frozen}</div>
       ) : (
         <button
           type="button"
@@ -574,14 +574,14 @@ function Share({ note }: { note: NoteNode }) {
           disabled={busy || !body}
           onClick={() => void publish()}
         >
-          Publish this version
+          {m.inspector.share.publish}
         </button>
       )}
 
       {created ? (
         <>
           <p className={styles.section} style={{ marginTop: 14 }}>
-            SHOWN ONCE
+            {m.inspector.share.shownOnce}
           </p>
           <div className={styles.link}>{created}</div>
           <button
@@ -589,7 +589,7 @@ function Share({ note }: { note: NoteNode }) {
             className={styles.action}
             onClick={() => void navigator.clipboard?.writeText(created)}
           >
-            Copy link
+            {m.inspector.share.copy}
           </button>
         </>
       ) : null}
@@ -597,21 +597,24 @@ function Share({ note }: { note: NoteNode }) {
       {links.map((link) => (
         <div key={link.id} className={styles.item} style={{ cursor: 'default' }}>
           <span className={styles.itemMain}>
-            {link.live ? 'Live' : link.revoked_at ? 'Revoked' : 'Expired'} ·{' '}
-            {link.view_count} view{link.view_count === 1 ? '' : 's'}
+            {link.live
+              ? m.inspector.share.live
+              : link.revoked_at
+                ? m.inspector.share.revoked
+                : m.inspector.share.expired}{' '}
+            · {m.inspector.share.views(link.view_count)}
           </span>
           {link.live && !frozen ? (
             <button
               type="button"
-              className={styles.itemMeta}
-              style={{ border: 0, background: 'none', cursor: 'pointer' }}
+              className={`${styles.itemMeta} ${styles.revoke}`}
               disabled={busy}
               onClick={() => void revoke(link.id)}
             >
-              REVOKE
+              {m.inspector.share.revoke}
             </button>
           ) : (
-            <span className={styles.itemMeta}>{when(link.created_at)}</span>
+            <span className={styles.itemMeta}>{format.recent(link.created_at)}</span>
           )}
         </div>
       ))}
@@ -619,19 +622,3 @@ function Share({ note }: { note: NoteNode }) {
   );
 }
 
-function when(iso: string): string {
-  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h ago`;
-
-  return new Date(iso).toLocaleDateString();
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message || `HTTP ${cause.status}`;
-  if (cause instanceof Error) return cause.message || cause.name;
-
-  return 'something went wrong';
-}

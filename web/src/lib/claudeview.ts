@@ -1,4 +1,14 @@
 import type { FolderNode, NoteNode, Tree } from '@/api/workspace';
+import { format } from '@/i18n';
+import {
+  AREAS,
+  DECISIONS_PREFIX,
+  FRONTMATTER_FIELDS,
+  PROJECT_DOC,
+  ROOT_DOC,
+  SKILL_DOC,
+  STATUS_FIELD,
+} from '@/lib/claudeos-contract';
 import type { IndexedNote } from '@/lib/search';
 
 /**
@@ -82,19 +92,6 @@ export interface ClaudeModel {
   byClaude: Loose[];
 }
 
-/** The folders this view understands. Anything else is "elsewhere". */
-export const AREAS = {
-  context: 'context',
-  projects: 'projects',
-  skills: 'skills',
-  memory: 'memory',
-  inbox: 'inbox',
-} as const;
-
-const ROOT_DOC = 'CLAUDE.md';
-const PROJECT_DOC = 'CLAUDE.md';
-const SKILL_DOC = 'SKILL.md';
-
 /** A month file, which is what makes the log a timeline rather than a pile. */
 const MONTH = /^(\d{4}-\d{2})(\.md)?$/;
 
@@ -139,6 +136,8 @@ export function attributeToClaude(model: ClaudeModel, tree: Tree, connectorUserI
   const paths = folderPaths(tree.folders);
   const bodies = new Map<number, string>();
 
+  // Timestamps rather than names, so this stays a plain string comparison: `format.compare`
+  // collates digits numerically and would read the fraction in `…00.5Z` as 5, not as a half.
   const written = tree.notes
     .filter((note) => note.updatedBy === connectorUserID)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -163,7 +162,7 @@ function readProjects(
       const body = doc ? (bodies.get(doc.id) ?? '') : '';
       const steps = todos(body);
 
-      const decisions = notes.find((note) => note.name.toLowerCase().startsWith('decisions'));
+      const decisions = notes.find((note) => note.name.toLowerCase().startsWith(DECISIONS_PREFIX));
 
       return {
         folderId: folder.id,
@@ -209,7 +208,7 @@ function readSkills(
         blank: !doc || bare(body),
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => format.compare(a.name, b.name));
 }
 
 function readMemory(
@@ -254,7 +253,7 @@ function readContext(
       filled: !bare(bodies.get(note.id) ?? ''),
       updatedAt: note.updatedAt,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => format.compare(a.name, b.name));
 }
 
 /** Notes outside the five areas. A vault used for a while always grows some. */
@@ -336,7 +335,7 @@ export function folderPaths(folders: FolderNode[]): Map<number, string> {
 // rewrote by hand: a field that is missing reads as unset rather than as an error.
 
 export function status(body: string): ProjectStatus {
-  const found = field(body, 'Status').toLowerCase();
+  const found = field(body, STATUS_FIELD).toLowerCase();
 
   return (STATUSES as string[]).includes(found) ? (found as ProjectStatus) : 'unset';
 }
@@ -390,7 +389,9 @@ export function frontmatter(body: string): { name: string; description: string }
   const match = /^---\n([\s\S]*?)\n---/.exec(body.trimStart());
   const block = match?.[1] ?? '';
 
-  return { name: field(block, 'name'), description: field(block, 'description') };
+  const [name, description] = FRONTMATTER_FIELDS;
+
+  return { name: field(block, name), description: field(block, description) };
 }
 
 /** How many dated entries a decisions log holds, ignoring the heading it was created with. */
@@ -418,7 +419,9 @@ export function bare(body: string): boolean {
     // A list marker whose item was a placeholder, with or without a checkbox on it, and a
     // label with nothing after the colon.
     .filter((line) => !/^[-*]\s*(\[[ xX]\])?\s*$/.test(line))
-    .filter((line) => !/^[-*]?\s*\*{0,2}[\w .]+\*{0,2}\s*:\s*\*{0,2}\s*$/.test(line))
+    // `\w` is ASCII, so «**Статус:**» with nothing after it used to survive this filter and
+    // an untouched Russian template read as filled in.
+    .filter((line) => !/^[-*]?\s*\*{0,2}[\p{L}\p{N} ._-]+\*{0,2}\s*:\s*\*{0,2}\s*$/u.test(line))
     .join('')
     .trim();
 

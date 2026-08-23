@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 
+import { describe } from '@/api/errors';
 import type { NoteNode } from '@/api/workspace';
+import { format, m, projectStatusLabel, roleLabel } from '@/i18n';
 import {
   attributeToClaude,
   readClaudeVault,
@@ -58,16 +60,16 @@ export default function ClaudeView() {
   };
 
   const start = (kind: 'project' | 'skill') => {
-    void ask(kind === 'project' ? 'Project name' : 'Skill name', '').then((name) => {
+    const label = kind === 'project' ? m.claude.view.projectName : m.claude.view.skillName;
+
+    void ask(label, '').then((name) => {
       if (!name || !identity) return;
 
       setError(null);
 
       const run = kind === 'project' ? createProject : createSkill;
 
-      void run(name, identity).catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : 'that did not work'),
-      );
+      void run(name, identity).catch((cause: unknown) => setError(describe(cause)));
     });
   };
 
@@ -78,37 +80,39 @@ export default function ClaudeView() {
   return (
     <div className={styles.view}>
       <div className={styles.head}>
-        <div>
+        <div className={styles.headText}>
           <div className={styles.title}>Claude</div>
           <div className={styles.subtitle}>
             {connector
-              ? `Connected as ${connector.role} · ${connector.fingerprint}`
-              : 'No connector on this vault — Claude cannot see it'}
+              ? m.claude.view.connected(roleLabel(connector.role), connector.fingerprint)
+              : m.claude.view.noConnector}
           </div>
         </div>
 
         {model.rootId ? (
           <button type="button" className={styles.ghost} onClick={() => open(model.rootId)}>
             <Icon name="book" size={13} />
-            Instructions
+            <span className={styles.ghostLabel}>{m.claude.view.instructions}</span>
           </button>
         ) : null}
       </div>
 
       {error ? <div className={styles.error}>{error}</div> : null}
       {hydrating ? (
-        <div className={styles.hint}>
-          Reading the vault — {coverage.covered} of {coverage.total} notes open so far.
-        </div>
+        <div className={styles.hint}>{m.claude.view.reading(coverage.covered, coverage.total)}</div>
       ) : null}
 
       <Section
-        title="Projects"
+        title={m.claude.view.projects}
         count={model.projects.length}
-        action={readOnly ? undefined : { label: 'New project', onClick: () => start('project') }}
+        action={
+          readOnly
+            ? undefined
+            : { label: m.claude.view.newProject, onClick: () => start('project') }
+        }
       >
         {model.projects.length === 0 ? (
-          <Empty>Nothing on the go. A project is a folder with a CLAUDE.md in it.</Empty>
+          <Empty>{m.claude.view.noProjects}</Empty>
         ) : (
           <div className={styles.cards}>
             {model.projects.map((project) => (
@@ -118,9 +122,9 @@ export default function ClaudeView() {
         )}
       </Section>
 
-      <Section title="What Claude changed" count={model.byClaude.length}>
+      <Section title={m.claude.view.changed} count={model.byClaude.length}>
         {model.byClaude.length === 0 ? (
-          <Empty>Nothing yet. Anything the connector writes shows up here first.</Empty>
+          <Empty>{m.claude.view.noChanges}</Empty>
         ) : (
           <ul className={styles.rows}>
             {model.byClaude.slice(0, 8).map((item) => (
@@ -128,7 +132,7 @@ export default function ClaudeView() {
                 <button type="button" className={styles.row} onClick={() => open(item.noteId)}>
                   <Icon name="doc" size={13} className={styles.rowIcon} />
                   <span className={styles.rowName}>{item.name}</span>
-                  <span className={styles.rowMeta}>{item.path || 'root'}</span>
+                  <span className={styles.rowMeta}>{item.path || m.claude.view.root}</span>
                   <span className={styles.rowWhen}>{ago(item.updatedAt)}</span>
                 </button>
               </li>
@@ -137,9 +141,9 @@ export default function ClaudeView() {
         )}
       </Section>
 
-      <Section title="Memory" count={model.memory.length}>
+      <Section title={m.claude.view.memory} count={model.memory.length}>
         {model.memory.length === 0 ? (
-          <Empty>No log yet. Months live in memory/ as YYYY-MM.md.</Empty>
+          <Empty>{m.claude.view.noMemory}</Empty>
         ) : (
           <ul className={styles.rows}>
             {model.memory.map((month) => (
@@ -149,9 +153,7 @@ export default function ClaudeView() {
                   <span className={styles.bar} aria-hidden>
                     {'▍'.repeat(Math.min(month.entries, 12))}
                   </span>
-                  <span className={styles.rowMeta}>
-                    {month.entries} {month.entries === 1 ? 'entry' : 'entries'}
-                  </span>
+                  <span className={styles.rowMeta}>{m.claude.view.entries(month.entries)}</span>
                   <span className={styles.rowWhen}>{month.latest[0] ?? ''}</span>
                 </button>
               </li>
@@ -161,12 +163,14 @@ export default function ClaudeView() {
       </Section>
 
       <Section
-        title="Skills"
+        title={m.claude.view.skills}
         count={model.skills.length}
-        action={readOnly ? undefined : { label: 'New skill', onClick: () => start('skill') }}
+        action={
+          readOnly ? undefined : { label: m.claude.view.newSkill, onClick: () => start('skill') }
+        }
       >
         {model.skills.length === 0 ? (
-          <Empty>None written. A skill is a procedure worth repeating exactly.</Empty>
+          <Empty>{m.claude.view.noSkills}</Empty>
         ) : (
           <ul className={styles.rows}>
             {model.skills.map((skill) => (
@@ -175,7 +179,7 @@ export default function ClaudeView() {
                   <Icon name="bulb" size={13} className={styles.rowIcon} />
                   <span className={styles.rowName}>{skill.name}</span>
                   <span className={styles.rowMeta}>
-                    {skill.blank ? 'not written yet' : skill.description}
+                    {skill.blank ? m.claude.view.notWritten : skill.description}
                   </span>
                 </button>
               </li>
@@ -184,9 +188,9 @@ export default function ClaudeView() {
         )}
       </Section>
 
-      <Section title="Context" count={model.context.length}>
+      <Section title={m.claude.view.context} count={model.context.length}>
         {model.context.length === 0 ? (
-          <Empty>No standing facts. These are what Claude reads before answering.</Empty>
+          <Empty>{m.claude.view.noContext}</Empty>
         ) : (
           <div className={styles.chips}>
             {model.context.map((doc) => (
@@ -198,7 +202,7 @@ export default function ClaudeView() {
               >
                 <Icon name={doc.filled ? 'check' : 'circle'} size={11} />
                 {doc.name}
-                {doc.filled ? null : <span className={styles.chipHint}>blank</span>}
+                {doc.filled ? null : <span className={styles.chipHint}>{m.claude.view.blank}</span>}
               </button>
             ))}
           </div>
@@ -206,7 +210,7 @@ export default function ClaudeView() {
       </Section>
 
       {model.inbox.length > 0 ? (
-        <Section title="Inbox" count={model.inbox.length}>
+        <Section title={m.claude.view.inbox} count={model.inbox.length}>
           <ul className={styles.rows}>
             {model.inbox.map((item) => (
               <li key={item.noteId}>
@@ -223,14 +227,14 @@ export default function ClaudeView() {
       ) : null}
 
       {model.elsewhere.length > 0 ? (
-        <Section title="Outside the five areas" count={model.elsewhere.length}>
+        <Section title={m.claude.view.elsewhere} count={model.elsewhere.length}>
           <ul className={styles.rows}>
             {model.elsewhere.slice(0, 12).map((item) => (
               <li key={item.noteId}>
                 <button type="button" className={styles.row} onClick={() => open(item.noteId)}>
                   <Icon name="doc" size={13} className={styles.rowIcon} />
                   <span className={styles.rowName}>{item.name}</span>
-                  <span className={styles.rowMeta}>{item.path || 'root'}</span>
+                  <span className={styles.rowMeta}>{item.path || m.claude.view.root}</span>
                 </button>
               </li>
             ))}
@@ -256,7 +260,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: numbe
       </div>
 
       <div className={styles.cardSummary}>
-        {project.blank ? 'Nobody has filled this in yet.' : project.summary || 'No description.'}
+        {project.blank ? m.claude.view.unfilled : project.summary || m.claude.view.noSummary}
       </div>
 
       {project.next.length > 0 ? (
@@ -268,11 +272,9 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: numbe
       ) : null}
 
       <div className={styles.cardFoot}>
-        <span>
-          {project.notes} {project.notes === 1 ? 'note' : 'notes'}
-        </span>
-        {project.decisions > 0 ? <span>{project.decisions} decided</span> : null}
-        {project.done > 0 ? <span>{project.done} done</span> : null}
+        <span>{m.claude.view.notes(project.notes)}</span>
+        {project.decisions > 0 ? <span>{m.claude.view.decided(project.decisions)}</span> : null}
+        {project.done > 0 ? <span>{m.claude.view.done(project.done)}</span> : null}
         <span className={styles.cardWhen}>{ago(project.updatedAt)}</span>
       </div>
     </button>
@@ -288,7 +290,7 @@ const STATUS_ICON: Record<ProjectStatus, IconName> = {
 };
 
 function Status({ status, blank }: { status: ProjectStatus; blank: boolean }) {
-  const label = blank ? 'new' : status === 'unset' ? 'no status' : status;
+  const label = blank ? m.claude.view.fresh : projectStatusLabel(status);
 
   return (
     <span className={`${styles.status} ${styles[`status_${status}`] ?? ''}`}>
@@ -318,7 +320,7 @@ function Section({
         {action ? (
           <button type="button" className={styles.ghost} onClick={action.onClick}>
             <Icon name="plus" size={12} />
-            {action.label}
+            <span className={styles.ghostLabel}>{action.label}</span>
           </button>
         ) : null}
       </div>
@@ -331,15 +333,7 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div className={styles.empty}>{children}</div>;
 }
 
-/** Coarse on purpose: this view is about what is moving, not about timestamps. */
+/** A folder with nothing dated under it has no timestamp at all, and says nothing. */
 function ago(iso: string): string {
-  if (!iso) return '';
-
-  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
-
-  return `${Math.round(minutes / (60 * 24))}d`;
+  return iso ? format.relative(iso) : '';
 }

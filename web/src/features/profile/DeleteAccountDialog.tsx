@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 
+import { m } from '@/i18n';
 import { useSession } from '@/store/session';
 import { useDismiss } from '@/ui/dismiss';
 
@@ -44,22 +45,24 @@ export function DeleteAccountDialog({ login, onClose }: { login: string; onClose
     // Nothing follows a success here: the session is gone, and the router lands on the sign-in
     // screen the moment the state says so.
     void deleteAccount(passphrase).catch(() =>
-      setError(useSession.getState().error ?? 'Could not delete the account.'),
+      setError(useSession.getState().error ?? m.views.profile.deleteFailed),
     );
   };
 
   return (
     <div className={styles.overlay} {...dismiss}>
-      <form className={styles.dialog} onSubmit={submit} role="alertdialog" aria-label="Delete account">
-        <h2 className={styles.dialogTitle}>Delete your account?</h2>
-        <p className={styles.dialogBody}>
-          This destroys your account, every vault you own and everything in them, for all of
-          their members. The server keeps only ciphertext and deletes it; no key anyone kept
-          will bring it back. Notes you wrote in somebody else’s vault stay with that vault.
-        </p>
+      <form
+        className={styles.dialog}
+        onSubmit={submit}
+        role="alertdialog"
+        aria-label={m.views.profile.deleteAccount}
+      >
+        <h2 className={styles.dialogTitle}>{m.views.profile.deleteTitle}</h2>
+        <p className={styles.dialogBody}>{m.views.profile.deleteBody}</p>
 
         <label className={styles.dialogLabel} htmlFor="delete-confirm-login">
-          Type <span className={styles.dialogPhrase}>{login}</span> to confirm
+          {/* The shared phrase `ui/Confirm.tsx` asks with: same question, same word order. */}
+          {m.uiRich.typeToConfirm(<span className={styles.dialogPhrase}>{login}</span>)}
         </label>
         <input
           ref={field}
@@ -72,7 +75,7 @@ export function DeleteAccountDialog({ login, onClose }: { login: string; onClose
         />
 
         <label className={styles.dialogLabel} htmlFor="delete-confirm-passphrase">
-          Confirm with your passphrase
+          {m.views.profile.confirmPassphrase}
         </label>
         <input
           id="delete-confirm-passphrase"
@@ -87,10 +90,10 @@ export function DeleteAccountDialog({ login, onClose }: { login: string; onClose
 
         <div className={styles.dialogActions}>
           <button type="button" className={styles.dialogCancel} onClick={onClose}>
-            Cancel
+            {m.common.cancel}
           </button>
           <button type="submit" className={styles.dialogDestroy} disabled={!ready}>
-            {busy ? 'Deleting…' : 'Delete account'}
+            {busy ? m.views.profile.deleting : m.views.profile.deleteAccount}
           </button>
         </div>
       </form>

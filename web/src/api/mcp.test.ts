@@ -103,8 +103,12 @@ describe('enabling a connector', () => {
   it('will not seal a key it does not hold', async () => {
     const { identity, vault } = await fixture();
 
-    vi.stubGlobal('fetch', async () =>
-      new Response(
+    const called: string[] = [];
+
+    vi.stubGlobal('fetch', async (url: string) => {
+      called.push(String(url));
+
+      return new Response(
         JSON.stringify({
           vault_id: 7,
           user_id: 42,
@@ -116,12 +120,16 @@ describe('enabling a connector', () => {
           created_at: new Date().toISOString(),
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
+      );
+    });
 
     // A keyring with nothing in it is what a locked vault looks like. Handing the server a
     // grant it could not have produced is worse than refusing.
-    await expect(mcp.enable(vault, 'editor', new ScopeKeyring())).rejects.toThrow(/not unlocked/);
+    await expect(mcp.enable(vault, 'editor', new ScopeKeyring())).rejects.toBeInstanceOf(Error);
+
+    // What the refusal has to mean, rather than what it says: the identity was minted and
+    // nothing was sealed to it. The sentence in the error is written for a log.
+    expect(called.filter((url) => !url.endsWith('/identity'))).toEqual([]);
   });
 
   it('binds the seal to the scope, so it cannot be replayed into another', async () => {

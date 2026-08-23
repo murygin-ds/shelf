@@ -1,9 +1,10 @@
 import { type FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import { describe } from '@/api/errors';
 import { isInviteCodeShaped } from '@/crypto/invite';
+import { m, roleLabel } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -14,6 +15,22 @@ import styles from './auth.module.css';
 
 /** Survives the trip through sign-in, so arriving from a link does not lose the code. */
 const PARKED_CODE = 'shelf.invite.code';
+
+/**
+ * The preview is decrypted ciphertext, so its role is a `string` and not a `Role`: a
+ * narrowing rather than a cast, and anything unrecognised is shown as it came.
+ */
+function roleName(role: string): string {
+  switch (role) {
+    case 'owner':
+    case 'admin':
+    case 'editor':
+    case 'viewer':
+      return roleLabel(role);
+    default:
+      return role;
+  }
+}
 
 /**
  * The design's invite screen. Nothing about the vault is visible until the code opens the
@@ -41,7 +58,7 @@ export function JoinWithCode() {
       if (!found) {
         // A code that resolves but will not open the preview is a wrong code. The server
         // cannot tell us which, and deliberately does not try.
-        setError('That code does not open anything here.');
+        setError(m.auth.join.wrongCode);
         return;
       }
 
@@ -61,14 +78,14 @@ export function JoinWithCode() {
     // A button that silently does nothing is the worst outcome here, so the one state
     // that can block acceptance says so instead of being ignored.
     if (!identity) {
-      setError('Your keys are locked on this device. Unlock them and open this code again.');
+      setError(m.auth.join.locked);
       return;
     }
 
     // The shell hides the way here in read-only, but the route is reachable by its URL, and
     // redeeming a code writes a key grant like any other.
     if (readOnly) {
-      setError('Read-only mode is on. Turn it off in the account menu to accept this invite.');
+      setError(m.auth.join.readOnly);
       return;
     }
 
@@ -96,20 +113,17 @@ export function JoinWithCode() {
       wide={Boolean(preview)}
       footer={
         <Link className={styles.footerAction} to="/">
-          Back to your vaults
+          {m.auth.join.back}
         </Link>
       }
     >
       {!preview ? (
         <>
-          <h1 className={styles.title}>Join with a code</h1>
-          <p className={styles.lede}>
-            Whoever invited you handed you a code. It never reaches the server — it is what
-            unwraps the vault key on this device.
-          </p>
+          <h1 className={styles.title}>{m.auth.join.title}</h1>
+          <p className={styles.lede}>{m.auth.join.lede}</p>
 
           <form className={styles.form} onSubmit={resolve}>
-            <Field label="INVITE CODE">
+            <Field label={m.auth.fields.inviteCode}>
               <input
                 className={styles.input}
                 value={code}
@@ -134,15 +148,17 @@ export function JoinWithCode() {
               type="submit"
               disabled={busy || !isInviteCodeShaped(code)}
             >
-              {busy ? 'Checking…' : 'Continue'}
+              {busy ? m.auth.join.busy : m.auth.join.submit}
             </button>
           </form>
         </>
       ) : (
         <>
           <h1 className={styles.title}>
-            {preview.inviterName || 'Someone'} invited you to{' '}
-            <span style={{ color: 'var(--accent)' }}>{preview.vaultName}</span>
+            {m.authRich.invitedYou(
+              preview.inviterName || m.auth.join.someone,
+              <span style={{ color: 'var(--accent)' }}>{preview.vaultName}</span>,
+            )}
           </h1>
 
           <div
@@ -154,12 +170,12 @@ export function JoinWithCode() {
             }}
           >
             <div className={styles.previewRow}>
-              <span style={{ color: 'var(--text-dim)' }}>Your role</span>
+              <span style={{ color: 'var(--text-dim)' }}>{m.auth.join.role}</span>
               <span style={{ flex: 1 }} />
-              <span>{preview.role}</span>
+              <span>{roleName(preview.role)}</span>
             </div>
             <div className={styles.previewRow} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-              <span style={{ color: 'var(--text-dim)' }}>Keys in this invite</span>
+              <span style={{ color: 'var(--text-dim)' }}>{m.auth.join.keys}</span>
               <span style={{ flex: 1 }} />
               <span>{resolved.challenge.key_grants.length}</span>
             </div>
@@ -167,11 +183,7 @@ export function JoinWithCode() {
 
           <div className={styles.notice} style={{ marginTop: 16 }}>
             <Icon name="key" size={14} className={`${styles.noticeIcon} ${styles.noticeIconOk}`} />
-            <div className={styles.noticeBody}>
-              Accepting unwraps the vault key with this code and re-seals it to your own key on
-              this device. The person who invited you cannot read your key, and the server only
-              ever stores the wrapped copy.
-            </div>
+            <div className={styles.noticeBody}>{m.auth.join.notice}</div>
           </div>
 
           {error !== null ? (
@@ -185,15 +197,14 @@ export function JoinWithCode() {
             <div className={styles.notice} style={{ marginTop: 14 }}>
               <Icon name="lock" size={14} className={styles.noticeIcon} />
               <div className={styles.noticeBody}>
-                The invite is re-sealed to a key only you hold, so you need one first. The code
-                is kept while you go.
+                {m.auth.join.lockedNotice}
                 <span style={{ display: 'flex', gap: 14, marginTop: 8 }}>
                   <Link className={styles.footerAction} to="/signin">
-                    {status === 'locked' ? 'Unlock' : 'Sign in'}
+                    {status === 'locked' ? m.auth.join.unlock : m.auth.join.signIn}
                   </Link>
                   {status === 'anonymous' ? (
                     <Link className={styles.footerAction} to="/signup">
-                      Create an account
+                      {m.auth.join.createAccount}
                     </Link>
                   ) : null}
                 </span>
@@ -209,7 +220,7 @@ export function JoinWithCode() {
               onClick={() => void accept(resolved)}
               disabled={busy || !identity}
             >
-              {busy ? 'Re-sealing keys…' : 'Accept & unlock'}
+              {busy ? m.auth.join.acceptBusy : m.auth.join.accept}
             </button>
             <button
               className={styles.secondary}
@@ -221,27 +232,11 @@ export function JoinWithCode() {
               }}
               disabled={busy}
             >
-              Decline
+              {m.auth.join.decline}
             </button>
           </div>
         </>
       )}
     </AuthLayout>
   );
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) {
-    if (cause.status === 404) return 'That code does not open anything here.';
-    if (cause.status === 409) return 'You are already a member of this vault.';
-    if (cause.status === 429) return 'Too many attempts. Try again in a few minutes.';
-
-    // A server that answers without a message would otherwise produce an empty banner,
-    // which reads as nothing having happened at all.
-    return cause.message || `The server refused this (HTTP ${cause.status}).`;
-  }
-
-  if (cause instanceof Error) return cause.message || cause.name;
-
-  return 'Something went wrong.';
 }

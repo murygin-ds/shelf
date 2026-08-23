@@ -1,6 +1,8 @@
 import { EditorSelection, EditorState, type TransactionSpec } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 
+import { m } from '@/i18n';
+
 import {
   buildTable,
   changeCase,
@@ -166,6 +168,22 @@ describe('case', () => {
     expect(state.update(changeCase(state, mode) ?? {}).state.doc.toString()).toBe(expected);
   });
 
+  // The word boundary is `\p{L}` under /u, so Cyrillic is a letter like any other — the case
+  // that would break it is «ё», which has an uppercase form and sits inside a hyphenated word.
+  describe('in cyrillic', () => {
+    const written = 'первая ЗАМЕТКА про ёлки-палки. а дальше?';
+    const cyrillic = open(written, 0, written.length);
+
+    it.each([
+      ['upper', 'ПЕРВАЯ ЗАМЕТКА ПРО ЁЛКИ-ПАЛКИ. А ДАЛЬШЕ?'],
+      ['lower', 'первая заметка про ёлки-палки. а дальше?'],
+      ['title', 'Первая Заметка Про Ёлки-Палки. А Дальше?'],
+      ['sentence', 'Первая заметка про ёлки-палки. А дальше?'],
+    ] as const)('%s', (mode, expected) => {
+      expect(cyrillic.update(changeCase(cyrillic, mode) ?? {}).state.doc.toString()).toBe(expected);
+    });
+  });
+
   it('keeps the selection on the text it just changed', () => {
     expect(applied(state, changeCase(state, 'upper'))).toBe('[THE QUICK BROWN FOX. AND THEN?]');
   });
@@ -175,11 +193,23 @@ describe('case', () => {
   });
 });
 
+/**
+ * The headers a new table arrives with are content — they land in the note body, so they
+ * are translated, and their length is whatever the language makes it. What has to hold is
+ * the shape: a header row, an alignment row of dashes as wide as its column, and body rows
+ * padded to the same width, so the source of the table stays readable while it is filled in.
+ */
 describe('tables', () => {
+  const header = (index: number) => m.editor.tableColumn(index);
+
   it('pads the columns to a common width', () => {
-    expect(buildTable(1, 2)).toBe(
-      ['| Column 1 | Column 2 |', '| -------- | -------- |', '|          |          |'].join('\n'),
-    );
+    const lines = buildTable(1, 2).split('\n');
+    const [head, rule, body] = lines;
+
+    expect(head).toBe(`| ${header(1)} | ${header(2)} |`);
+    expect(rule).toBe(`| ${'-'.repeat(header(1).length)} | ${'-'.repeat(header(2).length)} |`);
+    expect(body).toBe(`| ${' '.repeat(header(1).length)} | ${' '.repeat(header(2).length)} |`);
+    expect(new Set(lines.map((line) => line.length)).size).toBe(1);
   });
 
   it('makes one header row plus the rows asked for', () => {

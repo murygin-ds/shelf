@@ -1,5 +1,6 @@
 import { peerColour } from '@/collab/colour';
 import type { PeerDto } from '@/api/realtime';
+import { m } from '@/i18n';
 import { tip } from '@/ui/Tooltip';
 
 import styles from './editor.module.css';
@@ -29,7 +30,7 @@ export function Peers({ peers, selfId }: { peers: PeerDto[]; selfId: number | un
             key={peer.user_id}
             className={styles.peer}
             style={{ background: colour.color }}
-            {...tip(`${name} · ${peer.permission}${peer.committer ? ' · saving' : ''}`)}
+            {...tip(m.editor.peer(name, access(peer.permission), Boolean(peer.committer)))}
           >
             {initials(name)}
           </span>
@@ -37,6 +38,14 @@ export function Peers({ peers, selfId }: { peers: PeerDto[]; selfId: number | un
       })}
     </span>
   );
+}
+
+/** The wire carries a bare string rather than a `Permission`, so one it does not name falls
+ *  back to itself instead of leaving a gap in the middle of the tooltip. */
+function access(permission: string): string {
+  const labels: Record<string, string> = m.editor.access;
+
+  return labels[permission] ?? permission;
 }
 
 function initials(name: string): string {

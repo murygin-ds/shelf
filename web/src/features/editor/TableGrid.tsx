@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { m } from '@/i18n';
+
 import styles from './tablegrid.module.css';
 
 const MAX_ROWS = 6;
@@ -34,13 +36,13 @@ export function TableGrid({ onPick }: { onPick: (rows: number, cols: number) => 
               style={{ width: CELL, height: CELL }}
               onMouseEnter={() => setOver({ rows: row, cols: col })}
               onClick={() => onPick(row, col)}
-              aria-label={`${row} by ${col}`}
+              aria-label={m.editor.grid.size(row, col)}
             />
           );
         })}
       </div>
 
-      <div className={styles.size}>{over ? `${over.rows} × ${over.cols}` : 'Table'}</div>
+      <div className={styles.size}>{over ? `${over.rows} × ${over.cols}` : m.editor.grid.empty}</div>
     </div>
   );
 }

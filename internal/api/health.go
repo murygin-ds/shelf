@@ -58,7 +58,8 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 
 	if err := h.pool.Ping(ctx); err != nil {
 		middleware.LoggerFrom(c).Error("readiness check failed", zap.Error(err))
-		response.Fail(c, http.StatusServiceUnavailable, response.CodeInternal, "database is unavailable")
+		response.FailReason(c, http.StatusServiceUnavailable, response.CodeInternal,
+			response.ReasonDatabaseUnavailable, "database is unavailable")
 
 		return
 	}

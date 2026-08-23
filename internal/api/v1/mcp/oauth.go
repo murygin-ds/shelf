@@ -210,7 +210,8 @@ func (o *OAuth) ClientInfo(c *gin.Context) {
 func (o *OAuth) Approve(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication is required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication is required")
 
 		return
 	}
@@ -301,10 +302,11 @@ func (o *OAuth) Token(c *gin.Context) {
 func (o *OAuth) approvalFailed(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, mcp.ErrOwnerRequired):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden,
-			"only the owner of a vault may connect it")
+		response.FailReason(c, http.StatusForbidden, response.CodeForbidden,
+			response.ReasonOwnerRequired, "only the owner of a vault may connect it")
 	case errors.Is(err, mcp.ErrNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "not found")
+		response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+			response.ReasonNotFound, "not found")
 	default:
 		o.oauthError(c, http.StatusBadRequest, err)
 	}

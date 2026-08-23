@@ -1,3 +1,6 @@
+import { m } from '@/i18n';
+import { segment } from '@/lib/archive';
+
 import { base32, group, randomBytes } from './bytes';
 import { normalizeRecoveryCode } from './kdf';
 
@@ -28,36 +31,55 @@ export interface RecoveryKit {
   origin: string;
 }
 
+/** Where the values start, wide enough for the longest label in either language. */
+const LABEL_COLUMN = 14;
+
 /**
  * Plain text on purpose: the kit has to stay readable when it is printed, pasted into a
  * password manager years later, or opened on a machine that has never seen this app.
+ *
+ * The words come from the dictionary; the rule under the heading and the label column are
+ * measured here, so a longer heading in another language still underlines itself.
  */
 export function renderRecoveryKit(kit: RecoveryKit): string {
+  const t = m.auth.kitFile;
+  const row = (label: string, value: string) => `${label.padEnd(LABEL_COLUMN)}${value}`;
+
   return [
-    'SHELF RECOVERY KIT',
-    '==================',
+    t.title,
+    '='.repeat(t.title.length),
     '',
-    `Server        ${kit.origin}`,
-    `Account       ${kit.login}`,
-    `Name          ${kit.displayName}`,
-    `Key           ${kit.fingerprint}`,
-    `Issued        ${kit.issuedAt.toISOString()}`,
+    row(t.server, kit.origin),
+    row(t.account, kit.login),
+    row(t.name, kit.displayName),
+    row(t.key, kit.fingerprint),
+    row(t.issued, kit.issuedAt.toISOString()),
     '',
-    'RECOVERY CODE',
+    t.code,
     '',
     `    ${kit.code}`,
     '',
-    'This code is the only way to reach your notes if you forget your passphrase.',
-    'It is not stored anywhere: the server keeps your master key wrapped with a key',
-    'derived from this code and cannot unwrap it, and neither can your administrator.',
+    t.body,
     '',
-    'Keep it offline. Anyone holding it can read everything you can.',
+    t.offline,
     '',
   ].join('\n');
 }
 
+/** Whitespace and the parts of an address that would read as a second extension. */
+const SLUG_GAP = /[\s@.]+/g;
+
+/**
+ * Names the downloaded file after whoever it belongs to.
+ *
+ * A latin whitelist erased a Cyrillic login down to nothing and left every Russian reader
+ * with the same anonymous file, so the rule is `segment`'s: drop what a file system refuses
+ * and keep every script it takes.
+ */
 export function recoveryKitFilename(login: string): string {
-  const slug = login.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  const named = login.normalize('NFC').trim();
+  const slug =
+    named === '' ? '' : segment(named).toLowerCase().replace(SLUG_GAP, '-').replace(/^-+|-+$/g, '');
 
   return `shelf-recovery-kit-${slug || 'account'}.txt`;
 }

@@ -3,7 +3,6 @@ package middleware
 import (
 	"errors"
 	"net"
-	"net/http"
 	"os"
 	"runtime/debug"
 	"shelf/internal/api/response"
@@ -45,7 +44,7 @@ func Recovery(log *zap.Logger) gin.HandlerFunc {
 				zap.ByteString("stack", debug.Stack()),
 			)
 
-			response.Fail(c, http.StatusInternalServerError, response.CodeInternal, "internal server error")
+			response.Internal(c)
 		}()
 
 		c.Next()

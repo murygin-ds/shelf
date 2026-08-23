@@ -92,6 +92,53 @@ func TestResolveLinksIgnoresBracketsThatAreNotLinks(t *testing.T) {
 	}
 }
 
+// The same three cases `composed and decomposed spellings` covers in
+// web/src/lib/wikilinks.test.ts, on the same inputs. An edge that depended on which of the
+// two spellings a title happened to be stored in would appear and disappear with whoever
+// saved the note last, and the graph is one artifact both writers draw into.
+//
+// Escapes rather than letters: a tool that normalises this file on save would turn them back
+// into the composed form, and the test would be comparing a string with itself.
+func TestResolveLinksFoldsDecomposedSpellings(t *testing.T) {
+	// "Мой проект" with "й" as и + U+0306, and "Ёлка" with "Ё" as Е + U+0308.
+	const nfdProject = "\u041c\u043e\u0438\u0306 \u043f\u0440\u043e\u0435\u043a\u0442"
+	const nfdTree = "\u0415\u0308\u043b\u043a\u0430"
+
+	cases := []struct {
+		name  string
+		notes []linkable
+		body  string
+		want  []int64
+	}{
+		{
+			name:  "decomposed link against a composed title",
+			notes: []linkable{{id: 7, name: "Мой проект", path: "Мой проект"}},
+			body:  "[[" + nfdProject + "]]",
+			want:  []int64{7},
+		},
+		{
+			name:  "composed link against a decomposed title",
+			notes: []linkable{{id: 8, name: nfdTree, path: nfdTree}},
+			body:  "[[Ёлка]]",
+			want:  []int64{8},
+		},
+		{
+			name:  "two spellings of one path",
+			notes: []linkable{{id: 9, name: "план.md", path: nfdTree + "/план.md"}},
+			body:  "[[Ёлка/план.md]]",
+			want:  []int64{9},
+		},
+	}
+
+	for _, one := range cases {
+		t.Run(one.name, func(t *testing.T) {
+			if got := resolveLinks(one.body, one.notes, 0); !equal(got, one.want) {
+				t.Errorf("resolved %v, want %v", got, one.want)
+			}
+		})
+	}
+}
+
 func equal(got, want []int64) bool {
 	if len(got) != len(want) {
 		return false

@@ -1,5 +1,7 @@
 import type { MouseEvent } from 'react';
 
+import { LANGUAGES, language, m, NAME } from '@/i18n';
+import { switchLanguage } from '@/store/language';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -24,6 +26,7 @@ export function AccountMenu() {
   const saveNote = useWorkspace((state) => state.saveNote);
   const { readOnly, setReadOnly } = usePrefs();
   const { open: openMenu, menu } = useContextMenu();
+  const current = language();
 
   // Whatever is typed and not yet sealed goes out before the door closes. After it the
   // autosave is refused, and an unsaved body would sit in the editor with nowhere to land
@@ -54,20 +57,42 @@ export function AccountMenu() {
         </div>
       ),
     },
-    { label: 'Profile', icon: 'user', separated: true, onSelect: () => setView('profile') },
+    {
+      id: 'profile',
+      label: m.shell.account.profile,
+      icon: 'user',
+      separated: true,
+      onSelect: () => setView('profile'),
+    },
     // Not a permission and not a lock: the keys stay open and every vault stays readable,
     // but nothing on this device writes to any of them until it is turned off again.
     {
-      label: 'Read-only mode',
+      id: 'read-only',
+      label: m.shell.account.readOnlyMode,
       icon: 'eye',
-      ...(readOnly ? { hint: 'ON' } : {}),
+      ...(readOnly ? { hint: m.shell.account.readOnlyOn } : {}),
       onSelect: () => (readOnly ? setReadOnly(false) : freeze()),
+    },
+    // Ticked rather than labelled «current»: the row the reader is looking for is written
+    // in a language they may not read, so the mark has to carry the state on its own.
+    {
+      kind: 'submenu',
+      id: 'language',
+      label: m.shell.account.language,
+      icon: 'globe',
+      items: LANGUAGES.map((code) => ({
+        id: `language-${code}`,
+        label: NAME[code],
+        ...(code === current ? { icon: 'check' as const } : {}),
+        onSelect: () => switchLanguage(code),
+      })),
     },
     // The keys drop but the session stays, so this is not a way out — it is the lock the
     // top bar used to carry as an icon of its own.
-    { label: 'Lock keys', icon: 'lock', onSelect: lock },
+    { id: 'lock', label: m.shell.account.lockKeys, icon: 'lock', onSelect: lock },
     {
-      label: 'Sign out',
+      id: 'sign-out',
+      label: m.shell.account.signOut,
       icon: 'arrow',
       danger: true,
       separated: true,
@@ -89,7 +114,7 @@ export function AccountMenu() {
         <span className={styles.accountText}>
           <span className={styles.accountName}>{name}</span>
           <span className={styles.accountState}>
-            {status === 'unlocked' ? 'KEY UNLOCKED' : 'KEY LOCKED'}
+            {status === 'unlocked' ? m.shell.account.keyUnlocked : m.shell.account.keyLocked}
           </span>
         </span>
         <Icon name="down" size={12} className={styles.accountChevron} />

@@ -1,5 +1,7 @@
 import { type FormEvent, type ReactElement, useCallback, useEffect, useId, useRef, useState } from 'react';
 
+import { m } from '@/i18n';
+
 import { useDismiss } from './dismiss';
 import styles from './nameprompt.module.css';
 
@@ -57,7 +59,7 @@ export function NamePrompt({
   initial,
   hint,
   error,
-  confirmLabel = 'OK',
+  confirmLabel = m.ui.confirmDefault,
   busy = false,
   onSubmit,
   onCancel,
@@ -121,7 +123,7 @@ export function NamePrompt({
         <div className={styles.actions}>
           {onCancel ? (
             <button type="button" className={styles.cancel} onClick={() => onCancel()}>
-              Cancel
+              {m.common.cancel}
             </button>
           ) : null}
           <button type="submit" className={styles.confirm} disabled={busy}>

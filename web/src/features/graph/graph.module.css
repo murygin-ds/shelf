@@ -19,7 +19,8 @@
 .legend {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 

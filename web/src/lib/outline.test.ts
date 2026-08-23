@@ -59,6 +59,34 @@ describe('outline', () => {
   it('is empty for a note without headings', () => {
     expect(outline('just words\n#hashtag not a heading\n    # indented code')).toEqual([]);
   });
+
+  // The parser is built out of punctuation and \s, so nothing in it should care which
+  // alphabet the words are in — but this panel is read almost entirely in Russian, and a
+  // silently empty map is the kind of failure nobody reports.
+  it('reads Cyrillic headings the same way', () => {
+    const found = outline('вступление\n\n# Планы\n\nтекст\n\n## Ёлки\n#### Приложение ####');
+
+    expect(found).toEqual([
+      { level: 1, depth: 0, text: 'Планы', line: 3 },
+      { level: 2, depth: 1, text: 'Ёлки', line: 7 },
+      { level: 4, depth: 2, text: 'Приложение', line: 8 },
+    ]);
+  });
+
+  it('reads a Cyrillic setext heading and drops Cyrillic markup', () => {
+    const found = outline('Планы на год\n===\n\n## **Итоги** и `код` с [[Заметка|подписью]]');
+
+    expect(found).toEqual([
+      { level: 1, depth: 0, text: 'Планы на год', line: 1 },
+      { level: 2, depth: 1, text: 'Итоги и код с подписью', line: 4 },
+    ]);
+  });
+
+  it('does not read a Cyrillic hashtag as a heading', () => {
+    expect(outline('#тег в начале строки\n\n# Настоящий заголовок')).toEqual([
+      { level: 1, depth: 0, text: 'Настоящий заголовок', line: 3 },
+    ]);
+  });
 });
 
 describe('headingAt', () => {

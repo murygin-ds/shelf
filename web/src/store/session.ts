@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 
 import * as authApi from '@/api/auth';
-import { ApiError, clearSession, hasAccessToken, readSession, setSessionLostHandler } from '@/api/client';
-import { ErrorCode, type User } from '@/api/types';
+import { clearSession, hasAccessToken, readSession, setSessionLostHandler } from '@/api/client';
+import { describe } from '@/api/errors';
+import type { User } from '@/api/types';
 import type { Identity } from '@/crypto/identity';
 import { dropAll as dropCache } from '@/db/cache';
 import * as tabUnlock from '@/db/unlock';
@@ -166,7 +167,9 @@ export const useSession = create<SessionState>((set, get) => ({
     await run(set, async () => {
       const { user, masterKey } = get();
 
-      if (!user || !masterKey) throw new Error('Unlock your keys before changing the passphrase.');
+      // A guard, not a message: the form only renders while unlocked, and `run` reports
+      // through `describe`, which never puts an Error's own text on screen.
+      if (!user || !masterKey) throw new Error('change passphrase with no key in hand');
 
       const { recoveryCode } = await authApi.changePassphrase(user.login, current, next, masterKey);
 
@@ -251,33 +254,6 @@ async function run(set: Setter, action: () => Promise<void>): Promise<void> {
   } finally {
     set({ busy: false });
   }
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) {
-    switch (cause.code) {
-      case ErrorCode.Unauthorized:
-        return 'Wrong login or passphrase.';
-      case ErrorCode.Conflict:
-        return 'That address is already registered.';
-      case ErrorCode.TooManyRequests:
-        return cause.retryAfter
-          ? `Too many attempts. Try again in ${Math.ceil(cause.retryAfter / 60)} min.`
-          : 'Too many attempts. Try again later.';
-      case ErrorCode.Validation:
-        return 'The server rejected the request as invalid.';
-      default:
-        return cause.message;
-    }
-  }
-
-  // Decryption is the other way in: a wrong passphrase passes the server check only when
-  // the wrapped key does not open, which surfaces as an OperationError from WebCrypto.
-  if (cause instanceof DOMException) return 'Could not decrypt your keys with that passphrase.';
-
-  if (cause instanceof Error) return cause.message;
-
-  return 'Something went wrong.';
 }
 
 /** True when a request would be sent with a bearer token already in hand. */

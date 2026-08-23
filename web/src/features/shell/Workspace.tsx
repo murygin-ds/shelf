@@ -14,6 +14,7 @@ import { ExportModal } from '@/features/transfer/ExportModal';
 import ClaudeVaultModal from '@/features/claude/ClaudeVaultModal';
 import ClaudeView from '@/features/claude/ClaudeView';
 import { ImportModal } from '@/features/transfer/ImportModal';
+import { m } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -114,7 +115,7 @@ export function Workspace() {
       : (workspace.tree.folders.find((folder) => folder.id === permissionsFor) ?? null);
 
   const newVault = () =>
-    void ask('Vault name', 'Personal').then((name) => {
+    void ask(m.shell.vaultNamePrompt, m.shell.vaultNameInitial).then((name) => {
       if (name && identity) void workspace.createVault(name, identity);
     });
 
@@ -133,11 +134,11 @@ export function Workspace() {
 
       {needsFirstVault ? (
         <NamePrompt
-          label="Name your first vault"
-          initial="Personal"
-          hint="Everything you write lives in a vault. Its key is generated on this device and sealed to your own public key, so nothing readable ever leaves it."
+          label={m.shell.firstVaultLabel}
+          initial={m.shell.vaultNameInitial}
+          hint={m.shell.firstVaultHint}
           error={error}
-          confirmLabel="Create vault"
+          confirmLabel={m.shell.firstVaultConfirm}
           busy={loading}
           onSubmit={(name) => {
             if (identity) void workspace.createVault(name, identity);
@@ -158,7 +159,7 @@ export function Workspace() {
         <div className={styles.breadcrumb}>
           {open ? (
             <>
-              <span>{vault?.name}</span>
+              <span className={styles.crumbVault}>{vault?.name}</span>
               <span className={styles.crumbSeparator}>/</span>
               <span className={styles.crumbCurrent}>{open.note.name}</span>
               <span
@@ -167,10 +168,10 @@ export function Workspace() {
               />
               <span className={styles.savedLabel}>
                 {open.dirty
-                  ? 'UNSAVED'
+                  ? m.shell.unsaved
                   : open.queued
-                    ? 'SAVED HERE · NOT SENT'
-                    : 'SAVED · ENCRYPTED'}
+                    ? m.shell.savedNotSent
+                    : m.shell.savedEncrypted}
               </span>
             </>
           ) : null}
@@ -181,11 +182,11 @@ export function Workspace() {
             <button
               type="button"
               className={styles.readOnly}
-              {...tip('Nothing on this device writes to any vault. Click to turn it off.')}
+              {...tip(m.shell.readOnlyTip)}
               onClick={() => setReadOnly(false)}
             >
               <Icon name="eye" size={12} />
-              READ ONLY
+              {m.shell.readOnly}
             </button>
           ) : null}
 
@@ -235,20 +236,20 @@ export function Workspace() {
             <div className={styles.empty}>
               <Icon name="doc" size={22} style={{ color: 'var(--text-disabled)' }} />
               <div className={styles.emptyTitle}>
-                {vault ? 'Nothing open' : 'No vault yet'}
+                {vault ? m.shell.emptyNote : m.shell.emptyVault}
               </div>
               <p className={styles.emptyLede}>
                 {vault
                   ? readOnly
-                    ? 'Pick a note from the sidebar. Read-only mode is on, so nothing here can be changed from this device.'
-                    : 'Pick a note from the sidebar, or add one. Titles and bodies are encrypted here before anything is sent.'
+                    ? m.shell.emptyNoteLedeReadOnly
+                    : m.shell.emptyNoteLede
                   : readOnly
-                    ? 'There is nothing to read yet, and read-only mode is on — turn it off to create the first vault.'
-                    : 'Create a vault to start. Its key is generated on this device and sealed to your own public key.'}
+                    ? m.shell.emptyVaultLedeReadOnly
+                    : m.shell.emptyVaultLede}
               </p>
               {!vault && !readOnly ? (
                 <button type="button" className={styles.primaryButton} onClick={newVault}>
-                  New vault
+                  {m.shell.newVault}
                 </button>
               ) : null}
             </div>
@@ -261,22 +262,17 @@ export function Workspace() {
             member can actually open, which is what the sidebar shows them. */}
         <span>
           {vault
-            ? `${workspace.tree.notes.length} NOTES · ${workspace.tree.folders.length} FOLDERS`
-            : 'NO VAULT'}
+            ? m.shell.tree(workspace.tree.notes.length, workspace.tree.folders.length)
+            : m.shell.noVault}
         </span>
         <span className={styles.statusSpacer} />
         {coverage.total > 0 && coverage.covered < coverage.total ? (
-          <span>
-            INDEX {coverage.covered}/{coverage.total}
-          </span>
+          <span>{m.shell.index(coverage.covered, coverage.total)}</span>
         ) : null}
         {/* The note behind the graph or the trash is not what the reader is looking at, so
             the counts belong to the editor rather than to whatever is merely open. */}
         {open && view === 'editor' ? (
-          <span>
-            {counted.words} {counted.words === 1 ? 'WORD' : 'WORDS'} · {counted.chars}{' '}
-            {counted.chars === 1 ? 'CHAR' : 'CHARS'}
-          </span>
+          <span>{m.shell.counts(counted.words, counted.chars)}</span>
         ) : null}
         <span className={styles.status} data-tone={status.tone} title={status.detail}>
           <span className={styles.statusDot} />

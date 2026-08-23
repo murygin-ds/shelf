@@ -84,6 +84,10 @@ func TestFallbackKeepsServerPathsOnJSON(t *testing.T) {
 			if body.Error.Code != response.CodeNotFound {
 				t.Fatalf("code = %q, want %q", body.Error.Code, response.CodeNotFound)
 			}
+
+			if got := body.Error.Details[response.ReasonKey]; got != response.ReasonRouteNotFound {
+				t.Fatalf("reason = %q, want %q", got, response.ReasonRouteNotFound)
+			}
 		})
 	}
 }
@@ -117,5 +121,34 @@ func TestFallbackAnswersHead(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestAKnownPathWithTheWrongMethodSaysSo(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.HandleMethodNotAllowed = true
+	router.GET("/api/v1/vaults", func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.NoMethod(methodNotAllowed)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/vaults", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusMethodNotAllowed, rec.Body)
+	}
+
+	var body response.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body %s: %v", rec.Body, err)
+	}
+
+	// The code stays bad_request, which on its own reads as a malformed payload: the
+	// reason is what tells the caller they aimed the wrong verb at a route that exists.
+	if got := body.Error.Details[response.ReasonKey]; got != response.ReasonMethodNotAllowed {
+		t.Fatalf("reason = %q, want %q", got, response.ReasonMethodNotAllowed)
 	}
 }

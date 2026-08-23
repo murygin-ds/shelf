@@ -47,7 +47,10 @@
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-ghost);
+  /* The field beside it is `flex: 1; min-width: 0`, so the count is the one thing here that
+     may keep its line — it is the shorter of the two and it changes on every keystroke. */
   white-space: nowrap;
+  text-transform: var(--label-transform);
 }
 
 .facets {
@@ -87,6 +90,7 @@
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-ghost);
+  text-transform: var(--label-transform);
   flex-wrap: wrap;
 }
 
@@ -139,6 +143,8 @@
   font-size: 10.5px;
   color: var(--text-ghost);
   margin-left: auto;
+  /* Was baked into the string as `5M AGO`; the shouting belongs to the slot, not the words. */
+  text-transform: var(--label-transform);
 }
 
 .hitSnippet {

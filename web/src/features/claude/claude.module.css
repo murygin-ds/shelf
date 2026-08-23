@@ -119,7 +119,8 @@
 .label {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-transform);
   color: var(--text-label);
 }
 
@@ -233,7 +234,8 @@
   margin: 18px 0 6px;
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-transform);
   color: var(--text-label);
 }
 
@@ -259,6 +261,7 @@
   margin-top: 14px;
   font-family: var(--font-mono);
   font-size: 10.5px;
+  text-transform: var(--label-transform);
   letter-spacing: 0.08em;
   color: var(--text-label);
 }
@@ -273,8 +276,11 @@
 }
 
 .footerNote {
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-transform);
   color: var(--text-label);
 }
 

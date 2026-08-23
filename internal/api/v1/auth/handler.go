@@ -130,14 +130,16 @@ func (h *Handler) Register(c *gin.Context) {
 
 	login := strings.TrimSpace(req.Login)
 	if login == "" {
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation, "login must not be blank")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonLoginBlank, "login must not be blank")
 		return
 	}
 
 	created, pair, err := h.service.Register(c.Request.Context(), req.toDomain(login), clientMeta(c))
 	if err != nil {
 		if errors.Is(err, auth.ErrLoginTaken) {
-			response.Fail(c, http.StatusConflict, response.CodeConflict, "login is already taken")
+			response.FailReason(c, http.StatusConflict, response.CodeConflict,
+				response.ReasonLoginTaken, "login is already taken")
 			return
 		}
 
@@ -212,7 +214,8 @@ func (h *Handler) Login(c *gin.Context) {
 				return
 			}
 
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid login or password")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonInvalidCredentials, "invalid login or password")
 
 			return
 		}
@@ -248,9 +251,11 @@ func (h *Handler) Refresh(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrSessionNotFound):
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "refresh token is invalid or expired")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonRefreshInvalid, "refresh token is invalid or expired")
 		case errors.Is(err, auth.ErrSessionReused):
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "refresh token was already used, all sessions revoked")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonRefreshReused, "refresh token was already used, all sessions revoked")
 		default:
 			h.fail(c, "refresh", err)
 		}
@@ -298,7 +303,8 @@ func (h *Handler) Logout(c *gin.Context) {
 func (h *Handler) LogoutAll(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
@@ -322,7 +328,8 @@ func (h *Handler) LogoutAll(c *gin.Context) {
 func (h *Handler) Me(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
@@ -351,7 +358,8 @@ func (h *Handler) Me(c *gin.Context) {
 func (h *Handler) UpdateProfile(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
@@ -363,7 +371,8 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 	updated, err := h.service.UpdateDisplayName(c.Request.Context(), userID, req.DisplayName)
 	if err != nil {
 		if errors.Is(err, auth.ErrBlankDisplayName) {
-			response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation, "display name must not be blank")
+			response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+				response.ReasonDisplayNameBlank, "display name must not be blank")
 			return
 		}
 
@@ -391,7 +400,8 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 func (h *Handler) DeleteAccount(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
@@ -402,7 +412,8 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 
 	if err := h.service.DeleteAccount(c.Request.Context(), userID, req.AuthHash); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "password is invalid")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonPasswordInvalid, "password is invalid")
 			return
 		}
 
@@ -427,7 +438,8 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 func (h *Handler) Keys(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
@@ -456,7 +468,8 @@ func (h *Handler) Keys(c *gin.Context) {
 func (h *Handler) ChangePassword(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
@@ -468,7 +481,8 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	pair, err := h.service.ChangePassword(c.Request.Context(), userID, req.CurrentAuthHash, req.toDomain(), clientMeta(c))
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "current password is invalid")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonPasswordInvalid, "current password is invalid")
 			return
 		}
 
@@ -509,7 +523,8 @@ func (h *Handler) RecoveryStart(c *gin.Context) {
 	challenge, err := h.service.RecoveryStart(c.Request.Context(), req.Login, req.AuthHash)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid login or recovery code")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonRecoveryCodeInvalid, "invalid login or recovery code")
 			return
 		}
 
@@ -550,7 +565,8 @@ func (h *Handler) RecoveryComplete(c *gin.Context) {
 	pair, err := h.service.RecoveryComplete(c.Request.Context(), req.RecoveryToken, req.toDomain(), clientMeta(c))
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidToken) {
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "recovery token is invalid or expired")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonRecoveryTokenInvalid, "recovery token is invalid or expired")
 			return
 		}
 
@@ -574,7 +590,8 @@ func (h *Handler) RecoveryComplete(c *gin.Context) {
 func (h *Handler) Sessions(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
@@ -603,19 +620,22 @@ func (h *Handler) Sessions(c *gin.Context) {
 func (h *Handler) RevokeSession(c *gin.Context) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication required")
 		return
 	}
 
 	sessionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "session id must be an integer")
+		response.FailReason(c, http.StatusBadRequest, response.CodeBadRequest,
+			response.ReasonSessionIDInvalid, "session id must be an integer")
 		return
 	}
 
 	if err := h.service.RevokeSession(c.Request.Context(), userID, sessionID); err != nil {
 		if errors.Is(err, auth.ErrSessionNotFound) {
-			response.Fail(c, http.StatusNotFound, response.CodeNotFound, "session not found")
+			response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+				response.ReasonSessionNotFound, "session not found")
 			return
 		}
 
@@ -634,8 +654,8 @@ func bind(c *gin.Context, req any) bool {
 		// it is would send them looking in the wrong place.
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeBadRequest,
-				"the request body is too large")
+			response.FailReason(c, http.StatusRequestEntityTooLarge, response.CodeBadRequest,
+				response.ReasonBodyTooLarge, "the request body is too large")
 
 			return false
 		}

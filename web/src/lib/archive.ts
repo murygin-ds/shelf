@@ -1,5 +1,6 @@
 import type { FolderNode, NoteNode, Tree, Vault } from '@/api/workspace';
 import { fromUtf8 } from '@/crypto/bytes';
+import { format, m } from '@/i18n';
 import { ICON_NAMES } from '@/ui/Icon';
 
 import { MAX_TAGS, normalizeTag } from './search';
@@ -32,9 +33,29 @@ const MAX_DEPTH = 32;
 const MAX_NAME = 200;
 
 const MAX_SEGMENT = 80;
-const UNTITLED = 'Untitled';
+
+/** Both a name in the tree and a file name in the archive, so it is one word for both. */
+export const UNTITLED = m.transfer.untitled;
 
 export type SkipReason = 'locked' | 'no-key' | 'missing' | 'too-large' | 'too-deep' | 'orphaned';
+
+export type ArchiveFault = 'no-manifest' | 'unreadable' | 'not-shelf' | 'too-new' | 'incomplete';
+
+/**
+ * An archive Shelf will not read, with the cause as a value.
+ *
+ * The message is diagnostics — English, for a log or a stack trace — and never reaches the
+ * screen. `reason` is the part anything else may depend on.
+ */
+export class ArchiveError extends Error {
+  readonly reason: ArchiveFault;
+
+  constructor(reason: ArchiveFault, message: string) {
+    super(message);
+    this.name = 'ArchiveError';
+    this.reason = reason;
+  }
+}
 
 /** A node that did not make it, named the way the side that skipped it knows it. */
 export interface Skipped {
@@ -184,10 +205,19 @@ export function manifest(
   };
 }
 
+/**
+ * Names the downloaded file after the vault and the day.
+ *
+ * Letters and digits of every script, not just latin: a Cyrillic name used to sieve through
+ * to nothing, so three Russian vaults exported on one day arrived as three files with the
+ * same name. Composed first, because a decomposed «й» is a letter followed by a combining
+ * mark, and the mark is not a letter.
+ */
 export function archiveFilename(vaultName: string, at: Date): string {
-  const slug = vaultName
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+  const slug = [...vaultName.normalize('NFC').replace(/[^\p{L}\p{N}]+/gu, '-')]
+    .slice(0, MAX_SEGMENT)
+    .join('')
+    .replace(/^-+|-+$/g, '')
     .toLowerCase();
 
   return `shelf-${slug ? `${slug}-` : ''}${at.toISOString().slice(0, 10)}.zip`;
@@ -229,7 +259,9 @@ export function parseArchive(files: Map<string, Uint8Array>): ImportPlan {
   const root = manifestRoot(files);
   const raw = files.get(`${root}${MANIFEST_PATH}`);
 
-  if (!raw) throw new Error(`this is not a Shelf archive — it carries no ${MANIFEST_PATH}`);
+  if (!raw) {
+    throw new ArchiveError('no-manifest', `not a Shelf archive — it carries no ${MANIFEST_PATH}`);
+  }
 
   const read = parseManifest(raw);
   const skipped: Skipped[] = [];
@@ -334,17 +366,19 @@ function parseManifest(raw: Uint8Array): ArchiveManifest {
   try {
     read = JSON.parse(fromUtf8(raw)) as ArchiveManifest;
   } catch {
-    throw new Error(`the ${MANIFEST_PATH} in this archive is not readable`);
+    throw new ArchiveError('unreadable', `the ${MANIFEST_PATH} in this archive does not parse`);
   }
 
-  if (read?.format !== ARCHIVE_FORMAT) throw new Error('this is not a Shelf archive');
+  if (read?.format !== ARCHIVE_FORMAT) {
+    throw new ArchiveError('not-shelf', `${MANIFEST_PATH} names another format`);
+  }
 
   if (typeof read.version !== 'number' || read.version > ARCHIVE_VERSION) {
-    throw new Error('this archive was written by a newer version of Shelf');
+    throw new ArchiveError('too-new', 'written by a newer version of Shelf');
   }
 
   if (!Array.isArray(read.folders) || !Array.isArray(read.notes)) {
-    throw new Error(`the ${MANIFEST_PATH} in this archive is incomplete`);
+    throw new ArchiveError('incomplete', `the ${MANIFEST_PATH} in this archive is incomplete`);
   }
 
   return read;
@@ -447,5 +481,5 @@ function byPosition(folders: readonly FolderNode[]): FolderNode[] {
 }
 
 function byName(notes: readonly NoteNode[]): NoteNode[] {
-  return [...notes].sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
+  return [...notes].sort((a, b) => format.compare(a.name, b.name) || a.id - b.id);
 }

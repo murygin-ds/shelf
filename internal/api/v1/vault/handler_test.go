@@ -195,6 +195,17 @@ func newTestRouter(t *testing.T, service handler.Service) *gin.Engine {
 	return router
 }
 
+func reasonOf(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+
+	var body response.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal %s: %v", rec.Body, err)
+	}
+
+	return body.Error.Details[response.ReasonKey]
+}
+
 func doJSON(t *testing.T, router *gin.Engine, method, path string, body any, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -259,22 +270,65 @@ func TestErrorMapping(t *testing.T) {
 		err        error
 		wantStatus int
 		wantCode   string
+		wantReason string
 	}{
-		"missing": {vault.ErrNotFound, http.StatusNotFound, response.CodeNotFound},
+		"missing": {
+			vault.ErrNotFound, http.StatusNotFound, response.CodeNotFound, response.ReasonNotFound,
+		},
 		"forbidden": {
-			vault.ErrForbidden, http.StatusForbidden, response.CodeForbidden,
+			vault.ErrForbidden, http.StatusForbidden, response.CodeForbidden, response.ReasonForbidden,
 		},
 		"stale content": {
 			vault.ErrVersionConflict, http.StatusConflict, response.CodeConflict,
+			response.ReasonVersionConflict,
 		},
 		"foreign key scope": {
 			vault.ErrScopeMismatch, http.StatusConflict, response.CodeConflict,
+			response.ReasonScopeMismatch,
 		},
 		"cycle": {
 			vault.ErrCycle, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonFolderCycle,
 		},
 		"too deep": {
 			vault.ErrDepthExceeded, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonDepthExceeded,
+		},
+		"share expiry": {
+			vault.ErrShareExpiry, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonShareExpiry,
+		},
+		"too many links": {
+			vault.ErrLinkBatch, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonLinkBatch,
+		},
+		"bad signature": {
+			vault.ErrSignatureInvalid, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonSignatureInvalid,
+		},
+		"closed re-key": {
+			vault.ErrRekeyStale, http.StatusConflict, response.CodeConflict,
+			response.ReasonRekeyStale,
+		},
+		"unsealed key": {
+			vault.ErrKeyGrantMissing, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonKeyGrantMissing,
+		},
+		"bad staging batch": {
+			vault.ErrRekeyBatch, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonRekeyBatch,
+		},
+		"replaced session": {
+			vault.ErrEpochMismatch, http.StatusConflict, response.CodeConflict,
+			response.ReasonEpochMismatch,
+		},
+		"uncommitted session": {
+			vault.ErrCompactRequired, http.StatusConflict, response.CodeConflict,
+			response.ReasonCompactRequired,
+		},
+		"oversized session": {
+			vault.ErrUpdateTooLarge, http.StatusRequestEntityTooLarge, response.CodeTooLarge,
+			response.ReasonUpdateTooLarge,
 		},
 	}
 
@@ -296,6 +350,12 @@ func TestErrorMapping(t *testing.T) {
 
 			if body.Error.Code != tc.wantCode {
 				t.Fatalf("code = %q, want %q", body.Error.Code, tc.wantCode)
+			}
+
+			// The code is too coarse to speak to the user with; the reason is what the
+			// client turns into its own text.
+			if got := body.Error.Details[response.ReasonKey]; got != tc.wantReason {
+				t.Fatalf("reason = %q, want %q", got, tc.wantReason)
 			}
 		})
 	}
@@ -326,11 +386,12 @@ func TestContentWriteRequiresIfMatch(t *testing.T) {
 	cases := map[string]struct {
 		header string
 		want   int
+		reason string
 	}{
-		"absent":       {"", http.StatusPreconditionRequired},
-		"not a number": {"latest", http.StatusBadRequest},
-		"zero":         {"0", http.StatusBadRequest},
-		"valid":        {"7", http.StatusOK},
+		"absent":       {"", http.StatusPreconditionRequired, response.ReasonIfMatchRequired},
+		"not a number": {"latest", http.StatusBadRequest, response.ReasonIfMatchInvalid},
+		"zero":         {"0", http.StatusBadRequest, response.ReasonIfMatchInvalid},
+		"valid":        {"7", http.StatusOK, ""},
 	}
 
 	for name, tc := range cases {
@@ -345,6 +406,14 @@ func TestContentWriteRequiresIfMatch(t *testing.T) {
 			rec := doJSON(t, router, http.MethodPut, "/api/v1/files/1/content", validContentBody(), headers)
 			if rec.Code != tc.want {
 				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, tc.want, rec.Body)
+			}
+
+			if tc.reason == "" {
+				return
+			}
+
+			if got := reasonOf(t, rec); got != tc.reason {
+				t.Fatalf("reason = %q, want %q", got, tc.reason)
 			}
 		})
 	}
@@ -461,6 +530,10 @@ func TestInvalidIDsAreNotFound(t *testing.T) {
 			if rec.Code != http.StatusNotFound {
 				t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 			}
+
+			if got := reasonOf(t, rec); got != response.ReasonRouteNotFound {
+				t.Fatalf("reason = %q, want %q", got, response.ReasonRouteNotFound)
+			}
 		})
 	}
 }
@@ -549,6 +622,10 @@ func TestSetLabelClearsAndRefusesHalfABox(t *testing.T) {
 
 			if service.labelSet {
 				t.Fatal("the service was called with half a sealed box")
+			}
+
+			if got := reasonOf(t, rec); got != response.ReasonLabelIncomplete {
+				t.Fatalf("reason = %q, want %q", got, response.ReasonLabelIncomplete)
 			}
 		})
 	}
@@ -685,6 +762,10 @@ func TestSyncCursorAndLimit(t *testing.T) {
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusBadRequest, rec.Body)
 			}
+
+			if got := reasonOf(t, rec); got != response.ReasonQueryInvalid {
+				t.Fatalf("reason = %q, want %q", got, response.ReasonQueryInvalid)
+			}
 		})
 	}
 }
@@ -731,6 +812,10 @@ func TestMissingCallerIsUnauthorized(t *testing.T) {
 	rec := doJSON(t, router, http.MethodGet, "/api/v1/vaults", nil, nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body)
+	}
+
+	if got := reasonOf(t, rec); got != response.ReasonUnauthenticated {
+		t.Fatalf("reason = %q, want %q", got, response.ReasonUnauthenticated)
 	}
 }
 

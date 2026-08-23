@@ -25,7 +25,8 @@ func Bind(c *gin.Context, req any) bool {
 
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
-		response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeTooLarge, "request body is too large")
+		response.FailReason(c, http.StatusRequestEntityTooLarge, response.CodeTooLarge,
+			response.ReasonBodyTooLarge, "request body is too large")
 		return false
 	}
 
@@ -39,7 +40,7 @@ func ID(c *gin.Context, name string) (int64, bool) {
 	value, err := strconv.ParseInt(c.Param(name), 10, 64)
 	if err != nil || value <= 0 {
 		response.FailWithDetails(c, http.StatusNotFound, response.CodeNotFound, "route not found",
-			map[string]string{name: "invalid"})
+			map[string]string{response.ReasonKey: response.ReasonRouteNotFound, name: "invalid"})
 
 		return 0, false
 	}
@@ -59,7 +60,8 @@ func Query(c *gin.Context, name string, fallback int64) (int64, bool) {
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || value < 0 {
 		response.FailWithDetails(c, http.StatusBadRequest, response.CodeBadRequest,
-			"invalid query parameter", map[string]string{name: "invalid"})
+			"invalid query parameter",
+			map[string]string{response.ReasonKey: response.ReasonQueryInvalid, name: "invalid"})
 
 		return 0, false
 	}
@@ -73,15 +75,16 @@ func Query(c *gin.Context, name string, fallback int64) (int64, bool) {
 func IfMatch(c *gin.Context) (int64, bool) {
 	raw := c.GetHeader(HeaderIfMatch)
 	if raw == "" {
-		response.Fail(c, http.StatusPreconditionRequired, response.CodeBadRequest,
-			"If-Match with the current content sequence is required")
+		response.FailReason(c, http.StatusPreconditionRequired, response.CodeBadRequest,
+			response.ReasonIfMatchRequired, "If-Match with the current content sequence is required")
 
 		return 0, false
 	}
 
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || value <= 0 {
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "If-Match must be a content sequence")
+		response.FailReason(c, http.StatusBadRequest, response.CodeBadRequest,
+			response.ReasonIfMatchInvalid, "If-Match must be a content sequence")
 
 		return 0, false
 	}

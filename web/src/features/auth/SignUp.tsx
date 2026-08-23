@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { m } from '@/i18n';
 import { isAcceptable } from '@/lib/passphrase';
 import { useSession } from '@/store/session';
 import { Icon } from '@/ui/Icon';
@@ -41,25 +42,24 @@ export function SignUp() {
 
   return (
     <AuthLayout
-      step={`STEP ${step} OF 2`}
+      step={m.auth.signUp.step(step, 2)}
       footer={
         <span>
-          Have an account?{' '}
-          <Link className={styles.footerAction} to="/signin" onClick={clearError}>
-            Sign in
-          </Link>
+          {m.authRich.haveAccount(
+            <Link className={styles.footerAction} to="/signin" onClick={clearError}>
+              {m.auth.signUp.signInLink}
+            </Link>,
+          )}
         </span>
       }
     >
       {step === 1 ? (
         <>
-          <h1 className={styles.title}>Create your account</h1>
-          <p className={styles.lede}>
-            On this server, run by your team. Export anytime as plain markdown.
-          </p>
+          <h1 className={styles.title}>{m.auth.signUp.identifyTitle}</h1>
+          <p className={styles.lede}>{m.auth.signUp.identifyLede}</p>
 
           <form className={styles.form} onSubmit={identify}>
-            <Field label="NAME">
+            <Field label={m.auth.fields.name}>
               <input
                 className={styles.input}
                 value={displayName}
@@ -71,7 +71,7 @@ export function SignUp() {
               />
             </Field>
 
-            <Field label="WORK EMAIL">
+            <Field label={m.auth.fields.workEmail}>
               <input
                 className={styles.input}
                 type="email"
@@ -85,7 +85,7 @@ export function SignUp() {
             </Field>
 
             <button className={styles.primary} type="submit">
-              Continue
+              {m.auth.signUp.continue}
             </button>
           </form>
         </>
@@ -93,13 +93,11 @@ export function SignUp() {
 
       {step === 2 ? (
         <>
-          <h1 className={styles.title}>Set your encryption passphrase</h1>
-          <p className={styles.lede}>
-            This key never leaves your device. It wraps every vault key you hold.
-          </p>
+          <h1 className={styles.title}>{m.auth.signUp.passphraseTitle}</h1>
+          <p className={styles.lede}>{m.auth.signUp.passphraseLede}</p>
 
           <form className={styles.form} onSubmit={create}>
-            <Field label="PASSPHRASE">
+            <Field label={m.auth.fields.passphrase}>
               <input
                 className={styles.input}
                 type="password"
@@ -115,9 +113,8 @@ export function SignUp() {
             <div className={styles.notice}>
               <Icon name="key" size={14} className={styles.noticeIcon} />
               <div className={styles.noticeBody}>
-                <span className={styles.noticeLabel}>ZERO-KNOWLEDGE</span>
-                If you lose this passphrase, no one — not your admin, not the server — can restore
-                your notes. Save the recovery kit.
+                <span className={styles.noticeLabel}>{m.auth.zeroKnowledge}</span>
+                {m.auth.signUp.warning}
               </div>
             </div>
 
@@ -128,7 +125,7 @@ export function SignUp() {
               type="submit"
               disabled={busy || !isAcceptable(passphrase)}
             >
-              {busy ? 'Generating your keys…' : 'Create account'}
+              {busy ? m.auth.signUp.busy : m.auth.signUp.submit}
             </button>
             <button
               className={styles.secondary}
@@ -136,7 +133,7 @@ export function SignUp() {
               onClick={() => setStep(1)}
               disabled={busy}
             >
-              Back
+              {m.common.back}
             </button>
           </form>
         </>
