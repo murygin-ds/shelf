@@ -104,10 +104,27 @@ func TestConnectorRefusesToWriteOverEditsNobodyWroteBack(t *testing.T) {
 		t.Error("the read did not say the body is behind the live copy")
 	}
 
-	// A search reports the same thing: the snippet comes from the body, and the body is not
-	// the whole note.
+	// The listing and a search report the same thing: what is stored is not the whole note.
 	if _, err := space.CreateNote(ctx, "inbox/quiet", "half a sentence, written once"); err != nil {
 		t.Fatalf("CreateNote: %v", err)
+	}
+
+	listed, err := space.Tree(ctx, "inbox")
+	if err != nil {
+		t.Fatalf("Tree: %v", err)
+	}
+
+	tree := map[string]bool{}
+	for _, node := range listed {
+		tree[node.Path] = node.PendingEdits
+	}
+
+	if !tree["inbox/draft"] {
+		t.Error("the listing did not say the edited note has unwritten edits")
+	}
+
+	if tree["inbox/quiet"] {
+		t.Error("the listing reported unwritten edits on a note nobody has opened")
 	}
 
 	hits, err := space.Search(ctx, mcp.Query{Text: "half a sentence"}, 10)

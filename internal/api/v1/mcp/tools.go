@@ -23,8 +23,10 @@ type nodeOut struct {
 	// listed rather than hidden, so a model can tell "not there" from "not for you".
 	Locked bool `json:"locked,omitempty"`
 	// ContentSeq is the version a write has to quote back. Notes only.
-	ContentSeq int64     `json:"content_seq,omitempty"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ContentSeq int64 `json:"content_seq,omitempty"`
+	//nolint:lll // the description is the contract a model reads.
+	PendingEdits bool      `json:"pending_edits,omitempty" jsonschema:"The stored body is behind the note's live copy: somebody typed in the editor and the session ended before it was written back. Reading is fine; writing to the note is refused until it has been opened in Shelf again."`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // patch turns what was sent into what SetMeta reads: absent means "leave it", and the two
@@ -50,7 +52,8 @@ func (in metaInput) patch() mcp.MetaPatch {
 func nodeOf(n mcp.Node) nodeOut {
 	return nodeOut{
 		Path: n.Path, Kind: n.Kind, Name: n.Name, Icon: n.Icon, Tags: n.Tags,
-		Locked: n.Locked, ContentSeq: n.ContentSeq, UpdatedAt: n.UpdatedAt,
+		Locked: n.Locked, ContentSeq: n.ContentSeq, PendingEdits: n.PendingEdits,
+		UpdatedAt: n.UpdatedAt,
 	}
 }
 
@@ -77,8 +80,6 @@ type (
 	readOutput struct {
 		Note nodeOut `json:"note"`
 		Body string  `json:"body"`
-		//nolint:lll // the description is the contract a model reads.
-		PendingEdits bool `json:"pending_edits,omitempty" jsonschema:"The body is behind the note's live copy: somebody typed in the editor and the session ended before it was written back. Writing to the note is refused until it is opened in Shelf again."`
 	}
 
 	searchInput struct {
@@ -94,8 +95,6 @@ type (
 	hitOut struct {
 		nodeOut
 		Snippet string `json:"snippet"`
-		//nolint:lll // the description is the contract a model reads.
-		PendingEdits bool `json:"pending_edits,omitempty" jsonschema:"The snippet is from a body the note's live copy has moved past: somebody typed in the editor and the session ended before it was written back."`
 	}
 
 	folderInput struct {
@@ -224,9 +223,7 @@ func (t *Transport) readTools(server *sdk.Server, connector *mcp.Connector) {
 			return nil, readOutput{}, t.logged("shelf_read_note", connector, err)
 		}
 
-		return nil, readOutput{
-			Note: nodeOf(note.Node), Body: note.Body, PendingEdits: note.PendingEdits,
-		}, nil
+		return nil, readOutput{Note: nodeOf(note.Node), Body: note.Body}, nil
 	})
 
 	sdk.AddTool(server, &sdk.Tool{
@@ -254,9 +251,7 @@ func (t *Transport) readTools(server *sdk.Server, connector *mcp.Connector) {
 
 		out := searchOutput{Hits: make([]hitOut, 0, len(hits))}
 		for _, hit := range hits {
-			out.Hits = append(out.Hits, hitOut{
-				nodeOut: nodeOf(hit.Node), Snippet: hit.Snippet, PendingEdits: hit.PendingEdits,
-			})
+			out.Hits = append(out.Hits, hitOut{nodeOut: nodeOf(hit.Node), Snippet: hit.Snippet})
 		}
 
 		return nil, out, nil

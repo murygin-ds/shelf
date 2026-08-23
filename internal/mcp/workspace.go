@@ -106,17 +106,18 @@ type Node struct {
 	Locked bool
 	// ContentSeq is the optimistic lock a write has to carry. Notes only.
 	ContentSeq int64
-	UpdatedAt  time.Time
+	// PendingEdits marks a note whose body the live document has moved past: somebody
+	// typed, the session ended before it wrote back, and what is stored is the last
+	// version that landed. Reading it is fine; writing over it is what ErrUnsettled
+	// refuses. Notes only.
+	PendingEdits bool
+	UpdatedAt    time.Time
 }
 
 // Note is a node together with its body.
 type Note struct {
 	Node
 	Body string
-	// PendingEdits marks a body the live document has moved past: somebody typed, the
-	// session ended before it wrote back, and what is here is the last version that landed.
-	// Reading it is fine; writing over it is what ErrUnsettled refuses.
-	PendingEdits bool
 }
 
 // Trashed is something in the bin, addressed by an id rather than a path.
@@ -135,9 +136,6 @@ type Trashed struct {
 type Hit struct {
 	Node
 	Snippet string
-	// PendingEdits marks a hit whose body the live document has moved past, the same way
-	// ReadNote does: the snippet is from the last version that was written back.
-	PendingEdits bool
 }
 
 // The two kinds a node can be, as they appear in tool output.
@@ -342,7 +340,7 @@ func (w *Workspace) Tree(ctx context.Context, under string) ([]Node, error) {
 
 	under = clean(under)
 	if under == "" {
-		return built.nodes, nil
+		return w.marked(ctx, built.nodes)
 	}
 
 	if _, ok := built.folders[under]; !ok {
@@ -358,7 +356,49 @@ func (w *Workspace) Tree(ctx context.Context, under string) ([]Node, error) {
 		}
 	}
 
-	return out, nil
+	return w.marked(ctx, out)
+}
+
+// marked flags the notes among these whose body is behind their live document.
+func (w *Workspace) marked(ctx context.Context, nodes []Node) ([]Node, error) {
+	ids := make([]int64, 0, len(nodes))
+
+	for _, node := range nodes {
+		if node.Kind == KindNote {
+			ids = append(ids, node.ID)
+		}
+	}
+
+	behind, err := w.pendingSet(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range nodes {
+		nodes[i].PendingEdits = behind[nodes[i].ID]
+	}
+
+	return nodes, nil
+}
+
+// pendingSet asks after a batch of notes at once: one query for a listing or a page of
+// results, rather than one per note.
+func (w *Workspace) pendingSet(ctx context.Context, ids []int64) (map[int64]bool, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	pending, err := w.vaults.PendingDocs(ctx, w.userID, w.vaultID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read live documents: %w", err)
+	}
+
+	behind := make(map[int64]bool, len(pending))
+	for _, id := range pending {
+		behind[id] = true
+	}
+
+	return behind, nil
 }
 
 // bulkFiles matches the ceiling the bulk endpoint validates. Asking for more is refused
@@ -397,8 +437,9 @@ func (w *Workspace) ReadNote(ctx context.Context, path string) (*Note, error) {
 
 	node := at.node
 	node.ContentSeq = file.ContentSeq
+	node.PendingEdits = pending
 
-	return &Note{Node: node, Body: body, PendingEdits: pending}, nil
+	return &Note{Node: node, Body: body}, nil
 }
 
 // pending reports edits the live document holds and the body does not.
@@ -556,31 +597,16 @@ func (w *Workspace) Search(ctx context.Context, query Query, limit int) ([]Hit, 
 		}
 	}
 
-	return w.markPending(ctx, hits)
-}
-
-// markPending flags the hits whose body is behind their live document.
-//
-// Asked after the hits are chosen rather than before: the question is only worth a query for
-// what is being reported, and that is at most one page of results.
-func (w *Workspace) markPending(ctx context.Context, hits []Hit) ([]Hit, error) {
-	if len(hits) == 0 {
-		return hits, nil
-	}
-
-	ids := make([]int64, 0, len(hits))
+	// Asked after the hits are chosen rather than before: the question is only worth a
+	// query for what is being reported, and that is at most one page of results.
+	reported := make([]int64, 0, len(hits))
 	for _, hit := range hits {
-		ids = append(ids, hit.ID)
+		reported = append(reported, hit.ID)
 	}
 
-	pending, err := w.vaults.PendingDocs(ctx, w.userID, w.vaultID, ids)
+	behind, err := w.pendingSet(ctx, reported)
 	if err != nil {
-		return nil, fmt.Errorf("read live documents: %w", err)
-	}
-
-	behind := make(map[int64]bool, len(pending))
-	for _, id := range pending {
-		behind[id] = true
+		return nil, err
 	}
 
 	for i := range hits {
