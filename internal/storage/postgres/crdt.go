@@ -26,13 +26,21 @@ func (r *VaultRepository) CRDTDoc(ctx context.Context, fileID int64) (*vault.CRD
 	return doc, nil
 }
 
-// SeedCRDTDoc creates the document, or hands back the one that got there first.
+// SeedCRDTDoc creates the document, refills the one a write from outside emptied, or hands
+// back the one that got there first.
 //
 // The arbitration is the unique primary key, not a timing window: two clients opening an
 // unedited note both insert, exactly one row survives, and the loser is handed the winner's
 // state so it can throw its own away. Merging two independently seeded documents would put
 // the text in twice, because each carries its own client identifier for the same
 // characters.
+//
+// A row with no snapshot is the other case, and it is not somebody's document: a body
+// written around the session left it there so the epoch could go on rising. Filling it
+// keeps that epoch rather than resetting it, so an update still in flight against the
+// document that was replaced is refused instead of merged into its successor. That is also
+// why the seed has to name the epoch it was sealed under: seal and row must agree, or what
+// is stored opens for nobody.
 func (r *VaultRepository) SeedCRDTDoc(
 	ctx context.Context,
 	in vault.NewCRDTDoc,
@@ -67,33 +75,32 @@ func (r *VaultRepository) SeedCRDTDoc(
 			return vault.ErrVersionConflict
 		}
 
-		const insert = `
-			INSERT INTO file_crdt_docs (file_id, vault_id, key_scope_id, key_version,
-			                            committed_seq, snapshot, snapshot_nonce, created_by)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			ON CONFLICT (file_id) DO NOTHING
-			RETURNING ` + crdtDocColumns
-
-		created, err := scanCRDTDoc(tx.QueryRow(ctx, insert,
-			in.FileID, vaultID, in.KeyScopeID, in.KeyVersion, in.ContentSeq,
-			in.Snapshot.Ciphertext, in.Snapshot.Nonce, actorID,
-		))
+		current, err := scanCRDTDoc(tx.QueryRow(ctx,
+			`SELECT `+crdtDocColumns+` FROM file_crdt_docs WHERE file_id = $1 FOR UPDATE`, in.FileID))
 
 		switch {
-		case err == nil:
-			doc, seeded = created, true
+		case err == nil && current.Snapshot != nil:
+			doc = current
 
 			return nil
 
-		case errors.Is(err, vault.ErrNotFound):
-			// Nothing was inserted, so somebody seeded first.
-			existing, err := scanCRDTDoc(tx.QueryRow(ctx,
-				`SELECT `+crdtDocColumns+` FROM file_crdt_docs WHERE file_id = $1`, in.FileID))
+		case err == nil:
+			filled, err := refillCRDTDoc(ctx, tx, in, current.Epoch, actorID)
 			if err != nil {
 				return err
 			}
 
-			doc = existing
+			doc, seeded = filled, true
+
+			return nil
+
+		case errors.Is(err, vault.ErrNotFound):
+			created, inserted, err := insertCRDTDoc(ctx, tx, in, vaultID, actorID)
+			if err != nil {
+				return err
+			}
+
+			doc, seeded = created, inserted
 
 			return nil
 
@@ -106,6 +113,84 @@ func (r *VaultRepository) SeedCRDTDoc(
 	}
 
 	return doc, seeded, nil
+}
+
+// insertCRDTDoc starts a document nobody has, or reads back the one that beat it there. The
+// second result says which of the two happened.
+func insertCRDTDoc(
+	ctx context.Context,
+	tx *txn,
+	in vault.NewCRDTDoc,
+	vaultID, actorID int64,
+) (*vault.CRDTDoc, bool, error) {
+	// Zero is a client that predates the epoch travelling in the frame, and a document
+	// nobody has started is the one case where what it will seal under is not in doubt.
+	if in.Epoch != 0 && in.Epoch != vault.FirstEpoch {
+		return nil, false, vault.ErrEpochMismatch
+	}
+
+	const insert = `
+		INSERT INTO file_crdt_docs (file_id, vault_id, key_scope_id, key_version,
+		                            committed_seq, snapshot, snapshot_nonce, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (file_id) DO NOTHING
+		RETURNING ` + crdtDocColumns
+
+	created, err := scanCRDTDoc(tx.QueryRow(ctx, insert,
+		in.FileID, vaultID, in.KeyScopeID, in.KeyVersion, in.ContentSeq,
+		in.Snapshot.Ciphertext, in.Snapshot.Nonce, actorID,
+	))
+
+	switch {
+	case err == nil:
+		return created, true, nil
+
+	case errors.Is(err, vault.ErrNotFound):
+		// Nothing was inserted, so somebody seeded between the read above and here.
+		existing, err := scanCRDTDoc(tx.QueryRow(ctx,
+			`SELECT `+crdtDocColumns+` FROM file_crdt_docs WHERE file_id = $1`, in.FileID))
+
+		return existing, false, err
+
+	default:
+		return nil, false, err
+	}
+}
+
+// refillCRDTDoc puts a snapshot back into the row an invalidation emptied, at the epoch that
+// row has reached.
+func refillCRDTDoc(
+	ctx context.Context,
+	tx *txn,
+	in vault.NewCRDTDoc,
+	epoch int32,
+	actorID int64,
+) (*vault.CRDTDoc, error) {
+	switch {
+	// A client from before the epoch travelled in the frame cannot seal one of these, and
+	// telling it to start over would only bring it back here: it is answered as the stale
+	// copy it is holding, which is what it has to fix.
+	case in.Epoch == 0:
+		return nil, vault.ErrVersionConflict
+
+	// Anything else named the wrong epoch — the document was invalidated again between
+	// being offered and being seeded — and starting over lands on the current one.
+	case in.Epoch != epoch:
+		return nil, vault.ErrEpochMismatch
+	}
+
+	const refill = `
+		UPDATE file_crdt_docs
+		   SET key_scope_id = $2, key_version = $3, committed_seq = $4,
+		       snapshot = $5, snapshot_nonce = $6, snapshot_seq = 0,
+		       last_seq = 0, pending_count = 0, pending_bytes = 0, created_by = $7
+		 WHERE file_id = $1 AND snapshot IS NULL
+		RETURNING ` + crdtDocColumns
+
+	return scanCRDTDoc(tx.QueryRow(ctx, refill,
+		in.FileID, in.KeyScopeID, in.KeyVersion, in.ContentSeq,
+		in.Snapshot.Ciphertext, in.Snapshot.Nonce, actorID,
+	))
 }
 
 // CRDTUpdates reads the log past a sequence the caller already holds.

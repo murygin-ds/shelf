@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"shelf/internal/api/response"
 	"shelf/internal/auth"
 	"shelf/internal/config"
 	"shelf/internal/realtime"
@@ -91,17 +92,104 @@ func seedNote(t *testing.T, ws *websocket.Conn) {
 
 	write(t, ws, map[string]any{"type": "open", "file_id": noteID})
 
-	if frame := waitFor(t, ws, realtime.FrameAbsent); frame["file_id"] != float64(noteID) {
+	frame := waitFor(t, ws, realtime.FrameAbsent)
+	if frame["file_id"] != float64(noteID) {
 		t.Fatalf("absent names note %v", frame["file_id"])
 	}
 
+	if frame["epoch"] != float64(1) {
+		t.Fatalf("absent named epoch %v, want the one a first document is stored at", frame["epoch"])
+	}
+
 	write(t, ws, map[string]any{
-		"type": "seed", "file_id": noteID, "content_seq": 1,
+		"type": "seed", "file_id": noteID, "epoch": 1, "content_seq": 1,
 		"payload": b64("state"), "nonce": b64("nonce1234567"),
 		"key_scope_id": 3, "key_version": 1,
 	})
 
 	waitFor(t, ws, realtime.FrameDoc)
+}
+
+// A body written around the document — the connector appending, an offline write replayed —
+// leaves the row behind with its epoch raised and nothing in it. Handing that over as a
+// document is what turns a write from outside into a lost note: the room adopts an empty
+// text and the committer writes that emptiness back over the body. It is answered as a note
+// nobody has started, at the epoch the seed has to be sealed under.
+func TestOpeningANoteWhoseDocumentWasInvalidated(t *testing.T) {
+	t.Parallel()
+
+	_, url, ws := room(t, testConfig())
+
+	first := joins(t, url, "first")
+	seedNote(t, first)
+
+	ws.invalidate(noteID)
+
+	second := joins(t, url, "second")
+	write(t, second, map[string]any{"type": "open", "file_id": noteID})
+
+	absent := waitFor(t, second, realtime.FrameAbsent)
+	if absent["epoch"] != float64(2) {
+		t.Fatalf("absent named epoch %v, want the one the row has reached", absent["epoch"])
+	}
+
+	// A seed sealed under the epoch a fresh document would have is refused rather than
+	// stored: the epoch is inside the sealed data, so what it left behind would open for
+	// nobody. Starting over is what the client is told to do, and the next offer names the
+	// epoch that is actually there.
+	write(t, second, map[string]any{
+		"type": "seed", "file_id": noteID, "epoch": 1, "content_seq": 1,
+		"payload": b64("stale"), "nonce": b64("nonce1234567"),
+		"key_scope_id": 3, "key_version": 1,
+	})
+
+	if frame := waitFor(t, second, realtime.FrameReseed); frame["file_id"] != float64(noteID) {
+		t.Fatalf("the refusal names note %v", frame["file_id"])
+	}
+
+	write(t, second, map[string]any{
+		"type": "seed", "file_id": noteID, "epoch": 2, "content_seq": 1,
+		"payload": b64("restarted"), "nonce": b64("nonce1234567"),
+		"key_scope_id": 3, "key_version": 1,
+	})
+
+	doc := waitFor(t, second, realtime.FrameDoc)
+	if doc["epoch"] != float64(2) {
+		t.Fatalf("the restarted document is at epoch %v, want the one it kept", doc["epoch"])
+	}
+
+	if doc["snapshot"] != b64("restarted") {
+		t.Fatalf("the document came back with snapshot %v", doc["snapshot"])
+	}
+}
+
+// A client from before the epoch travelled in the seed frame cannot seal one for a document
+// that was invalidated. Telling it to start over would bring it straight back here, so it is
+// answered as what it is — a copy that has gone stale — and stops.
+func TestASeedThatCannotNameItsEpochIsRefusedOnce(t *testing.T) {
+	t.Parallel()
+
+	_, url, ws := room(t, testConfig())
+
+	first := joins(t, url, "first")
+	seedNote(t, first)
+
+	ws.invalidate(noteID)
+
+	second := joins(t, url, "second")
+	write(t, second, map[string]any{"type": "open", "file_id": noteID})
+	waitFor(t, second, realtime.FrameAbsent)
+
+	write(t, second, map[string]any{
+		"type": "seed", "file_id": noteID, "content_seq": 1,
+		"payload": b64("stale"), "nonce": b64("nonce1234567"),
+		"key_scope_id": 3, "key_version": 1,
+	})
+
+	frame := waitFor(t, second, realtime.FrameError)
+	if frame["code"] != response.CodeConflict {
+		t.Fatalf("the refusal came back as %v, want a conflict the client will not retry", frame["code"])
+	}
 }
 
 // A note nobody has edited has no document, and whoever can write starts one.

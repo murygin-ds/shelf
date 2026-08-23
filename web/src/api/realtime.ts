@@ -111,6 +111,7 @@ export function openFrame(fileId: number, epoch: number, since: number): Record<
 
 export function seedFrame(
   fileId: number,
+  epoch: number,
   contentSeq: number,
   sealed: SealedWire,
   scope: { keyScopeId: number; keyVersion: number },
@@ -119,6 +120,7 @@ export function seedFrame(
   return {
     type: FRAME.seed,
     file_id: fileId,
+    epoch,
     content_seq: contentSeq,
     payload: bytesToB64(sealed.ciphertext),
     nonce: bytesToB64(sealed.nonce),

@@ -166,9 +166,11 @@ func document(doc *vault.CRDTDoc, tail []vault.CRDTUpdate) outbound {
 	return frame
 }
 
-// absent says the note has no live document yet, so whoever asked may seed one.
-func absent(fileID int64) outbound {
-	return outbound{Type: FrameAbsent, FileID: fileID}
+// absent says the note has no live document to hand over, so whoever may write should seed
+// one. The epoch travels with it: a seed is sealed under the epoch it will be stored at, and
+// a note whose document was invalidated keeps the epoch it had reached.
+func absent(fileID int64, epoch int32) outbound {
+	return outbound{Type: FrameAbsent, FileID: fileID, Epoch: epoch}
 }
 
 // relayed is somebody else's update on its way to the rest of the room.

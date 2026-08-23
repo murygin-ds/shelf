@@ -159,9 +159,13 @@ export function createRoom(deps: RoomDeps): Room {
    * else what it stored. The loser throws its own document away rather than merging —
    * two independently seeded copies name the same characters differently, and merging
    * them writes the text twice.
+   *
+   * The epoch is the server's to name, and it comes in the frame that said no document was
+   * there: a note whose document was invalidated keeps the epoch it had reached, and a
+   * snapshot sealed under any other number opens for nobody.
    */
-  async function seed(): Promise<void> {
-    if (!deps.canEdit || seeding) return;
+  async function seed(epoch: number): Promise<void> {
+    if (!deps.canEdit || seeding || epoch === 0) return;
 
     seeding = true;
 
@@ -171,18 +175,41 @@ export function createRoom(deps: RoomDeps): Room {
     const state = Y.encodeStateAsUpdate(candidate);
     candidate.destroy();
 
-    // Sealed under epoch 1 because that is what a fresh document is; if somebody else got
-    // there first the server ignores this payload entirely and answers with theirs.
-    const sealed = await encryptUpdate(deps.key, state, deps.ref, 1);
-    const signature = await signUpdate(deps.identity, deps.ref, 1, sealed);
+    // If somebody else got there first the server ignores this payload entirely and
+    // answers with theirs.
+    const sealed = await encryptUpdate(deps.key, state, deps.ref, epoch);
+    const signature = await signUpdate(deps.identity, deps.ref, epoch, sealed);
 
-    deps.send(seedFrame(deps.fileId, deps.contentSeq, sealed, deps.scope, signature));
+    deps.send(seedFrame(deps.fileId, epoch, deps.contentSeq, sealed, deps.scope, signature));
   }
 
   /** Replaces whatever this client held with the document the server has. */
   async function adopt(frame: ServerFrame): Promise<void> {
     const epoch = frame.epoch ?? 0;
     if (epoch === 0) return;
+
+    const snapshot = openSealed(frame.snapshot, frame.nonce);
+
+    // A document with no snapshot describes nothing: the server keeps the row when a body
+    // is written around the session, so the epoch goes on rising, and empties it. Adopting
+    // that would put an empty text on screen and hand the committer emptiness to write
+    // back over the body that replaced it. It is a document nobody has started.
+    if (!snapshot) {
+      await seed(epoch);
+      return;
+    }
+
+    const state = await decryptUpdate(deps.key, snapshot, deps.ref, epoch);
+
+    // A snapshot that will not open is not an empty document. Standing one up from it would
+    // put an empty text on screen and hand the committer that emptiness to write back, so
+    // the room stays out of the way and says why instead.
+    if (isLocked(state)) {
+      // i18n-ignore — diagnostics; the store writes what the reader sees.
+      deps.onNotice({ kind: 'error', code: 'snapshot_locked', message: 'the snapshot did not open' });
+
+      return;
+    }
 
     doc?.destroy();
 
@@ -195,13 +222,7 @@ export function createRoom(deps: RoomDeps): Room {
     buffer = [];
     bufferBytes = 0;
 
-    const snapshot = openSealed(frame.snapshot, frame.nonce);
-
-    if (snapshot) {
-      const state = await decryptUpdate(deps.key, snapshot, deps.ref, epoch);
-
-      if (!isLocked(state)) Y.applyUpdate(doc, state, REMOTE);
-    }
+    Y.applyUpdate(doc, state, REMOTE);
 
     for (const stored of frame.updates ?? []) {
       await apply(stored, epoch);
@@ -252,7 +273,7 @@ export function createRoom(deps: RoomDeps): Room {
 
       switch (frame.type) {
         case 'absent':
-          await seed();
+          await seed(frame.epoch ?? 1);
           break;
 
         case 'doc':

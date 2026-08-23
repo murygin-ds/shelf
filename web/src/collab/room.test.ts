@@ -43,12 +43,21 @@ class Relay {
 
     switch (frame['type']) {
       case 'open':
-        await from.receive(this.epoch === 0 ? { type: 'absent', file_id: FILE_ID } : this.document());
+        // A document with no snapshot describes nothing, so it is answered the way an
+        // absent one is: whoever may write starts it again, at the epoch named here.
+        await from.receive(
+          this.snapshot === null
+            ? { type: 'absent', file_id: FILE_ID, epoch: this.epoch === 0 ? 1 : this.epoch }
+            : this.document(),
+        );
         break;
 
       case 'seed':
-        if (this.epoch === 0) {
-          this.epoch = 1;
+        // A row that holds no snapshot is this seed's to fill, whether it was never there
+        // or was emptied by a body written around the document. The epoch it already has
+        // is kept, so an update still in flight against what was replaced is refused.
+        if (this.snapshot === null) {
+          this.epoch = Number(frame['epoch'] ?? 1);
           this.snapshot = { payload: String(frame['payload']), nonce: String(frame['nonce']) };
         }
 
@@ -348,8 +357,10 @@ describe('editing room', () => {
     const alice = await client(relay, author.identity, author.publicBlob, 7, key, keys, 'text');
     const before = alice.room.epoch();
 
-    // The server replaces the document, the way a body written around it would.
+    // The server replaces the document, the way a body written around it does: the row
+    // stays so the epoch can go on rising, and it holds nothing.
     relay.epoch = 2;
+    relay.snapshot = null;
     relay.log = [];
 
     await alice.room.receive({ type: 'reseed', file_id: FILE_ID });
@@ -359,6 +370,61 @@ describe('editing room', () => {
     expect(alice.room.epoch()).toBe(2);
     expect(alice.room.epoch()).not.toBe(before);
     expect(alice.room.ready()).toBe(true);
+    expect(alice.text()).toBe('text');
+  });
+
+  // The row an invalidation leaves behind is not a document: it carries no snapshot and no
+  // log. A room that adopted it would show an empty note and hand the committer that
+  // emptiness to write back over the body the write had just put there.
+  it('starts a document over rather than adopting an invalidated one', async () => {
+    const relay = new Relay();
+    const key = await generateKey();
+    const keys = new Map<number, Uint8Array>();
+    const author = await generateIdentity(await generateMasterKey());
+
+    await client(relay, author.identity, author.publicBlob, 7, key, keys, 'draft');
+
+    // The connector appends to the note, which invalidates the document behind it.
+    relay.epoch = 2;
+    relay.snapshot = null;
+    relay.log = [];
+
+    const appended = 'draft\n\nappended by the connector';
+
+    // Somebody opens the note afterwards, holding the body the connector wrote.
+    const bob = await client(relay, author.identity, author.publicBlob, 9, key, keys, appended);
+
+    expect(bob.room.ready()).toBe(true);
+    expect(bob.text()).toBe(appended);
+    expect(bob.room.epoch()).toBe(2);
+  });
+
+  // A snapshot that will not open is not an empty document. Standing an empty one up in its
+  // place would show an empty note and let the committer write that back over the body.
+  it('refuses a document whose snapshot will not open', async () => {
+    const relay = new Relay();
+    const key = await generateKey();
+    const keys = new Map<number, Uint8Array>();
+    const author = await generateIdentity(await generateMasterKey());
+
+    const alice = await client(relay, author.identity, author.publicBlob, 7, key, keys, 'text');
+
+    // Sealed under something this client does not hold — a stale key, a snapshot written
+    // against another epoch.
+    await alice.room.receive({
+      type: 'doc',
+      file_id: FILE_ID,
+      epoch: 3,
+      snapshot_seq: 0,
+      updates: [],
+      snapshot: bytesToB64(Uint8Array.from({ length: 48 }, (_, i) => i)),
+      nonce: bytesToB64(Uint8Array.from({ length: 12 }, (_, i) => i)),
+    });
+    await settle();
+
+    expect(alice.notices.some((notice) => notice.kind === 'error')).toBe(true);
+    expect(alice.text()).toBe('text');
+    expect(alice.room.epoch()).toBe(1);
   });
 
   it('ignores frames about another note', async () => {
