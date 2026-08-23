@@ -37,6 +37,18 @@ export const views = {
     legendLocked: (notes: number, links: number, locked: number) =>
       `${countedEn(notes, ['note', 'notes'])} · ${countedEn(links, ['link', 'links'])} · ${locked} locked`,
     node: (name: string, links: number) => `${name} · ${countedEn(links, ['link', 'links'])}`,
+    /** Sits after the legend and qualifies it, so it opens on the separator. */
+    legendHidden: (hidden: number) => `· ${hidden} unlinked`,
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    fit: 'Fit to the panel',
+    reset: 'Reset the layout',
+    orphans: 'Unlinked',
+    orphansTip: 'Unlinked — draw the notes nothing links to',
+    /** The picture is empty because of the filter, not because the vault is. */
+    noLinks:
+      'Nothing references anything yet. Turn unlinked notes on to see them all, or point one note at another with [[a title]].',
+    hint: 'Scroll to zoom, drag the canvas to move it, drag a note to pin it where you put it. Resetting the layout lets every pinned note go.',
     revealsLocked:
       'Dashed nodes are notes you hold no key for. They are drawn without a name or an id, because a graph that hid them would show connected notes as isolated.',
     hidesLocked:
