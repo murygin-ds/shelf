@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"shelf/internal/api/middleware"
+	"shelf/internal/api/response"
 	handler "shelf/internal/api/v1/mcp"
 	domain "shelf/internal/mcp"
 	"shelf/internal/vault"
@@ -189,19 +190,38 @@ func TestAdmitValidatesTheSealedKeys(t *testing.T) {
 
 func TestFailuresMapOntoStatuses(t *testing.T) {
 	for name, expected := range map[string]struct {
-		err  error
-		code int
+		err    error
+		code   int
+		reason string
 	}{
-		"a vault the caller cannot see": {domain.ErrNotFound, http.StatusNotFound},
-		"a member who is not the owner": {domain.ErrOwnerRequired, http.StatusForbidden},
-		"a vault already connected":     {domain.ErrExists, http.StatusConflict},
-		"a key for a foreign scope":     {vault.ErrScopeMismatch, http.StatusConflict},
+		"a vault the caller cannot see": {domain.ErrNotFound, http.StatusNotFound, response.ReasonNotFound},
+		"a member who is not the owner": {
+			domain.ErrOwnerRequired, http.StatusForbidden, response.ReasonOwnerRequired,
+		},
+		"a vault already connected": {
+			domain.ErrExists, http.StatusConflict, response.ReasonConnectorExists,
+		},
+		"a key for a foreign scope": {
+			vault.ErrScopeMismatch, http.StatusConflict, response.ReasonScopeMismatch,
+		},
+		"a role that manages people": {
+			domain.ErrRoleInvalid, http.StatusUnprocessableEntity, response.ReasonConnectorRole,
+		},
 	} {
 		router := newTestRouter(t, &stubService{err: expected.err})
 
 		rec := do(t, router, http.MethodGet, "/api/v1/vaults/7/mcp", nil)
 		if rec.Code != expected.code {
 			t.Errorf("%s answered %d, want %d", name, rec.Code, expected.code)
+		}
+
+		var body response.ErrorResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s unmarshal %s: %v", name, rec.Body, err)
+		}
+
+		if got := body.Error.Details[response.ReasonKey]; got != expected.reason {
+			t.Errorf("%s reason = %q, want %q", name, got, expected.reason)
 		}
 	}
 }

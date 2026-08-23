@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { isRecoveryCodeShaped } from '@/crypto/recovery';
+import { m } from '@/i18n';
 import { isAcceptable } from '@/lib/passphrase';
 import { useSession } from '@/store/session';
 import { Icon } from '@/ui/Icon';
@@ -50,23 +51,21 @@ export function Recover() {
     <AuthLayout
       footer={
         <span>
-          Remembered it?{' '}
-          <Link className={styles.footerAction} to="/signin" onClick={clearError}>
-            Sign in
-          </Link>
+          {m.authRich.rememberedIt(
+            <Link className={styles.footerAction} to="/signin" onClick={clearError}>
+              {m.auth.recover.signInLink}
+            </Link>,
+          )}
         </span>
       }
     >
       {step === 1 ? (
         <>
-          <h1 className={styles.title}>Use your recovery kit</h1>
-          <p className={styles.lede}>
-            The code from your kit unwraps your master key on this device. The server checks a
-            separate verifier and never sees the code itself.
-          </p>
+          <h1 className={styles.title}>{m.auth.recover.identifyTitle}</h1>
+          <p className={styles.lede}>{m.auth.recover.identifyLede}</p>
 
           <form className={styles.form} onSubmit={identify}>
-            <Field label="EMAIL">
+            <Field label={m.auth.fields.email}>
               <input
                 className={styles.input}
                 type="email"
@@ -78,7 +77,7 @@ export function Recover() {
               />
             </Field>
 
-            <Field label="RECOVERY CODE">
+            <Field label={m.auth.fields.recoveryCode}>
               <input
                 className={styles.input}
                 value={code}
@@ -95,7 +94,7 @@ export function Recover() {
               type="submit"
               disabled={!isRecoveryCodeShaped(code) || login.trim().length < 3}
             >
-              Continue
+              {m.auth.recover.continue}
             </button>
           </form>
         </>
@@ -103,13 +102,11 @@ export function Recover() {
 
       {step === 2 ? (
         <>
-          <h1 className={styles.title}>Choose a new passphrase</h1>
-          <p className={styles.lede}>
-            Your notes stay as they are — only the key that wraps your master key changes.
-          </p>
+          <h1 className={styles.title}>{m.auth.recover.resetTitle}</h1>
+          <p className={styles.lede}>{m.auth.recover.resetLede}</p>
 
           <form className={styles.form} onSubmit={reset}>
-            <Field label="NEW PASSPHRASE">
+            <Field label={m.auth.fields.newPassphrase}>
               <input
                 className={styles.input}
                 type="password"
@@ -124,10 +121,7 @@ export function Recover() {
 
             <div className={styles.notice}>
               <Icon name="shield" size={14} className={`${styles.noticeIcon} ${styles.noticeIconOk}`} />
-              <div className={styles.noticeBody}>
-                Every existing session is signed out, and the recovery code you just used stops
-                working. A new kit is issued on the next screen.
-              </div>
+              <div className={styles.noticeBody}>{m.auth.recover.notice}</div>
             </div>
 
             <ErrorNote message={error} />
@@ -137,7 +131,7 @@ export function Recover() {
               type="submit"
               disabled={busy || !isAcceptable(passphrase)}
             >
-              {busy ? 'Re-wrapping your keys…' : 'Reset passphrase'}
+              {busy ? m.auth.recover.busy : m.auth.recover.submit}
             </button>
             <button
               className={styles.secondary}
@@ -145,7 +139,7 @@ export function Recover() {
               onClick={() => setStep(1)}
               disabled={busy}
             >
-              Back
+              {m.common.back}
             </button>
           </form>
         </>

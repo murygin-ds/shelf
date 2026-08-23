@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { Vault } from '@/api/workspace';
 import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
+import { m, roleLabel } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -109,11 +110,7 @@ export function VaultSwitcher({
   const label = (item: Vault) => {
     setOpen(false);
 
-    void askText(
-      'Your label for this vault',
-      item.label ?? '',
-      'Only you ever see it: it is sealed to your own key, not the vault’s, so neither the other members nor the server can read it. Clear it with “Remove label”.',
-    ).then((text) => {
+    void askText(m.vaults.labelPrompt, item.label ?? '', m.vaults.labelHint).then((text) => {
       if (text !== null && identity) void setVaultLabel(item.id, text, identity);
     });
   };
@@ -132,7 +129,14 @@ export function VaultSwitcher({
     const open: MenuItem[] =
       item.id === vaultId
         ? []
-        : [{ label: 'Open', icon: 'arrow' as const, onSelect: () => choose(item) }];
+        : [
+            {
+              id: 'open',
+              label: m.common.open,
+              icon: 'arrow' as const,
+              onSelect: () => choose(item),
+            },
+          ];
 
     // Everything below writes — the icon and the label to the vault, the last entry to the
     // membership itself — so in read-only the menu is the way in and nothing else.
@@ -142,21 +146,30 @@ export function VaultSwitcher({
       ...open,
       // The picker seals through the loaded keyring, which is the open vault's alone.
       ...(item.id === vaultId && !item.locked
-        ? [{ label: 'Change icon', icon: 'star' as const, onSelect: changeIcon }]
+        ? [
+            {
+              id: 'change-icon',
+              label: m.vaults.menu.changeIcon,
+              icon: 'star' as const,
+              onSelect: changeIcon,
+            },
+          ]
         : []),
       // Only on vaults somebody else named. Your own you can simply rename.
       ...(item.role === 'owner'
         ? []
         : [
             {
-              label: item.label ? 'Edit label' : 'Add label',
+              id: item.label ? 'edit-label' : 'add-label',
+              label: item.label ? m.vaults.menu.editLabel : m.vaults.menu.addLabel,
               icon: 'tag' as const,
               onSelect: () => label(item),
             },
             ...(item.label
               ? [
                   {
-                    label: 'Remove label',
+                    id: 'remove-label',
+                    label: m.vaults.menu.removeLabel,
                     icon: 'x' as const,
                     onSelect: () => {
                       if (identity) void setVaultLabel(item.id, '', identity);
@@ -168,8 +181,8 @@ export function VaultSwitcher({
       {
         // An owner cannot walk out — the vault is theirs — and nobody else can destroy it.
         ...(item.role === 'owner'
-          ? { label: 'Delete vault', icon: 'trash' as const }
-          : { label: 'Leave vault', icon: 'user' as const }),
+          ? { id: 'delete-vault', label: m.vaults.menu.deleteVault, icon: 'trash' as const }
+          : { id: 'leave-vault', label: m.vaults.menu.leaveVault, icon: 'user' as const }),
         danger: true,
         separated: true,
         onSelect: () => part(item),
@@ -192,7 +205,7 @@ export function VaultSwitcher({
     items.length ? (
       <>
         <div className={styles.groupHead}>
-          <span>{title}</span>
+          <span className={styles.groupLabel}>{title}</span>
           <span className={styles.groupRule} />
           <span>{items.length}</span>
         </div>
@@ -228,11 +241,11 @@ export function VaultSwitcher({
       >
         <VaultMark vault={vault} size={16} />
         <span className={styles.triggerName}>
-          {vault?.name ?? (loading ? 'Loading…' : 'No vault')}
+          {vault?.name ?? (loading ? m.common.loading : m.vaults.none)}
         </span>
         {vault?.label ? <span className={styles.triggerLabel}>{vault.label}</span> : null}
         {vault && vault.role !== 'owner' ? (
-          <span className={styles.pill}>{vault.role.toUpperCase()}</span>
+          <span className={styles.pill}>{roleLabel(vault.role)}</span>
         ) : null}
         <Icon name="down" size={12} className={styles.chevron} />
       </button>
@@ -252,14 +265,10 @@ export function VaultSwitcher({
 
           <div className={styles.menu} role="menu">
             <div className={styles.list}>
-              {group('MINE', groups.mine)}
-              {group('SHARED WITH ME', groups.joined)}
+              {group(m.vaults.mine, groups.mine)}
+              {group(m.vaults.sharedWithMe, groups.joined)}
 
-              {vaults.length === 0 ? (
-                <p className={styles.empty}>
-                  No vaults yet. Create one, or join with a code someone sent you.
-                </p>
-              ) : null}
+              {vaults.length === 0 ? <p className={styles.empty}>{m.vaults.empty}</p> : null}
             </div>
 
             <div className={styles.divider} />
@@ -278,7 +287,7 @@ export function VaultSwitcher({
                   <span className={styles.actionIcon}>
                     <Icon name="user" size={13} />
                   </span>
-                  Members &amp; sharing
+                  {m.vaults.members}
                 </button>
 
                 <button
@@ -299,7 +308,7 @@ export function VaultSwitcher({
                         : {})}
                     />
                   </span>
-                  Keys &amp; history
+                  {m.vaults.keys}
                 </button>
 
                 {/* A locked vault has nothing readable to write out. */}
@@ -316,7 +325,7 @@ export function VaultSwitcher({
                     <span className={styles.actionIcon}>
                       <Icon name="box" size={13} />
                     </span>
-                    Export vault…
+                    {m.vaults.exportVault}
                   </button>
                 ) : null}
 
@@ -341,7 +350,7 @@ export function VaultSwitcher({
                   <span className={styles.actionIcon}>
                     <Icon name="plus" size={13} />
                   </span>
-                  New vault
+                  {m.vaults.newVault}
                 </button>
 
                 <button
@@ -356,7 +365,7 @@ export function VaultSwitcher({
                   <span className={styles.actionIcon}>
                     <Icon name="inbox" size={13} />
                   </span>
-                  Import vault…
+                  {m.vaults.importVault}
                 </button>
 
                 {/* A vault that hands its key to this server. It sits with the other two
@@ -374,7 +383,7 @@ export function VaultSwitcher({
                   <span className={styles.actionIcon}>
                     <Icon name="claude" size={13} />
                   </span>
-                  Connect Claude…
+                  {m.vaults.connectClaude}
                 </button>
 
                 <button
@@ -389,7 +398,7 @@ export function VaultSwitcher({
                   <span className={styles.actionIcon}>
                     <Icon name="key" size={13} />
                   </span>
-                  Join with code
+                  {m.vaults.join}
                 </button>
 
                 {vault && !vault.locked ? (
@@ -402,7 +411,7 @@ export function VaultSwitcher({
                     <span className={styles.actionIcon}>
                       <Icon name="star" size={13} />
                     </span>
-                    Change icon
+                    {m.vaults.menu.changeIcon}
                   </button>
                 ) : null}
               </>
@@ -456,9 +465,9 @@ function VaultRow({
       {vault.locked ? <Icon name="lock" size={12} className={styles.quiet} /> : null}
 
       {vault.role === 'owner' && vault.memberCount > 1 ? (
-        <span className={styles.pill}>SHARED</span>
+        <span className={styles.pill}>{m.vaults.sharedBadge}</span>
       ) : vault.role !== 'owner' ? (
-        <span className={styles.pill}>{vault.role.toUpperCase()}</span>
+        <span className={styles.pill}>{roleLabel(vault.role)}</span>
       ) : null}
 
       {active ? <Icon name="check" size={13} className={styles.check} /> : null}
@@ -487,33 +496,31 @@ function VaultMark({ vault, size }: { vault: Vault | undefined; size: number }) 
  * A locked vault has no readable name to type, so it only gets the button.
  */
 function deleteRequest(vault: Vault): ConfirmRequest {
-  const notes = `${vault.noteCount} note${vault.noteCount === 1 ? '' : 's'}`;
-  const shared = vault.memberCount > 1 ? `, for all ${vault.memberCount} members` : '';
-
   return {
-    title: `Delete “${vault.name}”?`,
-    body: `This destroys the vault and everything in it — ${notes}${shared}. The server keeps only ciphertext and deletes it; no key anyone kept will bring it back.`,
-    confirmLabel: 'Delete vault',
+    title: m.vaults.deleteTitle(vault.name),
+    body:
+      vault.memberCount > 1
+        ? m.vaults.deleteBodyShared(vault.noteCount, vault.memberCount)
+        : m.vaults.deleteBody(vault.noteCount),
+    confirmLabel: m.vaults.menu.deleteVault,
     ...(vault.locked ? {} : { requireText: vault.name }),
   };
 }
 
 function leaveRequest(vault: Vault): ConfirmRequest {
   return {
-    title: `Leave “${vault.name}”?`,
-    body: 'You lose access to it right away, and your keys for it are deleted here and on the server. Nothing you wrote is removed, and an admin has to invite you again to get back in.',
-    confirmLabel: 'Leave vault',
+    title: m.vaults.leaveTitle(vault.name),
+    body: m.vaults.leaveBody,
+    confirmLabel: m.vaults.menu.leaveVault,
   };
 }
 
 function describe(vault: Vault): string {
   // A locked vault has no readable name either, so its counts would be the only thing on the
   // row that says anything — and what it says is "you cannot open this".
-  if (vault.locked) return 'No key yet';
-
-  const notes = `${vault.noteCount} note${vault.noteCount === 1 ? '' : 's'}`;
+  if (vault.locked) return m.vaults.noKey;
 
   return vault.memberCount === 1
-    ? `${notes} · only you`
-    : `${notes} · ${vault.memberCount} members`;
+    ? m.vaults.solo(vault.noteCount)
+    : m.vaults.withMembers(vault.noteCount, vault.memberCount);
 }

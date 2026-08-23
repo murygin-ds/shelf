@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react';
 
+import { m } from '@/i18n';
+
 import { useDismiss } from './dismiss';
 import styles from './confirm.module.css';
 
@@ -106,7 +108,9 @@ function Confirm({
         {request.requireText !== undefined ? (
           <>
             <label className={styles.label} htmlFor={fieldId}>
-              Type <span className={styles.phrase}>{request.requireText}</span> to confirm
+              {m.uiRich.typeToConfirm(
+                <span className={styles.phrase}>{request.requireText}</span>,
+              )}
             </label>
             <input
               ref={field}
@@ -127,7 +131,7 @@ function Confirm({
             className={styles.cancel}
             onClick={() => onAnswer(false)}
           >
-            Cancel
+            {m.common.cancel}
           </button>
           <button type="submit" className={styles.destroy} disabled={!ready}>
             {request.confirmLabel}

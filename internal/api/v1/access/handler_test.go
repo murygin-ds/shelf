@@ -156,6 +156,17 @@ func sealedKey() map[string]any {
 	}
 }
 
+func reasonOf(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+
+	var body response.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal %s: %v", rec.Body, err)
+	}
+
+	return body.Error.Details[response.ReasonKey]
+}
+
 // TestInviteFailuresAreIndistinguishable is the whole point of the lookup endpoint's
 // design: expired, revoked, already used and never existed have to look identical, or the
 // endpoint becomes a way to test guesses at a code.
@@ -183,6 +194,19 @@ func TestInviteFailuresAreIndistinguishable(t *testing.T) {
 		if body.Error.Message != "not found" {
 			t.Fatalf("%s message = %q, want a message that says nothing", name, body.Error.Message)
 		}
+
+		// The reason is the easier field to read, so it has to say as little as the message.
+		if got := body.Error.Details[response.ReasonKey]; got != response.ReasonNotFound {
+			t.Fatalf("%s reason = %q, want %q", name, got, response.ReasonNotFound)
+		}
+	}
+
+	// And identical to an invite that never existed, down to the bytes.
+	missing := doJSON(t, newTestRouter(t, &stubService{err: domain.ErrNotFound}), http.MethodPost,
+		"/api/v1/invites/lookup", map[string]any{"token_hash": digest()})
+
+	if missing.Body.String() != lookup.Body.String() {
+		t.Fatalf("an invalid code answers %s, a missing one %s", lookup.Body, missing.Body)
 	}
 }
 
@@ -241,6 +265,41 @@ func TestInviteNeedsExactlyOnePath(t *testing.T) {
 			if rec.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnprocessableEntity, rec.Body)
 			}
+
+			if got := reasonOf(t, rec); got != response.ReasonInvitePath {
+				t.Fatalf("reason = %q, want %q", got, response.ReasonInvitePath)
+			}
+		})
+	}
+}
+
+// Redemption has the same rule as issuance, and its own reason: the client asks for a code
+// or for an invite it can already see, never both.
+func TestRedeemNeedsExactlyOnePath(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t, &stubService{invite: &domain.Invite{ID: 1}})
+
+	both := map[string]any{
+		"token_hash": digest(),
+		"invite_id":  4,
+		"key_grants": []any{sealedKey()},
+	}
+
+	neither := map[string]any{"key_grants": []any{sealedKey()}}
+
+	for name, body := range map[string]map[string]any{"both": both, "neither": neither} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := doJSON(t, router, http.MethodPost, "/api/v1/invites/redeem", body)
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+			}
+
+			if got := reasonOf(t, rec); got != response.ReasonRedeemPath {
+				t.Fatalf("reason = %q, want %q", got, response.ReasonRedeemPath)
+			}
 		})
 	}
 }
@@ -294,13 +353,45 @@ func TestErrorMapping(t *testing.T) {
 		err    error
 		status int
 		code   string
+		reason string
 	}{
-		"missing":         {domain.ErrNotFound, http.StatusNotFound, response.CodeNotFound},
-		"not a manager":   {domain.ErrForbidden, http.StatusForbidden, response.CodeForbidden},
-		"owner protected": {domain.ErrOwnerRequired, http.StatusForbidden, response.CodeForbidden},
-		"self target":     {domain.ErrSelfTarget, http.StatusForbidden, response.CodeForbidden},
-		"already member":  {domain.ErrAlreadyMember, http.StatusConflict, response.CodeConflict},
-		"keys required":   {domain.ErrKeysRequired, http.StatusUnprocessableEntity, response.CodeValidation},
+		"missing": {
+			domain.ErrNotFound, http.StatusNotFound, response.CodeNotFound, response.ReasonNotFound,
+		},
+		"not a manager": {
+			domain.ErrForbidden, http.StatusForbidden, response.CodeForbidden, response.ReasonForbidden,
+		},
+		"owner protected": {
+			domain.ErrOwnerRequired, http.StatusForbidden, response.CodeForbidden,
+			response.ReasonOwnerRequired,
+		},
+		"self target": {
+			domain.ErrSelfTarget, http.StatusForbidden, response.CodeForbidden, response.ReasonSelfTarget,
+		},
+		"already member": {
+			domain.ErrAlreadyMember, http.StatusConflict, response.CodeConflict,
+			response.ReasonAlreadyMember,
+		},
+		"keys required": {
+			domain.ErrKeysRequired, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonKeysRequired,
+		},
+		"group too big": {
+			domain.ErrGroupMembers, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupMembers,
+		},
+		"writer outside the group": {
+			domain.ErrGroupKeyless, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupKeyless,
+		},
+		"unsealed scopes": {
+			domain.ErrGroupScopes, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupScopes,
+		},
+		"rotation missing": {
+			domain.ErrGroupRotation, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupRotation,
+		},
 	}
 
 	for name, tc := range cases {
@@ -321,6 +412,10 @@ func TestErrorMapping(t *testing.T) {
 
 			if body.Error.Code != tc.code {
 				t.Fatalf("code = %q, want %q", body.Error.Code, tc.code)
+			}
+
+			if got := body.Error.Details[response.ReasonKey]; got != tc.reason {
+				t.Fatalf("reason = %q, want %q", got, tc.reason)
 			}
 		})
 	}
@@ -414,6 +509,10 @@ func TestGrantsQueryValidation(t *testing.T) {
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusBadRequest, rec.Body)
 			}
+
+			if got := reasonOf(t, rec); got != response.ReasonQueryInvalid {
+				t.Fatalf("reason = %q, want %q", got, response.ReasonQueryInvalid)
+			}
 		})
 	}
 }
@@ -430,5 +529,9 @@ func TestProtectedRoutesNeedACaller(t *testing.T) {
 	rec := doJSON(t, router, http.MethodGet, "/api/v1/vaults/1/members", nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body)
+	}
+
+	if got := reasonOf(t, rec); got != response.ReasonUnauthenticated {
+		t.Fatalf("reason = %q, want %q", got, response.ReasonUnauthenticated)
 	}
 }

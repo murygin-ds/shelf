@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { recoveryKitFilename, renderRecoveryKit } from '@/crypto/recovery';
+import { m } from '@/i18n';
 import { useSession } from '@/store/session';
 import { Icon } from '@/ui/Icon';
 
@@ -42,33 +43,29 @@ export function RecoveryKitPanel({ code, onDone }: { code: string; onDone: () =>
 
   return (
     <>
-      <h1 className={styles.title}>Save your recovery kit</h1>
-      <p className={styles.lede}>
-        This code is shown once. It is the only way back into your notes if you forget your
-        passphrase.
-      </p>
+      <h1 className={styles.title}>{m.auth.kit.title}</h1>
+      <p className={styles.lede}>{m.auth.kit.lede}</p>
 
       <div className={styles.code}>{code}</div>
 
       <div className={styles.notice} style={{ marginTop: 16 }}>
         <Icon name="key" size={14} className={styles.noticeIcon} />
         <div className={styles.noticeBody}>
-          <span className={styles.noticeLabel}>ZERO-KNOWLEDGE</span>
-          The server holds your master key wrapped with a key derived from this code, and cannot
-          unwrap it. Neither can your administrator.
+          <span className={styles.noticeLabel}>{m.auth.zeroKnowledge}</span>
+          {m.auth.kit.notice}
         </div>
       </div>
 
       <div className={styles.kitActions}>
         <button type="button" className={styles.secondary} onClick={download}>
-          {downloaded ? 'Download again' : 'Download kit'}
+          {downloaded ? m.auth.kit.downloadAgain : m.auth.kit.download}
         </button>
         <button
           type="button"
           className={styles.secondary}
           onClick={() => void navigator.clipboard?.writeText(code)}
         >
-          Copy code
+          {m.auth.kit.copy}
         </button>
       </div>
 
@@ -84,7 +81,7 @@ export function RecoveryKitPanel({ code, onDone }: { code: string; onDone: () =>
         <span className={`${styles.checkbox} ${saved ? styles.checkboxOn : ''}`}>
           {saved ? <Icon name="check" size={9} /> : null}
         </span>
-        I stored this code somewhere safe and offline.
+        {m.auth.kit.confirm}
       </button>
 
       <button
@@ -94,7 +91,7 @@ export function RecoveryKitPanel({ code, onDone }: { code: string; onDone: () =>
         disabled={!saved}
         onClick={onDone}
       >
-        Open Shelf
+        {m.auth.kit.open}
       </button>
     </>
   );

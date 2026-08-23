@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+import { m } from '@/i18n';
 import { useSession } from '@/store/session';
 
 import { AuthLayout, ErrorNote, Field } from './AuthLayout';
@@ -44,26 +45,28 @@ export function SignIn() {
       footer={
         locked ? (
           <span>
-            Not you?{' '}
-            <button type="button" className={styles.footerAction} onClick={() => void signOut()}>
-              Sign out
-            </button>
+            {m.authRich.notYou(
+              <button type="button" className={styles.footerAction} onClick={() => void signOut()}>
+                {m.auth.signIn.signOut}
+              </button>,
+            )}
           </span>
         ) : (
           <span>
-            No account?{' '}
-            <Link className={styles.footerAction} to="/signup" onClick={clearError}>
-              Create one
-            </Link>
+            {m.authRich.noAccount(
+              <Link className={styles.footerAction} to="/signup" onClick={clearError}>
+                {m.auth.signIn.createOne}
+              </Link>,
+            )}
           </span>
         )
       }
     >
-      <h1 className={styles.title}>Unlock your vaults</h1>
-      <p className={styles.lede}>Your passphrase decrypts locally. The server never receives it.</p>
+      <h1 className={styles.title}>{m.auth.signIn.title}</h1>
+      <p className={styles.lede}>{m.auth.signIn.lede}</p>
 
       <form className={styles.form} onSubmit={submit}>
-        <Field label="EMAIL">
+        <Field label={m.auth.fields.email}>
           <input
             className={styles.input}
             type="email"
@@ -76,10 +79,10 @@ export function SignIn() {
         </Field>
 
         <Field
-          label="PASSPHRASE"
+          label={m.auth.fields.passphrase}
           action={
             <Link className={styles.link} to="/recover" onClick={clearError}>
-              Lost it?
+              {m.auth.signIn.lost}
             </Link>
           }
         >
@@ -98,7 +101,7 @@ export function SignIn() {
         <ErrorNote message={error} />
 
         <button className={styles.primary} type="submit" disabled={busy || passphrase.length === 0}>
-          {busy ? 'Deriving keys…' : 'Unlock'}
+          {busy ? m.auth.signIn.busy : m.auth.signIn.submit}
         </button>
       </form>
     </AuthLayout>

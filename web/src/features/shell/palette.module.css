@@ -56,7 +56,8 @@
 .section {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
   padding: 8px 10px 6px;
 }
@@ -82,6 +83,8 @@
 }
 
 .rowTitle {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13.5px;
   color: var(--text);
   white-space: nowrap;
@@ -89,12 +92,19 @@
   text-overflow: ellipsis;
 }
 
+/* Capped and clipped: a deep Russian path is longer than the title beside it, and without
+   a ceiling it took the whole row and pushed the title out of the panel. */
 .rowPath {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-label);
   margin-left: auto;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .none {
@@ -111,7 +121,10 @@
   background: var(--surface-inset);
   font-family: var(--font-mono);
   font-size: 10px;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
+  white-space: nowrap;
 }
 
 .footerSpacer {

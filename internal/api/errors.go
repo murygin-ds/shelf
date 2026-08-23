@@ -10,11 +10,13 @@ import (
 )
 
 func notFound(c *gin.Context) {
-	response.Fail(c, http.StatusNotFound, response.CodeNotFound, "route not found")
+	response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+		response.ReasonRouteNotFound, "route not found")
 }
 
 func methodNotAllowed(c *gin.Context) {
-	response.Fail(c, http.StatusMethodNotAllowed, response.CodeBadRequest, "method not allowed")
+	response.FailReason(c, http.StatusMethodNotAllowed, response.CodeBadRequest,
+		response.ReasonMethodNotAllowed, "method not allowed")
 }
 
 // spaFallback sends unmatched page requests to the client router and keeps everything

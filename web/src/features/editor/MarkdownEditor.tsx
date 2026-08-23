@@ -24,6 +24,8 @@ import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import type { Awareness } from 'y-protocols/awareness';
 import type { Text as YText, UndoManager as YUndoManager } from 'yjs';
 
+import { m } from '@/i18n';
+
 import { tagSource, wikilinkSource } from './complete';
 import { vaultContext, type VaultContext } from './context';
 import { formatKeymap, wrapOnType } from './format';
@@ -203,7 +205,7 @@ export function MarkdownEditor({
         tableMenu.of((event, ref) => latest.current.onTableMenu(event, ref)),
         editorTheme,
         EditorView.lineWrapping,
-        EditorView.contentAttributes.of({ spellcheck: 'false', 'aria-label': 'Note body' }),
+        EditorView.contentAttributes.of({ spellcheck: 'false', 'aria-label': m.editor.body }),
         editable.of(gate(latest.current.readOnly, latest.current.placeholder)),
         vault.of(vaultContext.of(latest.current.context)),
         EditorView.domEventHandlers({

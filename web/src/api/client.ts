@@ -1,6 +1,6 @@
 import * as connectivity from '@/sync/connectivity';
 
-import { type ErrorEnvelope, ErrorCode, type Tokens } from './types';
+import { type ErrorEnvelope, ErrorCode, REASON_KEY, type Tokens } from './types';
 
 const BASE = '/api/v1';
 
@@ -15,6 +15,11 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
+  }
+
+  /** The machine-readable cause the server named under the code, when it named one. */
+  get reason(): string | undefined {
+    return this.details?.[REASON_KEY];
   }
 
   is(code: string): boolean {

@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 
 import { ApiError, OfflineError } from '@/api/client';
-import { ErrorCode } from '@/api/types';
 import * as collab from '@/api/collab';
+import { describe } from '@/api/errors';
+import { ErrorCode } from '@/api/types';
 import * as graphApi from '@/api/graph';
 import * as mcpApi from '@/api/mcp';
 import * as rekeyApi from '@/api/rekey';
@@ -11,6 +12,7 @@ import * as ws from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
 import type { ScopeKeyring } from '@/crypto/keyring';
 import * as cache from '@/db/cache';
+import { m } from '@/i18n';
 import type { ImportPlan } from '@/lib/archive';
 import { claudeOsPlan, decisionsSeed, projectSeed, skillSeed } from '@/lib/claudeos';
 import { MAX_TAGS, normalizeTag, type IndexedNote } from '@/lib/search';
@@ -260,14 +262,14 @@ async function claudeArea(
 ): Promise<ws.FolderNode> {
   const { vaultId, keyring, tree } = get();
 
-  if (vaultId === null || !keyring) throw new Error('open the vault first');
-  if (isReadOnly()) throw new Error('Read-only mode is on.');
+  if (vaultId === null || !keyring) throw new Error(m.store.openVaultFirst);
+  if (isReadOnly()) throw new Error(m.store.readOnly);
 
   const trimmed = name.trim();
-  if (!trimmed) throw new Error('give it a name');
+  if (!trimmed) throw new Error(m.store.nameRequired);
 
   if (tree.folders.some((folder) => folder.parentId === null && folder.name === trimmed)) {
-    throw new Error(`there is already something called ${trimmed}`);
+    throw new Error(m.store.nameTaken(trimmed));
   }
 
   const existing = tree.folders.find((folder) => folder.parentId === null && folder.name === area);
@@ -276,7 +278,7 @@ async function claudeArea(
     existing ?? (await ws.createFolder(vaultId, null, area, scopeOf(get(), null), keyring));
 
   if (tree.folders.some((folder) => folder.parentId === parent.id && folder.name === trimmed)) {
-    throw new Error(`${area} already has a ${trimmed}`);
+    throw new Error(m.store.areaNameTaken(area, trimmed));
   }
 
   return ws.createFolder(vaultId, parent.id, trimmed, ws.scopeOfNode(parent), keyring);
@@ -292,7 +294,7 @@ async function claudeDoc(
 ): Promise<ws.NoteNode> {
   const { vaultId, keyring } = get();
 
-  if (vaultId === null || !keyring) throw new Error('open the vault first');
+  if (vaultId === null || !keyring) throw new Error(m.store.openVaultFirst);
 
   const note = await ws.createNote(vaultId, folder.id, name, ws.scopeOfNode(folder), keyring);
 
@@ -705,9 +707,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // The tree comes from the cache, so a note can be on screen with no network and no
       // copy of its body here. That is a specific thing to say rather than a blank editor.
       if (cause instanceof OfflineError) {
-        set({
-          error: `“${note.name}” is not on this device yet, and there is no connection to fetch it.`,
-        });
+        set({ error: m.store.bodyNotHere(note.name) });
         return;
       }
 
@@ -803,7 +803,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }
 
         if (notice.kind === 'unverified') {
-          set({ error: 'An edit arrived that could not be verified and was not applied.' });
+          set({ error: m.store.unverifiedEdit });
         }
       },
     });
@@ -1064,10 +1064,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const { vaultId, vaults, tree, keyring } = get();
     const vault = vaults.find((v) => v.id === vaultId);
 
-    // These two throw rather than returning quietly: a modal is up, it is holding the
-    // progress, and it has somewhere to put the reason.
-    if (isReadOnly()) throw new Error('Read-only mode is on.');
-    if (vaultId === null || !vault || !keyring) throw new Error('open a vault first');
+    // These two throw rather than returning quietly, so the modal holding the progress stops
+    // rather than sits at zero. The message stays English: every caller here reports through
+    // `describe`, which never shows an Error's own text, so this is a diagnostic and not a
+    // sentence for the reader — unlike the Claude ones above, whose view does render it.
+    if (isReadOnly()) throw new Error('read-only mode is on');
+    if (vaultId === null || !vault || !keyring) throw new Error('no open vault');
 
     const plan = await rekeyApi.startRekey(
       vaultId,
@@ -1107,13 +1109,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const { vaultId, vaults, tree, keyring } = get();
     const vault = vaults.find((v) => v.id === vaultId);
 
-    if (!vault || !keyring) throw new Error('open a vault first');
+    if (!vault || !keyring) throw new Error('no open vault');
 
     return transfer.exportVault(vault, tree, keyring, onProgress);
   },
 
   importVault: async (plan, name, identity, onProgress) => {
-    if (isReadOnly()) throw new Error('Read-only mode is on.');
+    if (isReadOnly()) throw new Error('read-only mode is on');
 
     const report = await transfer.importVault(plan, name, identity, onProgress);
 
@@ -1180,7 +1182,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const copy = await ws.createNote(
         vaultId,
         open.note.folderId,
-        `${open.note.name} (my version)`,
+        m.store.copyName.mine(open.note.name),
         scopeOf(get(), open.note.folderId),
         keyring,
       );
@@ -1510,7 +1512,7 @@ async function rescue(get: () => WorkspaceState, set: Setter, write: cache.Queue
   // Without the note the additional data cannot be rebuilt, so the ciphertext cannot be
   // opened. Say so rather than pretend the write landed.
   if (!note) {
-    set({ error: 'A note written offline could not be restored: it no longer exists.' });
+    set({ error: m.store.offlineGone });
     return;
   }
 
@@ -1529,21 +1531,21 @@ async function rescue(get: () => WorkspaceState, set: Setter, write: cache.Queue
     );
 
     if (body === null) {
-      set({ error: 'A note written offline could not be restored: its key is gone.' });
+      set({ error: m.store.offlineKeyless });
       return;
     }
 
     const copy = await ws.createNote(
       vaultId,
       note.folderId,
-      `${note.name} (offline copy)`,
+      m.store.copyName.offline(note.name),
       scopeOf(get(), note.folderId),
       keyring,
     );
 
     await ws.writeNote(copy, body, copy.contentSeq, keyring);
 
-    set({ error: `“${note.name}” changed while you were offline; your version was kept as a copy.` });
+    set({ error: m.store.offlineKept(note.name) });
   } catch (cause) {
     report(set, cause);
   }
@@ -1625,30 +1627,11 @@ function report(set: Setter, cause: unknown): void {
  */
 function reportChange(set: Setter, cause: unknown): void {
   if (cause instanceof OfflineError) {
-    set({
-      error: 'No connection. That change was not saved — try it again once you are back online.',
-    });
+    set({ error: m.store.changeNotSaved });
     return;
   }
 
   report(set, cause);
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) {
-    switch (cause.code) {
-      case ErrorCode.Forbidden:
-        return 'You do not have permission to do that.';
-      case ErrorCode.NotFound:
-        return 'That item is gone.';
-      case ErrorCode.Conflict:
-        return 'Someone else changed this first.';
-      default:
-        return cause.message;
-    }
-  }
-
-  return cause instanceof Error ? cause.message : 'Something went wrong.';
 }
 
 /**

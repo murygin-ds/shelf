@@ -99,5 +99,5 @@ func FailValidation(c *gin.Context, err error) {
 
 // Internal writes a 500 without details: they stay in the logs.
 func Internal(c *gin.Context) {
-	Fail(c, http.StatusInternalServerError, CodeInternal, "internal server error")
+	FailReason(c, http.StatusInternalServerError, CodeInternal, ReasonInternal, "internal server error")
 }

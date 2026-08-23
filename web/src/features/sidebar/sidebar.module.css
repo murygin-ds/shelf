@@ -34,6 +34,10 @@
 
 .searchLabel {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   text-align: left;
 }
 
@@ -76,8 +80,14 @@
   color: var(--text);
 }
 
+/* The row is 30px and does not grow: a label allowed to wrap would be drawn outside it
+   rather than clipped, which is the one failure nobody notices. */
 .navLabel {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .navCount {
@@ -102,6 +112,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Worn only by the headings that are words of ours. The same element also carries the
+   vault's own name, and a name is not something to be recased. */
+.sectionLabel {
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
 }
 
 .sectionActions {
@@ -245,6 +262,7 @@
 .badge {
   font-family: var(--font-mono);
   font-size: 9.5px;
+  text-transform: var(--label-transform);
   color: var(--text-label);
   flex: none;
 }

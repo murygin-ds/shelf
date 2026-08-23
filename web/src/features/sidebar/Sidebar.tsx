@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 
 import type { FolderNode, NoteNode } from '@/api/workspace';
+import { m } from '@/i18n';
 import { allTags } from '@/lib/search';
 import { usePrefs } from '@/store/prefs';
 import { movable, type TreeRow, treeRows, useWorkspace } from '@/store/workspace';
@@ -73,17 +74,19 @@ export function Sidebar({
     });
 
   const askRename = (node: FolderNode | NoteNode, kind: 'folder' | 'file') =>
-    void ask('Name', node.name).then((name) => {
+    void ask(m.sidebar.namePrompt, node.name).then((name) => {
       if (name && name !== node.name) void rename(node, kind, name);
     });
 
+  // The second argument is the name the note or the folder ends up with when the reader
+  // presses Enter, not a placeholder: it travels into the tree and into the export.
   const askNote = (folderId: number | null) =>
-    void ask('Note title', 'Untitled').then((title) => {
+    void ask(m.sidebar.noteTitlePrompt, m.sidebar.noteTitleInitial).then((title) => {
       if (title) void addNote(folderId, title);
     });
 
   const askFolder = (parentId: number | null) =>
-    void ask('Folder name', 'New folder').then((name) => {
+    void ask(m.sidebar.folderNamePrompt, m.sidebar.folderNameInitial).then((name) => {
       if (name) void addFolder(parentId, name);
     });
 
@@ -188,7 +191,8 @@ export function Sidebar({
             ...(row.hasChildren
               ? [
                   {
-                    label: row.expanded ? 'Collapse' : 'Expand',
+                    id: row.expanded ? 'collapse' : 'expand',
+                    label: row.expanded ? m.sidebar.collapse : m.sidebar.expand,
                     icon: row.expanded ? ('down' as const) : ('chev' as const),
                     onSelect: () => toggleFolder(node.id),
                   },
@@ -197,12 +201,34 @@ export function Sidebar({
             ...(readOnly
               ? []
               : ([
-                  { label: 'New folder here', icon: 'folder', onSelect: () => askFolder(node.id) },
-                  { label: 'New note here', icon: 'plus', onSelect: () => askNote(node.id) },
+                  {
+                    id: 'new-folder',
+                    label: m.sidebar.newFolderHere,
+                    icon: 'folder',
+                    onSelect: () => askFolder(node.id),
+                  },
+                  {
+                    id: 'new-note',
+                    label: m.sidebar.newNoteHere,
+                    icon: 'plus',
+                    onSelect: () => askNote(node.id),
+                  },
                 ] as MenuItem[])),
-            { label: 'Permissions', icon: 'user', onSelect: () => onOpenPermissions(node.id) },
+            {
+              id: 'permissions',
+              label: m.sidebar.permissions,
+              icon: 'user',
+              onSelect: () => onOpenPermissions(node.id),
+            },
           ]
-        : [{ label: 'Open', icon: 'doc', onSelect: () => void openNote(node as NoteNode) }];
+        : [
+            {
+              id: 'open',
+              label: m.common.open,
+              icon: 'doc',
+              onSelect: () => void openNote(node as NoteNode),
+            },
+          ];
 
     // In read-only the menu is what is left when every verb that writes is taken out of it,
     // which for a note is one entry. Showing them greyed would only invite the click.
@@ -210,10 +236,16 @@ export function Sidebar({
 
     return [
       ...head,
-      { label: 'Rename', icon: 'tag', onSelect: () => askRename(node, kind) },
-      { label: 'Change icon', icon: 'star', onSelect: () => askIcon(anchor, node, kind) },
+      { id: 'rename', label: m.common.rename, icon: 'tag', onSelect: () => askRename(node, kind) },
       {
-        label: 'Move to trash',
+        id: 'change-icon',
+        label: m.sidebar.changeIcon,
+        icon: 'star',
+        onSelect: () => askIcon(anchor, node, kind),
+      },
+      {
+        id: 'trash',
+        label: m.sidebar.moveToTrash,
         icon: 'trash',
         danger: true,
         separated: true,
@@ -229,7 +261,7 @@ export function Sidebar({
       <div className={styles.search}>
         <button type="button" className={styles.searchButton} onClick={onOpenPalette}>
           <Icon name="search" />
-          <span className={styles.searchLabel}>Quick find</span>
+          <span className={styles.searchLabel}>{m.sidebar.quickFind}</span>
           <span className={styles.shortcut}>⌘K</span>
         </button>
       </div>
@@ -241,7 +273,7 @@ export function Sidebar({
           onClick={() => setView('editor')}
         >
           <Icon name="doc" style={{ flex: 'none', opacity: 0.8 }} />
-          <span className={styles.navLabel}>Notes</span>
+          <span className={styles.navLabel}>{m.sidebar.notes}</span>
           <span className={styles.navCount}>{tree.notes.length}</span>
         </button>
 
@@ -251,7 +283,7 @@ export function Sidebar({
           onClick={() => setView('search')}
         >
           <Icon name="search" style={{ flex: 'none', opacity: 0.8 }} />
-          <span className={styles.navLabel}>Search</span>
+          <span className={styles.navLabel}>{m.sidebar.search}</span>
           <span className={styles.navCount}>{index.length}</span>
         </button>
 
@@ -274,7 +306,7 @@ export function Sidebar({
           onClick={() => setView('graph')}
         >
           <Icon name="graph" style={{ flex: 'none', opacity: 0.8 }} />
-          <span className={styles.navLabel}>Graph</span>
+          <span className={styles.navLabel}>{m.sidebar.graph}</span>
         </button>
 
         <button
@@ -283,7 +315,7 @@ export function Sidebar({
           onClick={() => setView('trash')}
         >
           <Icon name="trash" style={{ flex: 'none', opacity: 0.8 }} />
-          <span className={styles.navLabel}>Trash</span>
+          <span className={styles.navLabel}>{m.sidebar.trash}</span>
         </button>
 
         {/* The drop zone is this block rather than the whole scroller: the nav above and the
@@ -291,13 +323,17 @@ export function Sidebar({
             tree leaves no bare space under the last row, and the root has to stay reachable. */}
         <div ref={treeRef} className={`${styles.tree} ${dropOn === null ? styles.treeTarget : ''}`}>
           <div className={styles.sectionHead}>
-            <span className={styles.sectionTitle}>{vault?.name ?? 'VAULT'}</span>
+            {/* The heading is the vault's own name almost always, and a name is not a label:
+                only the stand-in takes the label's case. */}
+            <span className={`${styles.sectionTitle} ${vault ? '' : styles.sectionLabel}`}>
+              {vault?.name ?? m.sidebar.vault}
+            </span>
             {readOnly ? null : (
               <span className={styles.sectionActions}>
                 <button
                   type="button"
                   className={styles.sectionButton}
-                  {...tip('New folder')}
+                  {...tip(m.sidebar.newFolder)}
                   onClick={() => askFolder(null)}
                 >
                   <Icon name="folder" size={13} />
@@ -305,7 +341,7 @@ export function Sidebar({
                 <button
                   type="button"
                   className={styles.sectionButton}
-                  {...tip('New note')}
+                  {...tip(m.sidebar.newNote)}
                   onClick={() => askNote(null)}
                 >
                   <Icon name="plus" size={13} />
@@ -316,9 +352,7 @@ export function Sidebar({
 
           {rows.length === 0 ? (
             <p className={styles.emptyHint}>
-              {readOnly
-                ? 'Nothing here yet, and read-only mode is on — turn it off in the account menu to add anything.'
-                : 'Nothing here yet. Add a folder or a note — both are encrypted before they leave this device.'}
+              {readOnly ? m.sidebar.emptyReadOnly : m.sidebar.empty}
             </p>
           ) : null}
 
@@ -377,7 +411,7 @@ export function Sidebar({
 
                 <button
                   type="button"
-                  {...(readOnly ? {} : tip('Change icon'))}
+                  {...(readOnly ? {} : tip(m.sidebar.changeIcon))}
                   className={[
                     styles.rowIcon,
                     isFolder ? styles.rowIconFolder : '',
@@ -402,29 +436,35 @@ export function Sidebar({
                 {/* A node that owns its key and shares it with nobody is the solo key the
                     design marks; it is the only badge that is true without a members list. */}
                 {node.ownScope && node.grantCount <= 1 ? (
-                  <span className={styles.badge}>SOLO KEY</span>
+                  <span className={styles.badge}>{m.sidebar.soloKey}</span>
                 ) : null}
 
                 {node.locked ? <Icon name="lock" size={11} className={styles.badge} /> : null}
 
                 {!node.locked && !readOnly ? (
                   <span className={styles.rowActions} onClick={(event) => event.stopPropagation()}>
-                    {/* Both verbs behind one button: the sidebar is 250px, and a row four
+                    {/* Both verbs behind one button: the sidebar is 264px, and a row four
                         levels down has no width left for a strip of five. The rest of what a
                         folder can do lives in the right-click menu. */}
                     {isFolder ? (
                       <button
                         type="button"
                         className={styles.rowAction}
-                        {...tip('New here')}
+                        {...tip(m.sidebar.newHere)}
                         onClick={(event) =>
                           openMenu(event, [
                             {
-                              label: 'New folder',
+                              id: 'new-folder',
+                              label: m.sidebar.newFolder,
                               icon: 'folder',
                               onSelect: () => askFolder(node.id),
                             },
-                            { label: 'New note', icon: 'plus', onSelect: () => askNote(node.id) },
+                            {
+                              id: 'new-note',
+                              label: m.sidebar.newNote,
+                              icon: 'plus',
+                              onSelect: () => askNote(node.id),
+                            },
                           ])
                         }
                       >
@@ -434,7 +474,7 @@ export function Sidebar({
                     <button
                       type="button"
                       className={styles.rowAction}
-                      {...tip('Rename')}
+                      {...tip(m.common.rename)}
                       onClick={() => askRename(node, kind)}
                     >
                       <Icon name="tag" size={12} />
@@ -442,7 +482,7 @@ export function Sidebar({
                     <button
                       type="button"
                       className={styles.rowAction}
-                      {...tip('Move to trash')}
+                      {...tip(m.sidebar.moveToTrash)}
                       onClick={() => void trash(node as FolderNode | NoteNode, kind)}
                     >
                       <Icon name="trash" size={12} />
@@ -457,7 +497,9 @@ export function Sidebar({
         {tags.length ? (
           <>
             <div className={styles.sectionHead}>
-              <span className={styles.sectionTitle}>TAGS</span>
+              <span className={`${styles.sectionTitle} ${styles.sectionLabel}`}>
+                {m.sidebar.tags}
+              </span>
             </div>
             <div className={styles.facets}>
               {tags.map((tag) => (

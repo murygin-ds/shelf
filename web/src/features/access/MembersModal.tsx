@@ -1,11 +1,12 @@
 import { type FormEvent, useEffect, useState } from 'react';
 
-import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import { describe } from '@/api/errors';
 import * as groupsApi from '@/api/groups';
 import type { RekeyProgress } from '@/api/rekey';
 import type { Role } from '@/api/workspace';
 import type { Identity } from '@/crypto/identity';
+import { format, m, roleLabel } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import * as mcp from '@/api/mcp';
@@ -141,11 +142,9 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
       <div className={`${styles.modal} ${styles.wide}`}>
         <div className={styles.head}>
           <div>
-            <div className={styles.title}>Members &amp; access</div>
+            <div className={styles.title}>{m.access.members.title}</div>
             <div className={styles.subtitle}>
-              {members.length} member{members.length === 1 ? '' : 's'}
-              {invites.length ? ` · ${invites.length} pending invite` : ''}
-              {invites.length > 1 ? 's' : ''} · seats unlimited on self-hosted
+              {m.access.members.subtitle(members.length, invites.length)}
             </div>
           </div>
           <button type="button" className={styles.close} onClick={onClose}>
@@ -155,16 +154,13 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
         <div className={styles.body}>
           {canManage && readOnly ? (
-            <p className={styles.empty}>
-              Read-only mode is on: this is who holds a key, and nothing here can be handed
-              out or taken back from this device.
-            </p>
+            <p className={styles.empty}>{m.access.members.readOnly}</p>
           ) : null}
 
           {canChange ? (
             <form className={styles.row} onSubmit={invite}>
               <span className={styles.input} style={{ display: 'flex', alignItems: 'center', color: 'var(--text-quiet)' }}>
-                A code invite — hand the code over yourself
+                {m.access.members.inviteHint}
               </span>
               <select
                 className={styles.select}
@@ -173,12 +169,12 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
               >
                 {ROLES.map((name) => (
                   <option key={name} value={name}>
-                    {name}
+                    {roleLabel(name)}
                   </option>
                 ))}
               </select>
               <button className={styles.primary} type="submit" disabled={busy}>
-                {busy ? 'Sealing keys…' : 'Create invite'}
+                {busy ? m.access.members.sealing : m.access.members.createInvite}
               </button>
             </form>
           ) : null}
@@ -188,10 +184,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
               <div className={styles.code}>{code}</div>
               <div className={styles.note}>
                 <Icon name="key" size={14} style={{ flex: 'none', marginTop: 2, color: 'var(--warn)' }} />
-                <span>
-                  Shown once — the server stores only its digest. Anyone holding this code can
-                  join, so send it over a channel you trust rather than the one carrying the link.
-                </span>
+                <span>{m.access.members.codeNote}</span>
               </div>
             </>
           ) : null}
@@ -202,11 +195,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
             <div className={`${styles.note} ${styles.noteWarn}`}>
               <Icon name="warn" size={14} style={{ flex: 'none', marginTop: 2 }} />
               <span className={styles.noteBody}>
-                <span>
-                  Access was revoked immediately, which protects everything written from now
-                  on. It cannot un-read what was already read: {pending.length} key
-                  {pending.length === 1 ? '' : 's'} still need rotating for that.
-                </span>
+                <span>{m.access.members.revoked(pending.length)}</span>
 
                 {readOnly ? null : (
                   <button
@@ -215,13 +204,13 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                     disabled={busy || !identity}
                     onClick={() => void rotate()}
                   >
-                    Rotate the vault key
+                    {m.access.rotateVaultKey}
                   </button>
                 )}
 
                 {progress ? (
                   <span className={styles.progress}>
-                    RE-ENCRYPTING {progress.done}/{progress.total || '…'}
+                    {m.access.reencrypting(progress.done, progress.total)}
                   </span>
                 ) : null}
               </span>
@@ -230,13 +219,13 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
           <Groups members={members} />
 
-          <div className={styles.section}>MEMBERS</div>
+          <div className={styles.section}>{m.access.members.section}</div>
 
           <div className={styles.gridHead}>
-            <span>MEMBER</span>
-            <span>ROLE</span>
-            <span>FOLDERS</span>
-            <span>KEY</span>
+            <span>{m.access.members.columns.member}</span>
+            <span>{m.access.members.columns.role}</span>
+            <span>{m.access.members.columns.folders}</span>
+            <span>{m.access.members.columns.key}</span>
             <span />
           </div>
 
@@ -248,7 +237,9 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                   <span className={styles.personName}>
                     {member.display_name}
                     {member.user_id === user?.id ? (
-                      <span className={styles.fingerprint}>YOU</span>
+                      <span className={`${styles.fingerprint} ${styles.caps}`}>
+                        {m.access.members.you}
+                      </span>
                     ) : null}
                   </span>
                   <span className={styles.personMeta} style={{ display: 'block' }}>
@@ -265,21 +256,21 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                 >
                   {ROLES.map((name) => (
                     <option key={name} value={name}>
-                      {name}
+                      {roleLabel(name)}
                     </option>
                   ))}
                 </select>
               ) : (
-                <span className={styles.cell}>{member.role}</span>
+                <span className={styles.cell}>{roleLabel(member.role)}</span>
               )}
 
               <span className={styles.cell}>
-                {member.folder_count > 0 ? member.folder_count : 'all'}
+                {member.folder_count > 0 ? member.folder_count : m.access.members.allFolders}
               </span>
 
               {/* The server hands out public keys, so it could hand out its own. Comparing
                   this out of band is the only thing that rules that out. */}
-              <span className={styles.fingerprint} data-tip="Key fingerprint — compare out of band">
+              <span className={styles.fingerprint} {...tip(m.access.members.fingerprintTip)}>
                 {member.fingerprint}
               </span>
 
@@ -287,7 +278,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   className={styles.rowAction}
-                  {...tip('Remove from vault')}
+                  {...tip(m.access.members.removeTip)}
                   onClick={() => void remove(member.user_id)}
                 >
                   <Icon name="trash" size={14} />
@@ -300,7 +291,7 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
           {invites.length ? (
             <>
-              <div className={styles.section}>PENDING INVITES</div>
+              <div className={styles.section}>{m.access.members.invites}</div>
               {invites.map((item) => (
                 <div key={item.id} className={styles.person}>
                   <span className={styles.avatar} style={{ background: '#2a2620', color: '#c0a47a' }}>
@@ -308,18 +299,20 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
                   </span>
                   <span className={styles.personMain}>
                     <span className={styles.personName}>
-                      {item.email_hint || 'Anyone with the code'}
-                      <span className={styles.pill}>PENDING</span>
+                      {item.email_hint || m.access.members.anyoneWithCode}
+                      <span className={`${styles.pill} ${styles.caps}`}>
+                        {m.access.members.pending}
+                      </span>
                     </span>
                     <span className={styles.personMeta} style={{ display: 'block' }}>
-                      {item.role} · expires {new Date(item.expires_at).toLocaleDateString()}
+                      {m.access.members.inviteMeta(roleLabel(item.role), format.date(item.expires_at))}
                     </span>
                   </span>
                   {canChange ? (
                     <button
                       type="button"
                       className={styles.rowAction}
-                      {...tip('Revoke')}
+                      {...tip(m.access.members.revokeTip)}
                       onClick={async () => {
                         if (vaultId === null) return;
                         await collab.revokeInvite(vaultId, item.id).catch(() => undefined);
@@ -337,13 +330,11 @@ export function MembersModal({ onClose }: { onClose: () => void }) {
 
         <div className={styles.footer}>
           <span className={styles.footerNote}>
-            {connected
-              ? 'KEYS ARE SEALED PER MEMBER · THIS SERVER HOLDS THE CONNECTOR’S'
-              : 'KEYS ARE SEALED PER MEMBER · THE SERVER HOLDS NONE OF THEM'}
+            {connected ? m.access.members.footerConnected : m.access.members.footerAlone}
           </span>
           <span className={styles.footerSpacer} />
           <button type="button" className={styles.done} onClick={onClose}>
-            Done
+            {m.common.done}
           </button>
         </div>
       </div>
@@ -357,12 +348,6 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message;
-
-  return cause instanceof Error ? cause.message : 'Something went wrong.';
 }
 
 /**
@@ -402,7 +387,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
   const create = async () => {
     if (vaultId === null || !keyring || !scope || readOnly) return;
 
-    const name = await ask('Group name', 'Design');
+    const name = await ask(m.access.groups.namePrompt, m.access.groups.nameSample);
     if (!name) return;
 
     setBusy(true);
@@ -466,15 +451,12 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
     <>
       {dialog}
 
-      <div className={styles.section}>GROUPS · {groups.length}</div>
+      <div className={styles.section}>{m.access.groups.section(groups.length)}</div>
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
       {groups.length === 0 ? (
-        <p className={styles.empty}>
-          A group holds a permission on behalf of several people. Its key is sealed to each
-          member, so adding somebody later costs one seal rather than one per folder.
-        </p>
+        <p className={styles.empty}>{m.access.groups.empty}</p>
       ) : (
         groups.map((group) => (
           <div key={group.id} className={styles.person}>
@@ -482,8 +464,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
             <span className={styles.personMain}>
               <span className={styles.personName}>{group.name}</span>
               <span className={styles.personMeta} style={{ display: 'block' }}>
-                {group.members.length} member{group.members.length === 1 ? '' : 's'} · key v
-                {group.keyVersion}
+                {m.access.groups.meta(group.members.length, group.keyVersion)}
               </span>
             </span>
 
@@ -498,7 +479,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
                     if (member) void toggle(group, member);
                   }}
                 >
-                  <option value="">Add or remove…</option>
+                  <option value="">{m.access.groups.pick}</option>
                   {members.map((member) => (
                     <option key={member.user_id} value={member.user_id}>
                       {group.members.some((e) => e.user_id === member.user_id) ? '− ' : '+ '}
@@ -510,7 +491,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
                 <button
                   type="button"
                   className={styles.rowAction}
-                  {...tip('Disband')}
+                  {...tip(m.access.groups.disbandTip)}
                   disabled={busy}
                   onClick={() => void disband(group)}
                 >
@@ -529,7 +510,7 @@ function Groups({ members }: { members: collab.MemberDto[] }) {
           disabled={busy}
           onClick={() => void create()}
         >
-          New group
+          {m.access.groups.create}
         </button>
       )}
     </>

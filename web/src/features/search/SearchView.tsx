@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 
+import { format, m } from '@/i18n';
 import { allTags, search } from '@/lib/search';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -27,13 +28,13 @@ export function SearchView() {
             className={styles.input}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search this vault"
+            placeholder={m.views.search.placeholder}
             autoFocus
             spellCheck={false}
           />
           <span className={styles.caret} />
           <span className={styles.count}>
-            {query ? `${hits.length} RESULT${hits.length === 1 ? '' : 'S'}` : `${index.length} INDEXED`}
+            {query ? m.views.search.results(hits.length) : m.views.search.indexed(index.length)}
           </span>
         </div>
 
@@ -44,7 +45,7 @@ export function SearchView() {
               className={`${styles.facet} ${tag === null ? styles.facetOn : ''}`}
               onClick={() => setTag(null)}
             >
-              All notes
+              {m.views.search.allNotes}
             </button>
             {tags.map((name) => (
               <button
@@ -53,7 +54,7 @@ export function SearchView() {
                 className={`${styles.facet} ${tag === name ? styles.facetOn : ''}`}
                 onClick={() => setTag(tag === name ? null : name)}
               >
-                tag: #{name}
+                {m.views.search.tag(name)}
               </button>
             ))}
           </div>
@@ -61,12 +62,12 @@ export function SearchView() {
 
         <div className={styles.local}>
           <Icon name="key" size={12} />
-          SEARCHED LOCALLY ON THE DECRYPTED INDEX — NO QUERY LEAVES THIS DEVICE
+          {m.views.search.local}
           {/* The promise above only holds for notes whose bodies are actually cached, so
               a partial index says so instead of quietly returning fewer results. */}
           {partial ? (
             <span className={styles.coverageWarn}>
-              · INDEX {coverage.covered}/{coverage.total} — STILL DOWNLOADING
+              {m.views.search.downloading(coverage.covered, coverage.total)}
             </span>
           ) : null}
         </div>
@@ -86,7 +87,7 @@ export function SearchView() {
                 <Icon name="doc" size={14} style={{ color: 'var(--text-quiet)' }} />
                 <span className={styles.hitTitle}>{hit.note.title}</span>
                 <span className={styles.hitPath}>{hit.note.path}</span>
-                <span className={styles.hitWhen}>{stamp(hit.note.updatedAt)}</span>
+                <span className={styles.hitWhen}>{format.relative(hit.note.updatedAt)}</span>
               </span>
               <span className={styles.hitSnippet}>
                 {hit.snippet.before}
@@ -98,21 +99,11 @@ export function SearchView() {
 
           {query && hits.length === 0 ? (
             <p className={styles.none}>
-              Nothing matched. {partial ? 'The index is still filling in — try again in a moment.' : ''}
+              {partial ? m.views.search.noneYet : m.views.search.none}
             </p>
           ) : null}
         </div>
       </div>
     </div>
   );
-}
-
-function stamp(iso: string): string {
-  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-
-  if (seconds < 60) return 'JUST NOW';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}M AGO`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}H AGO`;
-
-  return `${Math.floor(seconds / 86400)}D AGO`;
 }

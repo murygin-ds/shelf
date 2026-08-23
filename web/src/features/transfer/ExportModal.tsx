@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 
+import { describe } from '@/api/errors';
 import type { ExportProgress, VaultExport } from '@/api/transfer';
+import { m } from '@/i18n';
+import { MANIFEST_PATH } from '@/lib/archive';
 import { useWorkspace } from '@/store/workspace';
 import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
 
-import { describe, summarize } from './report';
+import { summarize } from './report';
 import styles from './transfer.module.css';
 
 /**
@@ -37,7 +40,8 @@ export function ExportModal({ onClose }: { onClose: () => void }) {
   const vault = vaults.find((candidate) => candidate.id === vaultId);
   const notes = tree.notes.filter((note) => !note.locked).length;
   const folders = tree.folders.filter((folder) => !folder.locked).length;
-  const locked = tree.notes.length - notes + (tree.folders.length - folders);
+  const lockedNotes = tree.notes.length - notes;
+  const lockedFolders = tree.folders.length - folders;
 
   const run = async () => {
     setBusy(true);
@@ -61,12 +65,19 @@ export function ExportModal({ onClose }: { onClose: () => void }) {
       <div className={styles.modal}>
         <div className={styles.head}>
           <div>
-            <div className={styles.title}>Export vault</div>
+            <div className={styles.title}>{m.transfer.exporting.title}</div>
             <div className={styles.subtitle}>
-              {vault ? `${vault.name} · ${notes} notes · ${folders} folders` : 'No vault open'}
+              {vault
+                ? m.transfer.exporting.subtitle(vault.name, notes, folders)
+                : m.transfer.exporting.noVault}
             </div>
           </div>
-          <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className={styles.close}
+            onClick={onClose}
+            aria-label={m.common.close}
+          >
             <Icon name="x" size={14} />
           </button>
         </div>
@@ -75,9 +86,8 @@ export function ExportModal({ onClose }: { onClose: () => void }) {
           {written ? (
             <>
               <p className={styles.lede}>
-                {written.notes} {written.notes === 1 ? 'note' : 'notes'} and {written.folders}{' '}
-                {written.folders === 1 ? 'folder' : 'folders'} written to{' '}
-                <strong>{written.filename}</strong>.
+                <strong>{written.filename}</strong>{' '}
+                {m.transfer.exporting.wrote(written.notes, written.folders)}
               </p>
 
               {written.skipped.length > 0 ? (
@@ -93,10 +103,7 @@ export function ExportModal({ onClose }: { onClose: () => void }) {
                 <span className={styles.noteIcon}>
                   <Icon name="lock" size={13} />
                 </span>
-                <span>
-                  The file on your disk is plain text. Keep it somewhere you would keep the notes
-                  themselves, or delete it once you have what you needed.
-                </span>
+                <span>{m.transfer.exporting.keepItSafe}</span>
               </div>
             </>
           ) : (
@@ -106,34 +113,25 @@ export function ExportModal({ onClose }: { onClose: () => void }) {
                   <Icon name="warn" size={13} />
                 </span>
                 <span>
-                  <strong>This archive is not encrypted.</strong> Every note leaves this device as
-                  markdown anybody holding the file can read. Shelf’s protection ends at the
-                  download; where you keep the file is the only protection it has left.
+                  <strong>{m.transfer.exporting.warnLead}</strong> {m.transfer.exporting.warnBody}
                 </span>
               </div>
 
-              <div className={styles.section}>WHAT GOES IN</div>
+              <div className={styles.section}>{m.transfer.exporting.section}</div>
               <ul className={styles.list}>
+                <li>{m.transfer.exporting.asMarkdown(notes)}</li>
                 <li>
-                  {notes} {notes === 1 ? 'note' : 'notes'} as markdown, in the folders you see in
-                  the sidebar.
+                  <code>{MANIFEST_PATH}</code> {m.transfer.exporting.manifest}
                 </li>
-                <li>
-                  A <code>shelf.json</code> that records names, icons and tags exactly, so the
-                  archive can be imported back.
-                </li>
-                <li>Items in the trash are not included.</li>
-                {locked > 0 ? (
-                  <li>
-                    {locked} {locked === 1 ? 'item is' : 'items are'} left out: you hold no key for
-                    {locked === 1 ? ' it' : ' them'}.
-                  </li>
+                <li>{m.transfer.exporting.noTrash}</li>
+                {lockedFolders + lockedNotes > 0 ? (
+                  <li>{m.transfer.exporting.noKey(lockedFolders, lockedNotes)}</li>
                 ) : null}
               </ul>
 
               {progress ? (
                 <div className={styles.progress}>
-                  READING BODIES {progress.done}/{progress.total}
+                  {m.transfer.exporting.reading(progress.done, progress.total)}
                 </div>
               ) : null}
             </>
@@ -143,11 +141,11 @@ export function ExportModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className={styles.footer}>
-          <span className={styles.footerNote}>THE ARCHIVE IS NOT ENCRYPTED</span>
+          <span className={styles.footerNote}>{m.transfer.exporting.footerNote}</span>
           <span className={styles.footerSpacer} />
           {written ? (
             <button type="button" className={styles.done} onClick={onClose}>
-              Done
+              {m.common.done}
             </button>
           ) : (
             <button
@@ -156,7 +154,7 @@ export function ExportModal({ onClose }: { onClose: () => void }) {
               onClick={() => void run()}
               disabled={busy || !vault || vault.locked}
             >
-              {busy ? 'Exporting…' : 'Export'}
+              {busy ? m.transfer.exporting.busy : m.transfer.exporting.run}
             </button>
           )}
         </div>

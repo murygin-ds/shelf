@@ -25,11 +25,16 @@ function view(doc: string, options: { readOnly?: boolean; select?: [number, numb
   return { state } as unknown as EditorView;
 }
 
-function labels(entries: MenuEntry[]): string[] {
-  return entries.flatMap((entry) => (entry.kind === 'panel' ? [] : [entry.label]));
+/**
+ * What each entry is, not what it says. A panel has no identity of its own — it is the grid
+ * inside the table submenu — and the words are the dictionary's business, so a reworded
+ * label must not turn into a failing test here.
+ */
+function ids(entries: MenuEntry[]): string[] {
+  return entries.flatMap((entry) => (entry.kind === 'panel' || !entry.id ? [] : [entry.id]));
 }
 
-const menu = (subject: EditorView) => labels(editorMenu(subject, 0, () => undefined));
+const menu = (subject: EditorView) => ids(editorMenu(subject, 0, () => undefined));
 
 beforeEach(() => {
   // Node has a navigator without a clipboard, and the menu leaves those entries out when
@@ -46,13 +51,13 @@ afterEach(() => {
 describe('the body menu while writing', () => {
   it('offers the clipboard both ways over a selection', () => {
     expect(menu(view('ship on tuesday', { select: [0, 4] }))).toEqual(
-      expect.arrayContaining(['Cut', 'Copy', 'Paste']),
+      expect.arrayContaining(['cut', 'copy', 'paste']),
     );
   });
 
   it('offers what can be written where nothing is selected', () => {
     expect(menu(view('ship on tuesday'))).toEqual(
-      expect.arrayContaining(['Table', 'Heading', 'Divider', 'Paste']),
+      expect.arrayContaining(['table', 'heading', 'divider', 'paste']),
     );
   });
 });
@@ -61,10 +66,10 @@ describe('the body menu while reading', () => {
   it('takes out everything that writes, including the clipboard verbs that dispatch', () => {
     const entries = menu(view('ship on tuesday', { readOnly: true, select: [0, 4] }));
 
-    expect(entries).toContain('Copy');
-    expect(entries).not.toContain('Cut');
-    expect(entries).not.toContain('Paste');
-    expect(entries).not.toContain('Bold');
+    expect(entries).toContain('copy');
+    expect(entries).not.toContain('cut');
+    expect(entries).not.toContain('paste');
+    expect(entries).not.toContain('bold');
   });
 
   it('offers nothing at all with no selection, so the platform menu can stand', () => {
@@ -75,10 +80,8 @@ describe('the body menu while reading', () => {
     const doc = 'see [[Roadmap]] for the rest';
     const at = doc.indexOf('Roadmap');
 
-    const entries = labels(
-      editorMenu(view(doc, { readOnly: true }), at, () => undefined),
-    );
+    const entries = ids(editorMenu(view(doc, { readOnly: true }), at, () => undefined));
 
-    expect(entries).toEqual(['Open', 'Open in new tab']);
+    expect(entries).toEqual(['open', 'open-tab']);
   });
 });

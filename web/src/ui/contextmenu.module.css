@@ -56,6 +56,14 @@
   color: var(--text);
 }
 
+.itemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .itemIcon {
   display: grid;
   place-items: center;
@@ -73,7 +81,15 @@
   color: var(--danger);
 }
 
-.itemDanger .itemIcon {
+.itemDanger .itemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.itemIcon {
   color: var(--danger);
 }
 

@@ -14,6 +14,30 @@ export interface ZipEntry {
   data: Uint8Array;
 }
 
+export type ZipFault =
+  | 'not-a-zip'
+  | 'zip64'
+  | 'directory-damaged'
+  | 'entry-misplaced'
+  | 'entry-truncated'
+  | 'method-unsupported'
+  | 'entry-corrupt';
+
+/**
+ * An archive this reader will not take, with the cause as a value.
+ *
+ * The message names the entry and is written for a log; `reason` is what a caller matches on.
+ */
+export class ZipError extends Error {
+  readonly reason: ZipFault;
+
+  constructor(reason: ZipFault, message: string) {
+    super(message);
+    this.name = 'ZipError';
+    this.reason = reason;
+  }
+}
+
 const LOCAL_SIGNATURE = 0x04034b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 const EOCD_SIGNATURE = 0x06054b50;
@@ -94,7 +118,7 @@ export async function unzip(archive: ArrayBuffer): Promise<Map<string, Uint8Arra
   const directory = view.getUint32(eocd + 16, true);
 
   if (count === OVERFLOW_16 || directory === OVERFLOW_32) {
-    throw new Error('this archive is Zip64, which Shelf does not read');
+    throw new ZipError('zip64', 'the entry count only fits in a Zip64 record');
   }
 
   const files = new Map<string, Uint8Array>();
@@ -102,7 +126,7 @@ export async function unzip(archive: ArrayBuffer): Promise<Map<string, Uint8Arra
 
   for (let i = 0; i < count; i += 1) {
     if (at + CENTRAL_HEADER > bytes.length || view.getUint32(at, true) !== CENTRAL_SIGNATURE) {
-      throw new Error('the archive directory is damaged');
+      throw new ZipError('directory-damaged', 'the central directory does not read');
     }
 
     const method = view.getUint16(at + 10, true);
@@ -117,7 +141,7 @@ export async function unzip(archive: ArrayBuffer): Promise<Map<string, Uint8Arra
     const name = fromUtf8(bytes.subarray(at + CENTRAL_HEADER, at + CENTRAL_HEADER + nameLength));
 
     if (size === OVERFLOW_32 || packedSize === OVERFLOW_32 || local === OVERFLOW_32) {
-      throw new Error('this archive is Zip64, which Shelf does not read');
+      throw new ZipError('zip64', `“${name}” only fits in a Zip64 record`);
     }
 
     files.set(name, await readEntry(bytes, view, { local, method, packedSize, size, crc, name }));
@@ -143,7 +167,7 @@ async function readEntry(
   entry: Entry,
 ): Promise<Uint8Array> {
   if (entry.local + LOCAL_HEADER > bytes.length || view.getUint32(entry.local, true) !== LOCAL_SIGNATURE) {
-    throw new Error(`“${entry.name}” is not where the archive says it is`);
+    throw new ZipError('entry-misplaced', `“${entry.name}” is not where the directory says`);
   }
 
   // The local header may carry different extra fields from the central one, so its own
@@ -153,7 +177,9 @@ async function readEntry(
   const start = entry.local + LOCAL_HEADER + nameLength + extraLength;
   const raw = bytes.subarray(start, start + entry.packedSize);
 
-  if (raw.length !== entry.packedSize) throw new Error(`“${entry.name}” is cut short`);
+  if (raw.length !== entry.packedSize) {
+    throw new ZipError('entry-truncated', `“${entry.name}” is cut short`);
+  }
 
   const data =
     entry.method === STORED
@@ -161,11 +187,14 @@ async function readEntry(
       : entry.method === DEFLATED
         ? await inflate(raw)
         : (() => {
-            throw new Error(`“${entry.name}” uses a compression method Shelf does not read`);
+            throw new ZipError(
+              'method-unsupported',
+              `“${entry.name}” uses a compression method Shelf does not read`,
+            );
           })();
 
   if (data.length !== entry.size || crc32(data) !== entry.crc) {
-    throw new Error(`“${entry.name}” is corrupt`);
+    throw new ZipError('entry-corrupt', `“${entry.name}” is corrupt`);
   }
 
   return data;
@@ -184,13 +213,13 @@ function findEndOfDirectory(view: DataView, length: number): number {
     // A Zip64 locator right before it means the real counts live in a record this does not
     // read, and the 32-bit fields here are only a placeholder.
     if (at >= 20 && view.getUint32(at - 20, true) === ZIP64_LOCATOR_SIGNATURE) {
-      throw new Error('this archive is Zip64, which Shelf does not read');
+      throw new ZipError('zip64', 'a Zip64 locator sits before the end of directory');
     }
 
     return at;
   }
 
-  throw new Error('this file is not a zip archive');
+  throw new ZipError('not-a-zip', 'no end of central directory record');
 }
 
 function localHeader(

@@ -20,7 +20,8 @@
   margin-bottom: 14px;
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -68,7 +69,8 @@
 .fieldLabel {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-quiet);
 }
 
@@ -199,7 +201,8 @@
 .noticeLabel {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.08em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--warn);
   display: block;
   margin-bottom: 4px;

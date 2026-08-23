@@ -68,13 +68,16 @@
   font-size: 13px;
   line-height: 1.65;
   color: var(--text-body);
+  /* A file name has nowhere to break, and it is the one thing this line always carries. */
+  overflow-wrap: anywhere;
 }
 
 .section {
   margin: 18px 0 6px;
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -122,7 +125,8 @@
 .label {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -208,7 +212,8 @@
   margin-top: 14px;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  letter-spacing: 0.08em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -224,6 +229,8 @@
 .footerNote {
   font-family: var(--font-mono);
   font-size: 10px;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 

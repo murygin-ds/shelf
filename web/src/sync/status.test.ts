@@ -7,6 +7,11 @@ import { summarize, type SyncFacts } from './status';
  * same thing at all: a tab that has never reached the server and a tab holding writes it
  * could not send both read as "synced". These pin the cases where the line has to say less
  * than that.
+ *
+ * They match on `state` and `queued` rather than on the words. The words are copy — they
+ * are written in whichever language the reader picked, and asserting them tests the
+ * dictionary instead of the rule. One case still reads the label, to prove the count
+ * reaches it at all.
  */
 
 const MINUTE = 60_000;
@@ -28,39 +33,50 @@ describe('the sync status', () => {
   it('does not claim to be synced before the first pull comes back', () => {
     expect(summarize(facts({ lastSyncedAt: null }))).toMatchObject({
       tone: 'busy',
-      label: 'CONNECTING',
+      state: 'connecting',
     });
   });
 
   it('says synced only when the server has everything', () => {
-    const summary = summarize(facts({ now: 1_000_000 + 5 * MINUTE }));
-
-    expect(summary.tone).toBe('ok');
-    expect(summary.label).toBe('SYNCED');
-    expect(summary.detail).toContain('5 min ago');
+    expect(summarize(facts({ now: 1_000_000 + 5 * MINUTE }))).toMatchObject({
+      tone: 'ok',
+      state: 'ok',
+      queued: 0,
+    });
   });
 
   it('counts what is waiting when there is no connection', () => {
     expect(summarize(facts({ offline: true, queued: 2 }))).toMatchObject({
       tone: 'warn',
-      label: 'OFFLINE · 2 QUEUED',
+      state: 'offline',
+      queued: 2,
     });
   });
 
-  it('promises the writes are kept when there is nothing queued yet', () => {
-    const summary = summarize(facts({ offline: true }));
-
-    expect(summary.label).toBe('OFFLINE');
-    expect(summary.detail).toContain('kept here');
+  it('is still offline, not sending, when nothing is queued yet', () => {
+    expect(summarize(facts({ offline: true }))).toMatchObject({
+      tone: 'warn',
+      state: 'offline',
+      queued: 0,
+    });
   });
 
   // The pull is the client catching up with the server; a queued body is the server still
   // missing something the reader wrote, and that is the one worth reporting.
   it('reports unsent work ahead of a pull in flight', () => {
-    expect(summarize(facts({ syncing: true, queued: 1 }))).toMatchObject({ label: 'SENDING 1' });
+    expect(summarize(facts({ syncing: true, queued: 1 }))).toMatchObject({ state: 'sending' });
   });
 
   it('does not call keystrokes the autosave has not taken yet synced', () => {
-    expect(summarize(facts({ dirty: true }))).toMatchObject({ tone: 'busy', label: 'SAVING' });
+    expect(summarize(facts({ dirty: true }))).toMatchObject({ tone: 'busy', state: 'dirty' });
+  });
+
+  // The one case that touches the copy: whatever the words are, the queue reaches them.
+  it('puts the queue count into the line the reader sees', () => {
+    const summary = summarize(facts({ offline: true, queued: 3 }));
+
+    expect(summary.label).not.toBe('');
+    expect(summary.label).toContain('3');
+    expect(summary.detail).toContain('3');
   });
 });

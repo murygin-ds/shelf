@@ -125,6 +125,31 @@ describe('search', () => {
     expect(hit?.snippet.before).toBe('');
   });
 
+  // macOS hands the decomposed spelling over — from the filesystem, from an import, from a
+  // paste — while the same word typed at the keyboard arrives composed. Both are folded to
+  // NFC at index time, so the query finds the note and the snippet still lands on the match.
+  it('finds a decomposed body from a composed query, and highlights it', () => {
+    // «Тёмный режим», with «ё» as е + U+0308.
+    const decomposed = '\u0422\u0435\u0308\u043c\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c';
+    const entry = buildIndexEntry(note(11, 'Заметки'), `Про ${decomposed} и не только.`, 'ДИЗАЙН');
+
+    const [hit] = search([entry], 'Тёмный режим');
+
+    expect(hit?.note.id).toBe(11);
+    // The snippet is cut out of the stored body by an offset counted in the haystack. Leave
+    // one of the two unnormalised and the two lengths disagree, and the highlight slides.
+    expect(hit?.snippet.match).toBe('Тёмный режим');
+    expect(hit?.snippet.before).toBe('Про ');
+  });
+
+  it('reads a tag out of a decomposed body', () => {
+    // «#ёлка», with «ё» as е + U+0308: `\\p{L}` does not match the combining mark, so an
+    // unnormalised body would yield the tag «е».
+    const entry = buildIndexEntry(note(12, 'Заметки'), 'план #\u0435\u0308\u043b\u043a\u0430 готов', 'ДОМ');
+
+    expect(entry.tags).toEqual(['ёлка']);
+  });
+
   it('never leaves the vault: the whole index is the only input', () => {
     // A guard against someone reaching for the network here later: search takes an array
     // and returns a slice of it, with no way to reach anything else.

@@ -37,5 +37,6 @@ func RateLimitByIP(limiter Limiter) gin.HandlerFunc {
 // TooManyRequests replies 429 with the Retry-After header.
 func TooManyRequests(c *gin.Context, retryAfter time.Duration) {
 	c.Header(HeaderRetryAfter, strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
-	response.Fail(c, http.StatusTooManyRequests, response.CodeTooManyReqs, "too many requests, try again later")
+	response.FailReason(c, http.StatusTooManyRequests, response.CodeTooManyReqs,
+		response.ReasonRateLimited, "too many requests, try again later")
 }

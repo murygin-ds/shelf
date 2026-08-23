@@ -19,7 +19,8 @@
 .legend {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -51,11 +52,15 @@
   color: var(--text-body);
 }
 
+/* «Нет ключа» is two words where NO KEY was two short ones, and the row already gives its
+   name column everything it can spare — so the badge keeps its own line rather than wrap. */
 .meta {
   flex: none;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 9.5px;
-  letter-spacing: 0.08em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-quiet);
 }
 

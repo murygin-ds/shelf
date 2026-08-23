@@ -1,7 +1,9 @@
 import { type FormEvent, useState } from 'react';
 
 import { PassphraseMeter } from '@/features/auth/PassphraseMeter';
+import { format, LANGUAGES, language, m, NAME } from '@/i18n';
 import { isAcceptable, MIN_PASSPHRASE_LENGTH } from '@/lib/passphrase';
+import { switchLanguage } from '@/store/language';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -46,11 +48,11 @@ export function ProfileView() {
   return (
     <div className={styles.pane}>
       <div className={styles.head}>
-        <span className={styles.title}>PROFILE</span>
+        <span className={styles.title}>{m.views.profile.title}</span>
         <span className={styles.spacer} />
         <button type="button" className={styles.back} onClick={() => setView('editor')}>
           <Icon name="arrow" size={12} />
-          Back to notes
+          {m.views.profile.back}
         </button>
       </div>
 
@@ -64,64 +66,100 @@ export function ProfileView() {
             </div>
           </div>
 
-          <div className={styles.section}>ACCOUNT</div>
+          <div className={styles.section}>{m.views.profile.account}</div>
           <DisplayNameForm current={name} />
           <dl className={styles.facts}>
-            <Fact label="Login" value={user?.login ?? '—'} />
+            <Fact label={m.views.profile.login} value={user?.login ?? '—'} />
             <Fact
-              label="Member since"
-              value={user ? new Date(user.created_at).toLocaleDateString() : '—'}
+              label={m.views.profile.memberSince}
+              value={user ? format.date(user.created_at) : '—'}
             />
             <Fact
-              label="Vaults"
-              value={`${owned} own${joined ? ` · ${joined} shared with you` : ''}`}
+              label={m.views.profile.vaults}
+              value={
+                joined
+                  ? m.views.profile.vaultsShared(owned, joined)
+                  : m.views.profile.vaultsOwn(owned)
+              }
             />
           </dl>
 
-          <div className={styles.section}>KEYS</div>
+          <div className={styles.section}>{m.views.profile.interface}</div>
+          <LanguageChoice />
+
+          <div className={styles.section}>{m.views.profile.keys}</div>
           <dl className={styles.facts}>
             <Fact
-              label="This device"
-              value={status === 'unlocked' ? 'Key unlocked' : 'Key locked'}
+              label={m.views.profile.thisDevice}
+              value={status === 'unlocked' ? m.views.profile.keyUnlocked : m.views.profile.keyLocked}
             />
             <div className={styles.fact}>
-              <dt className={styles.factLabel}>Key fingerprint</dt>
+              <dt className={styles.factLabel}>{m.views.profile.fingerprint}</dt>
               <dd className={styles.factValue}>
                 {/* The server hands out public keys, so it can hand out its own. Comparing this
                     with somebody out of band is what closes that gap — hence a copy button. */}
                 <span className={styles.fingerprint}>{identity?.fingerprint ?? '—'}</span>
                 {identity ? (
                   <button type="button" className={styles.copy} onClick={copyFingerprint}>
-                    {copied ? 'Copied' : 'Copy'}
+                    {copied ? m.common.copied : m.common.copy}
                   </button>
                 ) : null}
               </dd>
             </div>
           </dl>
 
-          <p className={styles.note}>
-            Your passphrase never leaves this device: it unwraps the master key here, and the
-            server only ever holds the wrapped copy.
-          </p>
+          <p className={styles.note}>{m.views.profile.keyNote}</p>
 
           <div className={styles.actions}>
             <button type="button" className={styles.action} onClick={lock}>
               <Icon name="lock" size={13} />
-              Lock keys
+              {m.views.profile.lock}
             </button>
             <button type="button" className={styles.action} onClick={() => void signOut()}>
               <Icon name="arrow" size={13} />
-              Sign out
+              {m.views.profile.signOut}
             </button>
           </div>
 
-          <div className={styles.section}>PASSPHRASE</div>
+          <div className={styles.section}>{m.views.profile.passphrase}</div>
           <PassphraseForm />
 
-          <div className={styles.section}>DANGER ZONE</div>
+          <div className={styles.section}>{m.views.profile.danger}</div>
           <DangerZone login={user?.login ?? ''} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The language, chosen rather than detected.
+ *
+ * Both names are written in their own language: this is the one control a reader reaches
+ * precisely because they cannot read the rest of the screen.
+ */
+function LanguageChoice() {
+  const current = language();
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel} id="profile-language">
+        {m.views.profile.language}
+      </span>
+      <div className={styles.choices} role="group" aria-labelledby="profile-language">
+        {LANGUAGES.map((code) => (
+          <button
+            key={code}
+            type="button"
+            className={code === current ? `${styles.choice} ${styles.chosen}` : styles.choice}
+            aria-pressed={code === current}
+            onClick={() => switchLanguage(code)}
+          >
+            {NAME[code]}
+          </button>
+        ))}
+      </div>
+      <p className={styles.note}>{m.views.profile.languageNote}</p>
     </div>
   );
 }
@@ -161,13 +199,13 @@ function DisplayNameForm({ current }: { current: string }) {
         setSaved(true);
         window.setTimeout(() => setSaved(false), 2000);
       })
-      .catch(() => setError(useSession.getState().error ?? 'Could not save the name.'));
+      .catch(() => setError(useSession.getState().error ?? m.views.profile.nameFailed));
   };
 
   return (
     <form className={styles.field} onSubmit={submit}>
       <label className={styles.fieldLabel} htmlFor="profile-display-name">
-        Display name
+        {m.views.profile.displayName}
       </label>
       <div className={styles.fieldRow}>
         <input
@@ -179,7 +217,7 @@ function DisplayNameForm({ current }: { current: string }) {
           onChange={(event) => setValue(event.target.value)}
         />
         <button type="submit" className={styles.action} disabled={!ready}>
-          {saved ? 'Saved' : 'Save'}
+          {saved ? m.common.saved : m.common.save}
         </button>
       </div>
       {error ? <p className={styles.error}>{error}</p> : null}
@@ -213,14 +251,14 @@ function PassphraseForm() {
     setError(null);
 
     void changePassphrase(current, next).catch(() =>
-      setError(useSession.getState().error ?? 'Could not change the passphrase.'),
+      setError(useSession.getState().error ?? m.views.profile.passphraseFailed),
     );
   };
 
   return (
     <form className={styles.field} onSubmit={submit}>
       <label className={styles.fieldLabel} htmlFor="profile-current-passphrase">
-        Current passphrase
+        {m.views.profile.currentPassphrase}
       </label>
       <input
         id="profile-current-passphrase"
@@ -232,7 +270,7 @@ function PassphraseForm() {
       />
 
       <label className={styles.fieldLabel} htmlFor="profile-new-passphrase">
-        New passphrase
+        {m.views.profile.newPassphrase}
       </label>
       <input
         id="profile-new-passphrase"
@@ -247,7 +285,7 @@ function PassphraseForm() {
       </div>
 
       <label className={styles.fieldLabel} htmlFor="profile-repeat-passphrase">
-        Repeat new passphrase
+        {m.views.profile.repeatPassphrase}
       </label>
       <input
         id="profile-repeat-passphrase"
@@ -258,18 +296,15 @@ function PassphraseForm() {
         onChange={(event) => setRepeat(event.target.value)}
       />
 
-      <p className={styles.note}>
-        At least {MIN_PASSPHRASE_LENGTH} characters. Your other devices are signed out, and a
-        new recovery code is issued and shown once — the old one stops working.
-      </p>
+      <p className={styles.note}>{m.views.profile.passphraseNote(MIN_PASSPHRASE_LENGTH)}</p>
 
-      {mismatch ? <p className={styles.error}>The two do not match.</p> : null}
-      {reused ? <p className={styles.error}>That is the passphrase you already have.</p> : null}
+      {mismatch ? <p className={styles.error}>{m.views.profile.mismatch}</p> : null}
+      {reused ? <p className={styles.error}>{m.views.profile.reused}</p> : null}
       {error ? <p className={styles.error}>{error}</p> : null}
 
       <div className={styles.actions}>
         <button type="submit" className={styles.action} disabled={!ready}>
-          {busy ? 'Changing…' : 'Change passphrase'}
+          {busy ? m.views.profile.changing : m.views.profile.change}
         </button>
       </div>
     </form>
@@ -282,11 +317,8 @@ function DangerZone({ login }: { login: string }) {
   return (
     <div className={styles.danger}>
       <div className={styles.dangerText}>
-        <div className={styles.dangerTitle}>Delete this account</div>
-        <p className={styles.dangerBody}>
-          Your account, the vaults you own and everything in them go with it, for every member
-          of those vaults. There is no trash behind this and no key that brings it back.
-        </p>
+        <div className={styles.dangerTitle}>{m.views.profile.dangerTitle}</div>
+        <p className={styles.dangerBody}>{m.views.profile.dangerBody}</p>
       </div>
 
       <button
@@ -296,7 +328,7 @@ function DangerZone({ login }: { login: string }) {
         onClick={() => setAsking(true)}
       >
         <Icon name="trash" size={13} />
-        Delete account
+        {m.views.profile.deleteAccount}
       </button>
 
       {asking ? (

@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strings"
 
+	"golang.org/x/text/unicode/norm"
+
 	"shelf/internal/vault"
 )
 
@@ -96,6 +98,11 @@ func resolveLinks(body string, notes []linkable, self int64) []int64 {
 
 // fold normalises a target the way both indexes are keyed: a path a caller wrote with
 // stray slashes and a title written in another case name the same note.
+//
+// NFC first, in the same order `fold` in web/src/lib/wikilinks.ts applies it. "й" has a
+// composed and a decomposed spelling, and a title pasted from a macOS source carries the
+// decomposed one while the link typed at it carries the composed one — two byte strings for
+// one word. Folding on one side only would make the edge depend on who saved the note last.
 func fold(s string) string {
-	return strings.ToLower(clean(s))
+	return strings.ToLower(clean(norm.NFC.String(s)))
 }

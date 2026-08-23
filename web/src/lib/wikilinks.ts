@@ -57,9 +57,16 @@ export interface Resolution {
   unresolved: string[];
 }
 
-/** How both indexes are keyed: stray case and surrounding slashes name the same note. */
+/**
+ * How both indexes are keyed: stray case and surrounding slashes name the same note.
+ *
+ * NFC first, and `internal/mcp/links.go` does the same in the same order. «Й» has a composed
+ * and a decomposed spelling, and a title pasted from a macOS source carries the decomposed
+ * one while the link typed at it carries the composed one — two byte strings for one word.
+ * Folding only on one side would make the edge depend on who saved the note last.
+ */
 function fold(target: string): string {
-  return target.trim().replace(/^\/+|\/+$/g, '').toLowerCase();
+  return target.normalize('NFC').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
 }
 
 /**

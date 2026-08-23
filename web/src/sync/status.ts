@@ -4,7 +4,19 @@
  * pull came back and nothing is waiting, and until the first one does the line says so.
  */
 
+import { format, m } from '@/i18n';
+
 export type SyncTone = 'ok' | 'busy' | 'warn';
+
+/** Which of the seven the line is in, as opposed to what it says in the reader's language. */
+export type SyncState =
+  | 'offline'
+  | 'sending'
+  | 'saving'
+  | 'dirty'
+  | 'syncing'
+  | 'connecting'
+  | 'ok';
 
 export interface SyncFacts {
   /** The server could not be reached the last time anything tried. */
@@ -24,6 +36,9 @@ export interface SyncFacts {
 
 export interface SyncSummary {
   tone: SyncTone;
+  state: SyncState;
+  /** How many sealed bodies the line is speaking for, so nobody has to read it back out. */
+  queued: number;
   label: string;
   /** The long version, for the title attribute. */
   detail: string;
@@ -33,15 +48,12 @@ export function summarize(facts: SyncFacts): SyncSummary {
   const { offline, syncing, saving, dirty, queued, lastSyncedAt, now } = facts;
 
   if (offline) {
-    const kept =
-      queued > 0
-        ? `${queued} ${queued === 1 ? 'change is' : 'changes are'} sealed on this device and will be sent when the connection comes back.`
-        : 'Everything already on this device stays readable, and anything you write is kept here until the connection comes back.';
-
     return {
       tone: 'warn',
-      label: queued > 0 ? `OFFLINE · ${queued} QUEUED` : 'OFFLINE',
-      detail: `No connection to the server. ${kept}${since(lastSyncedAt, now)}`,
+      state: 'offline',
+      queued,
+      label: queued > 0 ? m.sync.offlineQueued(queued) : m.sync.offline,
+      detail: `${m.sync.offlineDetail(queued)} ${since(lastSyncedAt, now)}`,
     };
   }
 
@@ -50,49 +62,54 @@ export function summarize(facts: SyncFacts): SyncSummary {
   if (queued > 0) {
     return {
       tone: 'busy',
-      label: `SENDING ${queued}`,
-      detail: `Sending ${queued} ${queued === 1 ? 'change' : 'changes'} written while the connection was gone.`,
+      state: 'sending',
+      queued,
+      label: m.sync.sending(queued),
+      detail: m.sync.sendingDetail(queued),
     };
   }
 
   if (saving || dirty) {
     return {
       tone: 'busy',
-      label: 'SAVING',
-      detail: saving
-        ? 'Encrypting this note and sending it.'
-        : 'Unsaved keystrokes. They are encrypted and sent a moment after you stop typing.',
+      state: saving ? 'saving' : 'dirty',
+      queued,
+      label: m.sync.saving,
+      detail: saving ? m.sync.savingDetail : m.sync.dirtyDetail,
     };
   }
 
   if (syncing) {
-    return { tone: 'busy', label: 'SYNCING', detail: 'Reading changes from the server.' };
+    return {
+      tone: 'busy',
+      state: 'syncing',
+      queued,
+      label: m.sync.syncing,
+      detail: m.sync.syncingDetail,
+    };
   }
 
   if (lastSyncedAt === null) {
-    return { tone: 'busy', label: 'CONNECTING', detail: 'Has not reached the server yet.' };
+    return {
+      tone: 'busy',
+      state: 'connecting',
+      queued,
+      label: m.sync.connecting,
+      detail: m.sync.connectingDetail,
+    };
   }
 
   return {
     tone: 'ok',
-    label: 'SYNCED',
-    detail: `Everything on this device is on the server.${since(lastSyncedAt, now)}`,
+    state: 'ok',
+    queued,
+    label: m.sync.synced,
+    detail: `${m.sync.syncedDetail} ${since(lastSyncedAt, now)}`,
   };
 }
 
 function since(lastSyncedAt: number | null, now: number): string {
-  if (lastSyncedAt === null) return ' Nothing has been read from the server yet.';
-
-  return ` Last synced ${ago(Math.max(0, now - lastSyncedAt))}.`;
-}
-
-function ago(ms: number): string {
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-
-  return `${Math.floor(hours / 24)} d ago`;
+  return lastSyncedAt === null
+    ? m.sync.neverSynced
+    : m.sync.lastSynced(format.relative(lastSyncedAt, now));
 }

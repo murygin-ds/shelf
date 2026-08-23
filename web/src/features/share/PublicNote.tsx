@@ -121,6 +121,14 @@ export function PublicNote() {
   );
 }
 
+/**
+ * This page's own copy of `describe`, and its own English.
+ *
+ * Everything else in the app speaks the reader's language; a public link does not have a
+ * reader we know anything about. Whoever opens one was sent it, possibly from somewhere
+ * else entirely, so the page stays in the language it was written in rather than in the
+ * language of whoever published the note.
+ */
 function describe(cause: unknown): string {
   if (cause instanceof ApiError) return cause.message || `HTTP ${cause.status}`;
   if (cause instanceof Error) return cause.message || cause.name;
