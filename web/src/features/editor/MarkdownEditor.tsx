@@ -27,7 +27,7 @@ import type { Text as YText, UndoManager as YUndoManager } from 'yjs';
 import { m } from '@/i18n';
 
 import { tagSource, wikilinkSource } from './complete';
-import { vaultContext, type VaultContext } from './context';
+import { openWikilink, vaultContext, type LinkWhere, type VaultContext } from './context';
 import { formatKeymap, wrapOnType } from './format';
 import { codeColours, noteLanguage } from './language';
 import { editorTheme, livePreview } from './livepreview';
@@ -47,7 +47,7 @@ const editable = new Compartment();
 const undoStack = new Compartment();
 const vault = new Compartment();
 
-export type LinkWhere = 'here' | 'tab';
+export type { LinkWhere };
 
 /**
  * The live document behind this note, when one is up.
@@ -201,8 +201,11 @@ export function MarkdownEditor({
         codeColours,
         livePreview,
         tableGrid,
-        // Read through the ref, so the handler never has to be reconfigured.
+        // Read through the ref, so the handlers never have to be reconfigured.
         tableMenu.of((event, ref) => latest.current.onTableMenu(event, ref)),
+        // A table is a widget that keeps its events to itself, so a link inside one cannot
+        // reach the click handler below and is given the way out here instead.
+        openWikilink.of((target, where) => latest.current.onOpenLink(target, where)),
         editorTheme,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ spellcheck: 'false', 'aria-label': m.editor.body }),

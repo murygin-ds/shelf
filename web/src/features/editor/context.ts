@@ -32,6 +32,21 @@ export const vaultContext = Facet.define<VaultContext, VaultContext>({
   combine: (values) => values[0] ?? EMPTY_CONTEXT,
 });
 
+export type LinkWhere = 'here' | 'tab';
+
+export type LinkOpener = (target: string, where: LinkWhere) => void;
+
+/**
+ * Who opens a `[[link]]` the reader clicked inside a rendered table.
+ *
+ * Everywhere else the click reaches the editor's own handlers and the component above deals
+ * with it. A table is a widget, and a widget that ignores events keeps them to itself — so
+ * the one thing inside it that leads somewhere needs a way back out.
+ */
+export const openWikilink = Facet.define<LinkOpener, LinkOpener | null>({
+  combine: (values) => values[0] ?? null,
+});
+
 export function contextOf(notes: readonly NoteRef[], tags: readonly string[]): VaultContext {
   return { notes, targets: linkTargets(notes), tags };
 }
