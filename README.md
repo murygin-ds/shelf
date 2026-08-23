@@ -39,6 +39,9 @@ make run         # start the service
 `make help` lists every command. The binary serves the frontend itself; without `make web`
 the API still works and the app answers `503` with the command to run.
 
+That is the development profile. To put this on a server, see
+[Installing on a server](#installing-on-a-server).
+
 ## The encryption model
 
 Everything follows from one decision: keys are derived and used on the device, and the
@@ -248,6 +251,9 @@ web/src/
   features/            auth, shell, sidebar, editor, search, graph, inspector, access, share,
                        transfer, claude
 configs/               config.yaml
+deploy/Caddyfile       the proxy in front of a server install
+compose.prod.yml       the production topology: Postgres, the service, Caddy
+install.sh             one command that puts all three on a fresh machine
 migrations/            golang-migrate SQL migrations, embedded and applied at startup
 testdata/              the crypto vectors both implementations are held to
 docs/                  generated swagger specification
@@ -691,6 +697,109 @@ make migrate-version                 # current schema version
 make migrate-force version=1         # clear the dirty flag
 ```
 
+## Installing on a server
+
+One command, on a fresh Debian or Ubuntu machine whose domain already points at it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/murygin-ds/shelf/main/install.sh \
+  | sudo bash -s -- --domain notes.example.com --email you@example.com
+```
+
+The `-s --` is not decoration: without it bash reads the first flag as a filename.
+
+What it does, in order: checks the machine can build this and then serve it, installs Docker
+if it is missing, clones the repository into `/opt/shelf`, writes `/opt/shelf/.env` with three
+generated secrets, builds the image, starts Postgres and the service behind Caddy, and waits
+until the domain answers over a certificate Let's Encrypt has just issued. Given both flags it
+asks nothing; given neither it asks for both.
+
+Piping a script into a root shell is a decision rather than a convenience, and this one makes
+no network call its flags do not name. Reading it first is reasonable:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/murygin-ds/shelf/main/install.sh -o install.sh
+less install.sh
+sudo bash install.sh --domain notes.example.com --email you@example.com
+```
+
+### What it needs
+
+| Requirement      | Why                                                                                                          |
+|------------------|--------------------------------------------------------------------------------------------------------------|
+| A domain         | Every key is derived in the browser through WebCrypto, which no page served over plain HTTP may use            |
+| An A record      | Pointed here before the run: Let's Encrypt answers the challenge at the address DNS gives it, on port 80       |
+| Ports 80 and 443 | Free, 443 over UDP as well — Caddy offers HTTP/3, and a browser only finds it if the port is published         |
+| 2 GB of memory   | The frontend and the binary are compiled here. Below that the build is killed rather than slowed, and the script offers a swap file |
+| 8 GB of disk     | Images, build caches and the database                                                                          |
+| root             | For `/opt/shelf`, for the Docker daemon, and for binding 443                                                   |
+
+Debian 11 or newer, Ubuntu 20.04 or newer, or anything else that already has Docker Engine with
+the Compose v2 and Buildx plugins. Buildx is not optional: the Dockerfile caches its dependency
+downloads through `RUN --mount=type=cache`, which the legacy builder refuses outright.
+
+### Flags
+
+Each has an environment variable of the same meaning, so a whole run can be described without a
+single flag.
+
+| Flag                   | Environment                  | Default        | Meaning                                                             |
+|------------------------|------------------------------|----------------|-----------------------------------------------------------------------|
+| `--domain`             | `SHELF_DOMAIN`               | asked          | The name on the certificate, and the address given to Claude           |
+| `--email`              | `ACME_EMAIL`                 | asked          | Where Let's Encrypt sends expiry notices                               |
+| `--enable-mcp`         | `SHELF_MCP_ENABLED`          | asked          | Mount the connector and generate the key that wraps its credentials    |
+| `--no-mcp`             |                              |                | The same decision, without the question                                |
+| `--dir`                | `SHELF_INSTALL_DIR`          | `/opt/shelf`   | Where the clone and `.env` live                                        |
+| `--repo`, `--branch`   | `SHELF_REPO`, `SHELF_BRANCH` | this repo, `main` | Install from a fork or a branch                                     |
+| `--image`              | `SHELF_IMAGE`                | built here     | Use a prebuilt image instead of compiling                              |
+| `--staging`            |                              | off            | Issue from Let's Encrypt staging: untrusted certificates, generous limits |
+| `--swap`, `--no-swap`  |                              | asked below 2 GB | Create `/swapfile` so the build survives                             |
+| `--skip-dns-check`     |                              | off            | Proceed although the domain does not resolve here                      |
+| `--non-interactive`    | `SHELF_NONINTERACTIVE`       | off            | Never ask; a missing answer is an error                                |
+| `--yes`                |                              | off            | Answer yes to every confirmation                                       |
+| `--update`             |                              |                | Pull, rebuild and restart, keeping `.env` and every secret in it       |
+| `--force`              |                              | off            | With `--update`, discard local edits to tracked files                  |
+| `--uninstall`          |                              |                | Stop and remove the containers; the volumes stay                       |
+| `--purge`              |                              |                | With `--uninstall`, delete the database and the certificates too       |
+
+### What it writes
+
+`/opt/shelf/.env`, owned by root and readable by nobody else, is the only file the script
+generates, and the only place three values exist:
+
+| Value                     | Losing it costs                                                                            |
+|---------------------------|----------------------------------------------------------------------------------------------|
+| `SHELF_AUTH_SECRET`       | Every session. Nobody's data, everybody's next sign-in                                        |
+| `SHELF_POSTGRES_PASSWORD` | Access to the database, whose volume still holds the old one                                  |
+| `SHELF_MCP_SECRET`        | Every connector credential, permanently: there is no fallback, and nothing derives it again   |
+
+Running the script again reads all three back out of that file rather than generating new ones,
+which is what makes `--update` safe and what makes a restored `.env` work.
+
+Local proxy configuration goes in `/opt/shelf/caddy.d/*.caddy`, which is imported into the site
+block and is not tracked, so it survives updates instead of conflicting with them.
+
+### Afterwards
+
+```bash
+cd /opt/shelf                    # .env names the compose file, so nothing here needs a flag
+docker compose logs -f app       # the service
+docker compose logs -f caddy     # TLS and access
+docker compose ps                # what is running
+docker compose restart app       # restart without rebuilding
+```
+
+The first account is made by whoever opens `/signup`. There is no invitation step, no
+administrator account to create first, and no setting that closes registration — roles exist
+inside a vault, not above one. A deployment that should not be joinable by anyone who finds it
+needs something in front of it deciding who reaches it at all.
+
+### What it does not do
+
+Backups, of the database or of `.env`. Monitoring. A firewall — and note that Docker publishes
+its ports past `ufw`, so a host that looks closed is not. Major-version upgrades of Postgres,
+which need a dump and a restore rather than a new image tag.
+
 ## Development
 
 ```bash
@@ -713,9 +822,12 @@ are actually checked.
 
 ### Deployment
 
+[Installing on a server](#installing-on-a-server) settles everything below on its own; this
+is what it settles, for a deployment put together by hand.
+
 The shipped `configs/config.yaml` is the local profile and is what the container image
 bakes in, so its values are production defaults whether or not anyone meant them to be.
-Four of them have to be set for any real deployment:
+Five of them have to be set for any real deployment:
 
 | Setting                  | Why                                                                        |
 |--------------------------|----------------------------------------------------------------------------|
@@ -725,15 +837,16 @@ Four of them have to be set for any real deployment:
 | `http.handler_timeout`   | bounds the work behind a request; ten slow queries would otherwise take the pool |
 | `postgres.ssl_mode`      | `require` or `verify-full` whenever Postgres is not on this host            |
 
-A value in `.env` is substituted into `docker-compose.yml`, not handed to the container, so
-anything the app needs has to be named in its `environment` block. `SHELF_AUTH_SECRET` is
-passed through there for exactly that reason.
+A value in `.env` is substituted into a compose file, not handed to the container, so anything
+the app needs has to be named in its `environment` block. `SHELF_AUTH_SECRET` is passed through
+there for exactly that reason, in `docker-compose.yml` and in `compose.prod.yml` alike.
 
 The schema needs no separate step: the image carries its migrations and applies them once
 Postgres is reachable.
 
 `make docker-up` is a development convenience: it publishes Postgres on the host with a
-default password and is not meant to run anywhere else.
+default password and is not meant to run anywhere else. `compose.prod.yml` is the one that is:
+it publishes nothing but Caddy's own ports, and the database is reachable only from the service.
 
 ## Known limits
 

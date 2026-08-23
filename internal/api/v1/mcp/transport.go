@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"shelf/internal/mcp"
 	"shelf/internal/vault"
@@ -84,6 +85,13 @@ func (t *Transport) authenticate(c *gin.Context) {
 
 		return
 	}
+
+	// http.Server.WriteTimeout is a deadline on the socket, set before the handler runs, so
+	// exempting this path from the handler deadline in the router does not reach it: a session
+	// streaming for longer than write_timeout is cut at the TCP level with nothing logged. The
+	// websocket needs none of this because hijacking clears the deadlines. Cleared only after a
+	// credential is accepted, so an unauthenticated caller still cannot hold a connection open.
+	_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Time{})
 
 	ctx := context.WithValue(c.Request.Context(), principalKey{}, connector)
 	c.Request = c.Request.WithContext(ctx)

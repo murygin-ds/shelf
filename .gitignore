@@ -17,6 +17,10 @@ node_modules
 /internal/web/dist/*
 !/internal/web/dist/.gitkeep
 
+# Local proxy configuration written on the server by install.sh. Not tracked on purpose: an
+# update rewrites tracked files, and what a deployment adds here has to survive that.
+/caddy.d/
+
 # Profile
 coverage.out
 coverage.html
