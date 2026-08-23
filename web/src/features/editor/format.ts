@@ -7,6 +7,8 @@ import {
 } from '@codemirror/state';
 import { EditorView, type Command, type KeyBinding } from '@codemirror/view';
 
+import { m } from '@/i18n';
+
 /**
  * The verbs behind the formatting keys and the right-click menu.
  *
@@ -271,7 +273,7 @@ export function buildTable(rows: number, cols: number): string {
   const columns = Math.max(1, Math.trunc(cols));
   const body = Math.max(1, Math.trunc(rows));
 
-  const headers = Array.from({ length: columns }, (_, index) => `Column ${index + 1}`);
+  const headers = Array.from({ length: columns }, (_, index) => m.editor.tableColumn(index + 1));
   const widths = headers.map((header) => header.length);
 
   const row = (cells: string[]) =>

@@ -32,6 +32,17 @@
 
 .crumbSeparator {
   color: #3e3e45;
+  flex: none;
+}
+
+/* The vault name has no ceiling of its own, so it is the one that gives way first: a long
+   one used to push the note title and the saved marker out of the bar rather than clip. */
+.crumbVault {
+  min-width: 0;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .crumbCurrent {
@@ -62,8 +73,11 @@
 .savedLabel {
   font-family: var(--font-mono);
   font-size: 10.5px;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-quiet);
   white-space: nowrap;
+  flex: none;
 }
 
 .topbarRight {
@@ -83,8 +97,10 @@
   background: none;
   font-family: var(--font-mono);
   font-size: 10px;
+  text-transform: var(--label-transform);
   letter-spacing: 0.04em;
   color: var(--warn);
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -144,10 +160,15 @@
 }
 
 .accountState {
+  max-width: 100%;
   font-family: var(--font-mono);
   font-size: 9.5px;
+  text-transform: var(--label-transform);
   letter-spacing: 0.04em;
   color: var(--text-ghost);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .accountChevron {
@@ -251,7 +272,12 @@
   border-top: 1px solid var(--line);
   font-family: var(--font-mono);
   font-size: 10.5px;
+  /* The bar used to be in capitals because every string in it was typed that way. The
+     register is a per-language decision now, so it is read from the token instead. */
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-ghost);
+  white-space: nowrap;
 }
 
 .statusSpacer {
@@ -262,6 +288,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: none;
   color: var(--ok);
   cursor: default;
 }

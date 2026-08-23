@@ -9,8 +9,14 @@
   padding: 24px;
 }
 
+/* The role column holds a select whose widest option is «Администратор», and the folders
+   column holds a number or one short word — so the room is taken from the latter. */
 .modal {
-  width: 560px;
+  --member-columns: 2.2fr 1.2fr 0.55fr 1.05fr 28px;
+
+  /* 560 in English. A permission row is a name, a reason for it, a select holding «Может
+     комментировать» and a reset button, and at 560 the reason line lands on the ellipsis. */
+  width: 600px;
   max-width: 100%;
   background: var(--surface-raised);
   border: 1px solid var(--border-strong);
@@ -34,6 +40,12 @@
   gap: 12px;
   padding: 18px 20px 14px;
   border-bottom: 1px solid var(--border);
+}
+
+/* The heading block has to be allowed to shrink: without this a long vault or folder name
+   pushes the close button past the edge instead of truncating. */
+.head > div {
+  min-width: 0;
 }
 
 .title {
@@ -126,7 +138,8 @@
   margin: 18px 0 6px;
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -214,6 +227,13 @@
   white-space: nowrap;
 }
 
+/* The pill and the fingerprint cell also carry values — a key digest and an action key must
+   not be re-cased — so the label transform rides on the labels rather than on the class. */
+.caps {
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
+}
+
 .rowAction {
   border: 0;
   background: transparent;
@@ -246,6 +266,8 @@
 .footerNote {
   font-family: var(--font-mono);
   font-size: 10px;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -300,7 +322,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: 2.1fr 1fr 0.9fr 1.1fr 28px;
+  grid-template-columns: var(--member-columns);
   align-items: center;
   gap: 10px;
   padding: 10px;
@@ -309,13 +331,14 @@
 
 .gridHead {
   display: grid;
-  grid-template-columns: 2.1fr 1fr 0.9fr 1.1fr 28px;
+  grid-template-columns: var(--member-columns);
   gap: 10px;
   padding: 0 10px 8px;
   border-bottom: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -362,6 +385,7 @@
   margin-top: 9px;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  letter-spacing: 0.08em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }

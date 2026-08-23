@@ -10,8 +10,9 @@ import {
 } from 'd3-force';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { ApiError } from '@/api/client';
+import { describe } from '@/api/errors';
 import * as graphApi from '@/api/graph';
+import { m } from '@/i18n';
 import { useWorkspace } from '@/store/workspace';
 
 import styles from './graph.module.css';
@@ -104,7 +105,7 @@ export function GraphView() {
   if (!graph || !laid) {
     return (
       <div className={styles.pane}>
-        <p className={styles.empty}>Drawing the graph…</p>
+        <p className={styles.empty}>{m.views.graph.drawing}</p>
       </div>
     );
   }
@@ -112,9 +113,7 @@ export function GraphView() {
   if (laid.nodes.length === 0) {
     return (
       <div className={styles.pane}>
-        <p className={styles.empty}>
-          No notes yet. Links appear here once notes reference each other with [[a title]].
-        </p>
+        <p className={styles.empty}>{m.views.graph.empty}</p>
       </div>
     );
   }
@@ -122,15 +121,21 @@ export function GraphView() {
   return (
     <div className={styles.pane}>
       <div className={styles.head}>
-        <span className={styles.title}>GRAPH</span>
+        <span className={styles.title}>{m.views.graph.title}</span>
         <span className={styles.spacer} />
         <span className={styles.legend}>
-          {laid.nodes.length} NOTES · {laid.edges.length} LINKS
-          {graph.locked > 0 ? ` · ${graph.locked} LOCKED` : ''}
+          {graph.locked > 0
+            ? m.views.graph.legendLocked(laid.nodes.length, laid.edges.length, graph.locked)
+            : m.views.graph.legend(laid.nodes.length, laid.edges.length)}
         </span>
       </div>
 
-      <svg className={styles.canvas} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="Note graph">
+      <svg
+        className={styles.canvas}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        role="img"
+        aria-label={m.views.graph.canvas}
+      >
         <g>
           {laid.edges.map((edge, index) => {
             const from = edge.source as Node;
@@ -174,9 +179,7 @@ export function GraphView() {
                   {node.locked ? '••••••' : truncate(node.name)}
                 </text>
                 {hover === node.ref && !node.locked ? (
-                  <title>
-                    {node.name} · {node.degree} link{node.degree === 1 ? '' : 's'}
-                  </title>
+                  <title>{m.views.graph.node(node.name, node.degree)}</title>
                 ) : null}
               </g>
             );
@@ -185,9 +188,7 @@ export function GraphView() {
       </svg>
 
       <p className={styles.note}>
-        {graph.revealsLocked
-          ? 'Dashed nodes are notes you hold no key for. They are drawn without a name or an id, because a graph that hid them would show connected notes as isolated.'
-          : 'This vault does not draw notes you cannot open, so the picture is your slice of the graph rather than its shape.'}
+        {graph.revealsLocked ? m.views.graph.revealsLocked : m.views.graph.hidesLocked}
       </p>
     </div>
   );
@@ -195,11 +196,4 @@ export function GraphView() {
 
 function truncate(name: string): string {
   return name.length > 22 ? `${name.slice(0, 21)}…` : name;
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message || `HTTP ${cause.status}`;
-  if (cause instanceof Error) return cause.message || cause.name;
-
-  return 'the graph could not be drawn';
 }

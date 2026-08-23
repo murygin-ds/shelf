@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 
+import { m } from '@/i18n';
 import { Icon, ICON_NAMES, type IconName } from '@/ui/Icon';
 import { below } from '@/ui/position';
+import { tip } from '@/ui/Tooltip';
 
 import styles from './sidebar.module.css';
 
@@ -48,7 +50,7 @@ export function IconPicker({ target, onClose }: { target: PickerTarget; onClose:
         onContextMenu={(event) => event.preventDefault()}
       >
         <div className={styles.pickerHead}>
-          <span className="label">ICON</span>
+          <span className="label">{m.sidebar.iconLabel}</span>
           <button
             type="button"
             className={styles.pickerReset}
@@ -57,16 +59,18 @@ export function IconPicker({ target, onClose }: { target: PickerTarget; onClose:
               onClose();
             }}
           >
-            Reset
+            {m.sidebar.iconReset}
           </button>
         </div>
 
+        {/* The name a cell carries is the identifier stored in the note's own metadata, so it
+            stays as it is in every language; the tip is what gives the cell a name to read. */}
         <div className={styles.pickerGrid}>
           {ICON_NAMES.map((name) => (
             <button
               key={name}
               type="button"
-              title={name}
+              {...tip(name)}
               className={`${styles.pickerCell} ${target.current === name ? styles.pickerCellOn : ''}`}
               onClick={() => {
                 target.onPick(name);

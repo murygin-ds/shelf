@@ -59,7 +59,7 @@
   --shadow-modal: 0 30px 80px rgba(0, 0, 0, 0.7);
   --shadow-rail: 0 14px 40px rgba(0, 0, 0, 0.65);
 
-  --font-sans: 'Instrument Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius-sm: 5px;
@@ -68,10 +68,23 @@
   --radius-lg: 12px;
   --radius-xl: 14px;
 
+  /* Small caps labels: the register and the tracking are one decision, and it is a
+     per-language one, so both travel as tokens rather than as literals in the markup. */
+  --label-transform: uppercase;
+  --label-tracking: 0.1em;
+
   --topbar-h: 46px;
   --statusbar-h: 27px;
-  --sidebar-w: 250px;
-  --inspector-w: 312px;
+  --sidebar-w: 264px;
+  --inspector-w: 336px;
+}
+
+/* Cyrillic capitals are wider than latin ones and harder to tell apart — the silhouette
+   that makes an uppercase latin label readable at 10px is not there. The label keeps its
+   monospace face, its size and its muted colour; it just stops shouting. */
+:root:lang(ru) {
+  --label-transform: none;
+  --label-tracking: 0.06em;
 }
 
 /* "Cool graphite" tone from the design's theme switch. */
@@ -168,8 +181,19 @@ textarea::placeholder {
 .label {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
+}
+
+/* Russian runs longer than English, so the places that used to fit are now the places that
+   clip. `min-width: 0` is half the fix: without it a flex child refuses to shrink below its
+   content and pushes its siblings out instead of truncating. */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* A pointer never draws a ring. Browsers make :focus-visible true for text fields even on a

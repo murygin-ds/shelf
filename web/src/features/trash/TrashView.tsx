@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { m } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -53,19 +54,14 @@ export function TrashView() {
   return (
     <div className={styles.pane}>
       <div className={styles.head}>
-        <span className={styles.title}>TRASH</span>
+        <span className={styles.title}>{m.views.trash.title}</span>
         <span className={styles.spacer} />
-        <span className={styles.legend}>
-          {rows.length} ITEM{rows.length === 1 ? '' : 'S'}
-        </span>
+        <span className={styles.legend}>{m.views.trash.items(rows.length)}</span>
       </div>
 
       <div className={styles.body}>
         {rows.length === 0 ? (
-          <p className={styles.empty}>
-            Nothing deleted. Items land here when you remove them, still encrypted, until
-            you either put them back or destroy them for good.
-          </p>
+          <p className={styles.empty}>{m.views.trash.empty}</p>
         ) : (
           rows.map(({ kind, node }) => {
             const key = `${kind}-${node.id}`;
@@ -80,11 +76,13 @@ export function TrashView() {
 
                 <span className={styles.name}>{node.name}</span>
 
-                {node.locked ? (
-                  <span className={styles.meta}>NO KEY</span>
-                ) : (
-                  <span className={styles.meta}>{kind === 'folder' ? 'FOLDER' : 'NOTE'}</span>
-                )}
+                <span className={styles.meta}>
+                  {node.locked
+                    ? m.views.trash.noKey
+                    : kind === 'folder'
+                      ? m.views.trash.folder
+                      : m.views.trash.note}
+                </span>
 
                 {readOnly ? null : (
                   <>
@@ -94,7 +92,7 @@ export function TrashView() {
                       disabled={busy}
                       onClick={() => void act(() => restore(node.id, kind))}
                     >
-                      Restore
+                      {m.views.trash.restore}
                     </button>
 
                     {confirming === key ? (
@@ -104,7 +102,7 @@ export function TrashView() {
                         disabled={busy}
                         onClick={() => void act(() => purge(node.id, kind))}
                       >
-                        Destroy for good
+                        {m.views.trash.purgeArmed}
                       </button>
                     ) : (
                       <button
@@ -113,7 +111,7 @@ export function TrashView() {
                         disabled={busy}
                         onClick={() => setConfirming(key)}
                       >
-                        Delete forever
+                        {m.views.trash.purge}
                       </button>
                     )}
                   </>
@@ -125,9 +123,7 @@ export function TrashView() {
       </div>
 
       <p className={styles.note}>
-        {readOnly
-          ? 'Read-only mode is on: this is the list and nothing more. Turn it off in the account menu to restore anything or destroy it for good.'
-          : 'Restoring a folder brings back what was inside it. Deleting forever destroys the ciphertext — there is no copy anywhere that could bring it back, here or on the server.'}
+        {readOnly ? m.views.trash.frozen : m.views.trash.footer}
       </p>
     </div>
   );

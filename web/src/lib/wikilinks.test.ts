@@ -130,3 +130,34 @@ describe('resolvables', () => {
     );
   });
 });
+
+// The same three cases `TestResolveLinksFoldsDecomposedSpellings` covers in
+// internal/mcp/links_test.go, on the same inputs: an edge that depended on which of the two
+// spellings a title happened to be stored in would appear and disappear with whoever saved
+// the note last.
+describe('composed and decomposed spellings', () => {
+  // Escapes rather than letters: an editor that normalises the file on save would turn these
+  // back into the composed form, and the test would then be comparing a string with itself.
+  /** «Мой проект», with «й» written as и + U+0306. */
+  const NFD_PROJECT = '\u041c\u043e\u0438\u0306 \u043f\u0440\u043e\u0435\u043a\u0442';
+  /** «Ёлка», with «Ё» written as Е + U+0308. */
+  const NFD_TREE = '\u0415\u0308\u043b\u043a\u0430';
+
+  it('matches a decomposed link against a composed title', () => {
+    const notes = [{ id: 7, name: 'Мой проект' }];
+
+    expect(resolveWikilinks(`[[${NFD_PROJECT}]]`, notes).resolved).toEqual([7]);
+  });
+
+  it('matches a composed link against a decomposed title', () => {
+    const notes = [{ id: 8, name: NFD_TREE }];
+
+    expect(resolveWikilinks('[[Ёлка]]', notes).resolved).toEqual([8]);
+  });
+
+  it('reads the two spellings of one path as one target', () => {
+    const notes = [{ id: 9, name: 'план.md', path: `${NFD_TREE}/план.md` }];
+
+    expect(resolveTarget('Ёлка/план.md', linkTargets(notes))).toBe(9);
+  });
+});

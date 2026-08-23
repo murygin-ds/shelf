@@ -1,6 +1,7 @@
 import type { EditorState, TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 
+import { m } from '@/i18n';
 import { MOD, type MenuEntry } from '@/ui/ContextMenu';
 
 import {
@@ -33,6 +34,8 @@ import { wikilinkAt } from './wikilink';
  * before.
  */
 
+const words = m.editor.menu;
+
 export interface LinkTarget {
   target: string;
   where: 'here' | 'tab';
@@ -56,14 +59,23 @@ export function tableMenu(ref: TableCellRef): MenuEntry[] {
   return [
     {
       kind: 'submenu',
-      label: 'Row',
+      id: 'row',
+      label: words.row,
       icon: 'list',
       items: [
         ...(header
           ? []
-          : [{ label: 'Insert above', icon: 'plus' as const, onSelect: () => insertRow(ref, body) }]),
+          : [
+              {
+                id: 'row-above',
+                label: words.rowAbove,
+                icon: 'plus' as const,
+                onSelect: () => insertRow(ref, body),
+              },
+            ]),
         {
-          label: 'Insert below',
+          id: 'row-below',
+          label: words.rowBelow,
           icon: 'plus',
           onSelect: () => insertRow(ref, header ? 0 : body + 1),
         },
@@ -71,7 +83,8 @@ export function tableMenu(ref: TableCellRef): MenuEntry[] {
           ? []
           : [
               {
-                label: 'Delete row',
+                id: 'row-delete',
+                label: words.rowDelete,
                 icon: 'trash' as const,
                 danger: true,
                 separated: true,
@@ -82,16 +95,28 @@ export function tableMenu(ref: TableCellRef): MenuEntry[] {
     },
     {
       kind: 'submenu',
-      label: 'Column',
+      id: 'column',
+      label: words.column,
       icon: 'table',
       items: [
-        { label: 'Insert left', icon: 'plus', onSelect: () => insertColumn(ref, column) },
-        { label: 'Insert right', icon: 'plus', onSelect: () => insertColumn(ref, column + 1) },
+        {
+          id: 'column-left',
+          label: words.columnLeft,
+          icon: 'plus',
+          onSelect: () => insertColumn(ref, column),
+        },
+        {
+          id: 'column-right',
+          label: words.columnRight,
+          icon: 'plus',
+          onSelect: () => insertColumn(ref, column + 1),
+        },
         ...(columns < 2
           ? []
           : [
               {
-                label: 'Delete column',
+                id: 'column-delete',
+                label: words.columnDelete,
                 icon: 'trash' as const,
                 danger: true,
                 separated: true,
@@ -101,7 +126,8 @@ export function tableMenu(ref: TableCellRef): MenuEntry[] {
       ],
     },
     {
-      label: 'Delete table',
+      id: 'table-delete',
+      label: words.tableDelete,
       icon: 'trash',
       danger: true,
       separated: true,
@@ -135,9 +161,15 @@ export function editorMenu(
 
   const head: MenuEntry[] = link
     ? [
-        { label: 'Open', icon: 'doc', onSelect: () => onOpenLink({ target: link.target, where: 'here' }) },
         {
-          label: 'Open in new tab',
+          id: 'open',
+          label: words.open,
+          icon: 'doc',
+          onSelect: () => onOpenLink({ target: link.target, where: 'here' }),
+        },
+        {
+          id: 'open-tab',
+          label: words.openTab,
           icon: 'layers',
           separated: true,
           onSelect: () => onOpenLink({ target: link.target, where: 'tab' }),
@@ -147,14 +179,16 @@ export function editorMenu(
 
   const headings: MenuEntry = {
     kind: 'submenu',
-    label: 'Heading',
+    id: 'heading',
+    label: words.heading,
     icon: 'hash',
     items: [
-      { label: 'Heading 1', icon: 'hash', onSelect: run((state) => setHeading(state, 1)) },
-      { label: 'Heading 2', icon: 'hash', onSelect: run((state) => setHeading(state, 2)) },
-      { label: 'Heading 3', icon: 'hash', onSelect: run((state) => setHeading(state, 3)) },
+      { id: 'heading-1', label: words.heading1, icon: 'hash', onSelect: run((state) => setHeading(state, 1)) },
+      { id: 'heading-2', label: words.heading2, icon: 'hash', onSelect: run((state) => setHeading(state, 2)) },
+      { id: 'heading-3', label: words.heading3, icon: 'hash', onSelect: run((state) => setHeading(state, 3)) },
       {
-        label: 'Normal text',
+        id: 'heading-normal',
+        label: words.normal,
         icon: 'text',
         separated: true,
         onSelect: run((state) => setHeading(state, 0)),
@@ -164,18 +198,20 @@ export function editorMenu(
 
   const lists: MenuEntry = {
     kind: 'submenu',
-    label: 'List',
+    id: 'list',
+    label: words.list,
     icon: 'list',
     items: [
-      { label: 'Bullet', icon: 'list', onSelect: run((state) => toggleLinePrefix(state, '- ')) },
-      { label: 'Task', icon: 'check', onSelect: run((state) => toggleLinePrefix(state, '- [ ] ')) },
-      { label: 'Quote', icon: 'quote', onSelect: run((state) => toggleLinePrefix(state, '> ')) },
+      { id: 'list-bullet', label: words.bullet, icon: 'list', onSelect: run((state) => toggleLinePrefix(state, '- ')) },
+      { id: 'list-task', label: words.task, icon: 'check', onSelect: run((state) => toggleLinePrefix(state, '- [ ] ')) },
+      { id: 'list-quote', label: words.quote, icon: 'quote', onSelect: run((state) => toggleLinePrefix(state, '> ')) },
     ],
   };
 
   const table: MenuEntry = {
     kind: 'submenu',
-    label: 'Table',
+    id: 'table',
+    label: words.table,
     icon: 'table',
     items: [
       {
@@ -196,7 +232,8 @@ export function editorMenu(
   const paste: MenuEntry[] = writable
     ? [
         {
-          label: 'Paste',
+          id: 'paste',
+          label: words.paste,
           icon: 'paste',
           separated: !selected,
           hint: `${MOD}V`,
@@ -218,7 +255,8 @@ export function editorMenu(
   const copy: MenuEntry[] = clipboard
     ? [
         {
-          label: 'Copy',
+          id: 'copy',
+          label: words.copy,
           icon: 'copy',
           hint: `${MOD}C`,
           separated: !writable,
@@ -243,8 +281,13 @@ export function editorMenu(
       table,
       headings,
       lists,
-      { label: 'Divider', icon: 'rule', onSelect: run((state) => insertBlock(state, '---')) },
-      { label: 'Code block', icon: 'code', onSelect: run((state) => insertBlock(state, '```\n\n```')) },
+      { id: 'divider', label: words.divider, icon: 'rule', onSelect: run((state) => insertBlock(state, '---')) },
+      {
+        id: 'code-block',
+        label: words.codeBlock,
+        icon: 'code',
+        onSelect: run((state) => insertBlock(state, '```\n\n```')),
+      },
       ...paste,
     ];
   }
@@ -252,7 +295,8 @@ export function editorMenu(
   const cut: MenuEntry[] = writable
     ? [
         {
-          label: 'Cut',
+          id: 'cut',
+          label: words.cut,
           icon: 'cut',
           separated: true,
           hint: `${MOD}X`,
@@ -269,32 +313,53 @@ export function editorMenu(
 
   return [
     ...head,
-    { label: 'Bold', icon: 'bold', hint: `${MOD}B`, onSelect: run((state) => toggleWrap(state, MARKERS.bold)) },
-    { label: 'Italic', icon: 'italic', hint: `${MOD}I`, onSelect: run((state) => toggleWrap(state, MARKERS.italic)) },
     {
-      label: 'Strikethrough',
+      id: 'bold',
+      label: words.bold,
+      icon: 'bold',
+      hint: `${MOD}B`,
+      onSelect: run((state) => toggleWrap(state, MARKERS.bold)),
+    },
+    {
+      id: 'italic',
+      label: words.italic,
+      icon: 'italic',
+      hint: `${MOD}I`,
+      onSelect: run((state) => toggleWrap(state, MARKERS.italic)),
+    },
+    {
+      id: 'strike',
+      label: words.strike,
       icon: 'strike',
       onSelect: run((state) => toggleWrap(state, MARKERS.strike)),
     },
-    { label: 'Code', icon: 'code', hint: `${MOD}E`, onSelect: run((state) => toggleWrap(state, MARKERS.code)) },
+    {
+      id: 'code',
+      label: words.code,
+      icon: 'code',
+      hint: `${MOD}E`,
+      onSelect: run((state) => toggleWrap(state, MARKERS.code)),
+    },
     headings,
     {
       kind: 'submenu',
-      label: 'Case',
+      id: 'case',
+      label: words.case,
       icon: 'case',
       items: [
-        { label: 'UPPERCASE', icon: 'case', onSelect: run((state) => changeCase(state, 'upper')) },
-        { label: 'lowercase', icon: 'case', onSelect: run((state) => changeCase(state, 'lower')) },
-        { label: 'Title Case', icon: 'case', onSelect: run((state) => changeCase(state, 'title')) },
+        { id: 'case-upper', label: words.upper, icon: 'case', onSelect: run((state) => changeCase(state, 'upper')) },
+        { id: 'case-lower', label: words.lower, icon: 'case', onSelect: run((state) => changeCase(state, 'lower')) },
+        { id: 'case-title', label: words.title, icon: 'case', onSelect: run((state) => changeCase(state, 'title')) },
         {
-          label: 'Sentence case',
+          id: 'case-sentence',
+          label: words.sentence,
           icon: 'case',
           onSelect: run((state) => changeCase(state, 'sentence')),
         },
       ],
     },
     lists,
-    { label: 'Link to a note', icon: 'link', onSelect: run(wrapWikilink) },
+    { id: 'link', label: words.link, icon: 'link', onSelect: run(wrapWikilink) },
     ...cut,
     ...copy,
     ...paste,

@@ -1,5 +1,6 @@
 import { Navigate, useNavigate } from 'react-router-dom';
 
+import { m } from '@/i18n';
 import { useSession } from '@/store/session';
 
 import { AuthLayout } from './AuthLayout';
@@ -18,7 +19,7 @@ export function RecoveryKit() {
   }
 
   return (
-    <AuthLayout step="RECOVERY KIT">
+    <AuthLayout step={m.auth.kit.step}>
       <RecoveryKitPanel
         code={pendingRecoveryCode}
         onDone={() => {

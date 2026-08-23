@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { api } from '@/api/client';
+import { describe } from '@/api/errors';
 import * as mcp from '@/api/mcp';
+import { m } from '@/i18n';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -94,11 +96,11 @@ export default function ConnectView() {
   }, [vaults]);
 
   const problem = (() => {
-    if (!clientID || !redirectURI || !challenge) return 'This link is missing what it needs.';
-    if (method !== 'S256') return 'This client asked for a challenge method this server refuses.';
+    if (!clientID || !redirectURI || !challenge) return m.claude.consent.linkIncomplete;
+    if (method !== 'S256') return m.claude.consent.methodRefused;
     // Until the registration resolves there is nothing to consent to, and an unresolved one
     // must not leave Allow live over an address nobody registered.
-    if (unknownClient) return 'That client is not registered with this server.';
+    if (unknownClient) return m.claude.consent.clientUnknown;
 
     return null;
   })();
@@ -120,7 +122,7 @@ export default function ConnectView() {
 
       window.location.assign(redirect);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'that did not work');
+      setError(describe(cause));
       setBusy(false);
     }
   };
@@ -149,11 +151,15 @@ export default function ConnectView() {
       <div className={styles.modal}>
         <div className={styles.head}>
           <div>
-            <div className={styles.title}>Connect to Shelf</div>
+            <div className={styles.title}>{m.claude.consent.title}</div>
             <div className={styles.subtitle}>
-              {problem
-                ? 'Nothing here can be approved'
-                : `${client ? client.client_name || 'An MCP client' : 'Checking who is asking…'} wants to reach one of your vaults`}
+              {problem ? m.claude.consent.nothing : null}
+              {/* The name is half a sentence, so it waits for the answer rather than being
+                  written into one: «checking who is asking» is not who is asking. */}
+              {!problem && client
+                ? m.claude.consent.asking(client.client_name || m.claude.consent.someClient)
+                : null}
+              {!problem && !client ? m.claude.consent.checking : null}
             </div>
           </div>
         </div>
@@ -167,8 +173,8 @@ export default function ConnectView() {
                 <Icon name="warn" size={13} />
               </span>
               <span>
-                None of your vaults has a connector yet. Set one up from the vault menu —
-                <strong> Connect Claude…</strong> — and come back to this link.
+                {m.claude.consent.noneBefore}
+                <strong> {m.claude.consent.menuItem}</strong> {m.claude.consent.noneAfter}
               </span>
             </div>
           ) : null}
@@ -176,13 +182,10 @@ export default function ConnectView() {
           {!problem && client && named.length > 0 ? (
             <>
               <p className={styles.lede}>
-                Approving lets this client read
-                {named.length === 1 ? ' the vault below' : ' the vault you pick'} through the
-                connector, and write to it where the connector may. It does not give the client
-                anything else in your account.
+                {named.length === 1 ? m.claude.consent.ledeOne : m.claude.consent.ledeMany}
               </p>
 
-              <div className={styles.section}>VAULT</div>
+              <div className={styles.section}>{m.claude.consent.vaultSection}</div>
               <div className={styles.roles} style={{ flexWrap: 'wrap' }}>
                 {named.map((vault) => (
                   <button
@@ -192,12 +195,12 @@ export default function ConnectView() {
                     onClick={() => setChosen(vault.id)}
                   >
                     <div className={styles.roleName}>{vault.name}</div>
-                    <div className={styles.roleHint}>{vault.noteCount} notes</div>
+                    <div className={styles.roleHint}>{m.claude.consent.notes(vault.noteCount)}</div>
                   </button>
                 ))}
               </div>
 
-              <div className={styles.section}>RETURNING TO</div>
+              <div className={styles.section}>{m.claude.consent.returning}</div>
               {/* Block, not inline: overflow does not apply to an inline element, so an
                   address longer than the modal would be clipped rather than scrolled —
                   directly under the line telling somebody to read it. */}
@@ -207,10 +210,7 @@ export default function ConnectView() {
                 <span className={styles.noteIcon}>
                   <Icon name="warn" size={13} />
                 </span>
-                <span>
-                  Check that address. It is where the client will be handed the code, and a
-                  loopback one belongs to whatever is listening on this machine.
-                </span>
+                <span>{m.claude.consent.addressNote}</span>
               </div>
             </>
           ) : null}
@@ -220,13 +220,13 @@ export default function ConnectView() {
 
         <div className={styles.footer}>
           <span className={styles.footerNote}>
-            {problem || chosen === null ? '' : 'THIS SERVER ALREADY HOLDS THAT VAULT’S KEY'}
+            {problem || chosen === null ? '' : m.claude.consent.footerKey}
           </span>
           <span className={styles.footerSpacer} />
           {/* Refusing has to be as reachable as agreeing, and every error state above is
               otherwise a screen with no way out of it. */}
           <button type="button" className={styles.done} disabled={busy} onClick={deny}>
-            {problem ? 'Close' : 'Deny'}
+            {problem ? m.common.close : m.claude.consent.deny}
           </button>
           <button
             type="button"
@@ -234,7 +234,7 @@ export default function ConnectView() {
             disabled={busy || Boolean(problem) || !client || chosen === null}
             onClick={() => void approve()}
           >
-            {busy ? 'Approving…' : 'Allow'}
+            {busy ? m.claude.consent.approving : m.claude.consent.allow}
           </button>
         </div>
       </div>

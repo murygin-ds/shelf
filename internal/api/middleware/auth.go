@@ -29,19 +29,22 @@ func Auth(parser TokenParser) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if !strings.HasPrefix(header, bearerPrefix) {
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authorization header is missing or malformed")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonAuthHeaderMissing, "authorization header is missing or malformed")
 			return
 		}
 
 		claims, err := parser.ParseAccess(strings.TrimSpace(header[len(bearerPrefix):]))
 		if err != nil {
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid or expired access token")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonTokenInvalid, "invalid or expired access token")
 			return
 		}
 
 		userID, err := claims.UserID()
 		if err != nil {
-			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid or expired access token")
+			response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+				response.ReasonTokenInvalid, "invalid or expired access token")
 			return
 		}
 

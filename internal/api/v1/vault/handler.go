@@ -278,8 +278,8 @@ func (h *Handler) SetLabel(c *gin.Context) {
 	// Half a sealed box is bytes nobody can open, so the pair is written or cleared
 	// together — an empty body is how a label is removed.
 	if (len(req.Label) == 0) != (len(req.LabelNonce) == 0) {
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a label needs both its ciphertext and its nonce")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonLabelIncomplete, "a label needs both its ciphertext and its nonce")
 
 		return
 	}
@@ -1044,7 +1044,9 @@ func (h *Handler) target(c *gin.Context) (userID, id int64, ok bool) {
 func (h *Handler) caller(c *gin.Context) (int64, bool) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication is required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication is required")
+
 		return 0, false
 	}
 
@@ -1056,48 +1058,51 @@ func (h *Handler) caller(c *gin.Context) (int64, bool) {
 func (h *Handler) fail(c *gin.Context, op string, err error) {
 	switch {
 	case errors.Is(err, vault.ErrNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "not found")
+		response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+			response.ReasonNotFound, "not found")
 	case errors.Is(err, vault.ErrForbidden):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "not allowed")
+		response.FailReason(c, http.StatusForbidden, response.CodeForbidden,
+			response.ReasonForbidden, "not allowed")
 	case errors.Is(err, vault.ErrVersionConflict):
-		response.Fail(c, http.StatusConflict, response.CodeConflict,
-			"the note was changed by someone else")
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonVersionConflict, "the note was changed by someone else")
 	case errors.Is(err, vault.ErrScopeMismatch):
-		response.Fail(c, http.StatusConflict, response.CodeConflict,
-			"the payload was encrypted for a different key scope")
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonScopeMismatch, "the payload was encrypted for a different key scope")
 	case errors.Is(err, vault.ErrCycle):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a folder cannot be moved into itself")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonFolderCycle, "a folder cannot be moved into itself")
 	case errors.Is(err, vault.ErrDepthExceeded):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"the folder tree would become too deep")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonDepthExceeded, "the folder tree would become too deep")
 	case errors.Is(err, vault.ErrShareExpiry):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a public link must expire in the future")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonShareExpiry, "a public link must expire in the future")
 	case errors.Is(err, vault.ErrLinkBatch):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a note may declare at most 500 outgoing links")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonLinkBatch, "a note may declare at most 500 outgoing links")
 	case errors.Is(err, vault.ErrSignatureInvalid):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"an author signature must be 64 raw bytes")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonSignatureInvalid, "an author signature must be 64 raw bytes")
 	case errors.Is(err, vault.ErrRekeyStale):
-		response.Fail(c, http.StatusConflict, response.CodeConflict,
-			"this re-key is no longer open")
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonRekeyStale, "this re-key is no longer open")
 	case errors.Is(err, vault.ErrKeyGrantMissing):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"the new key must be sealed to at least one subject")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonKeyGrantMissing, "the new key must be sealed to at least one subject")
 	case errors.Is(err, vault.ErrRekeyBatch):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a staging batch must hold between 1 and 200 rows")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonRekeyBatch, "a staging batch must hold between 1 and 200 rows")
 	case errors.Is(err, vault.ErrEpochMismatch):
-		response.Fail(c, http.StatusConflict, response.CodeConflict,
-			"this editing session has been replaced")
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonEpochMismatch, "this editing session has been replaced")
 	case errors.Is(err, vault.ErrCompactRequired):
-		response.Fail(c, http.StatusConflict, response.CodeConflict,
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonCompactRequired,
 			"the editing session needs to be committed before it can take more changes")
 	case errors.Is(err, vault.ErrUpdateTooLarge):
-		response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeTooLarge,
-			"the editing session state is too large")
+		response.FailReason(c, http.StatusRequestEntityTooLarge, response.CodeTooLarge,
+			response.ReasonUpdateTooLarge, "the editing session state is too large")
 	default:
 		middleware.LoggerFrom(c).Error("vault handler failed", zap.String("op", op), zap.Error(err))
 		response.Internal(c)

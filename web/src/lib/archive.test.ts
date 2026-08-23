@@ -6,7 +6,9 @@ import { utf8 } from '@/crypto/bytes';
 import {
   ARCHIVE_FORMAT,
   ARCHIVE_VERSION,
+  ArchiveError,
   MANIFEST_PATH,
+  UNTITLED,
   archiveFilename,
   manifest,
   parseArchive,
@@ -15,6 +17,22 @@ import {
   unique,
   type ArchiveManifest,
 } from './archive';
+
+/**
+ * What the refusal *was*, rather than how it was worded.
+ *
+ * The message is English diagnostics that nothing shows the reader, so a test that reads it
+ * is a test of copywriting; `reason` is the part the archive actually promises.
+ */
+function refusal(run: () => unknown): string {
+  try {
+    run();
+  } catch (cause) {
+    return cause instanceof ArchiveError ? cause.reason : String(cause);
+  }
+
+  return 'nothing thrown';
+}
 import { unzip, zip } from './zip';
 
 const AT = '2026-08-17T10:00:00.000Z';
@@ -115,8 +133,8 @@ describe('a name as a path', () => {
   });
 
   it('falls back when nothing usable is left', () => {
-    expect(segment('   ')).toBe('Untitled');
-    expect(segment('...')).toBe('Untitled');
+    expect(segment('   ')).toBe(UNTITLED);
+    expect(segment('...')).toBe(UNTITLED);
     // A name that was only separators keeps their shape rather than becoming Untitled: it is
     // still a name, and two of them in one folder still have to differ.
     expect(segment('///')).toBe('---');
@@ -247,13 +265,17 @@ describe('reading an archive back', () => {
   it('refuses what it cannot vouch for', () => {
     const write = (body: unknown) => new Map([[MANIFEST_PATH, utf8(JSON.stringify(body))]]);
 
-    expect(() => parseArchive(new Map())).toThrow('not a Shelf archive');
-    expect(() => parseArchive(new Map([[MANIFEST_PATH, utf8('{oh no')]]))).toThrow('not readable');
-    expect(() => parseArchive(write({ format: 'obsidian' }))).toThrow('not a Shelf archive');
-    expect(() =>
-      parseArchive(write({ format: ARCHIVE_FORMAT, version: ARCHIVE_VERSION + 1 })),
-    ).toThrow('newer version');
-    expect(() => parseArchive(write({ format: ARCHIVE_FORMAT, version: 1 }))).toThrow('incomplete');
+    expect(refusal(() => parseArchive(new Map()))).toBe('no-manifest');
+    expect(refusal(() => parseArchive(new Map([[MANIFEST_PATH, utf8('{oh no')]])))).toBe(
+      'unreadable',
+    );
+    expect(refusal(() => parseArchive(write({ format: 'obsidian' })))).toBe('not-shelf');
+    expect(
+      refusal(() => parseArchive(write({ format: ARCHIVE_FORMAT, version: ARCHIVE_VERSION + 1 }))),
+    ).toBe('too-new');
+    expect(refusal(() => parseArchive(write({ format: ARCHIVE_FORMAT, version: 1 })))).toBe(
+      'incomplete',
+    );
   });
 
   it('keeps what it can and says what it dropped', () => {
@@ -327,7 +349,7 @@ describe('reading an archive back', () => {
       ]),
     );
 
-    expect(plan.vault).toEqual({ name: 'Untitled' });
+    expect(plan.vault).toEqual({ name: UNTITLED });
     expect(plan.notes[0]?.name).toHaveLength(200);
     expect(plan.notes[0]).not.toHaveProperty('icon');
     expect(plan.notes[0]?.tags).toHaveLength(24);
@@ -341,7 +363,20 @@ describe('the archive file name', () => {
     expect(archiveFilename('Work / Notes!', new Date(AT))).toBe('shelf-work-notes-2026-08-17.zip');
   });
 
+  it('names a Cyrillic vault too, rather than falling back to the bare date', () => {
+    expect(archiveFilename('Мои заметки', new Date(AT))).toBe('shelf-мои-заметки-2026-08-17.zip');
+    // Decomposed «й» — the combining breve is not a letter, and splitting it off would leave
+    // «краткии» behind.
+    expect(archiveFilename('Мои\u0306', new Date(AT))).toBe('shelf-мой-2026-08-17.zip');
+  });
+
   it('still names something when the vault name is all symbols', () => {
     expect(archiveFilename('••••••', new Date(AT))).toBe('shelf-2026-08-17.zip');
+  });
+
+  it('keeps the name short enough for a file system to take', () => {
+    expect(archiveFilename('я'.repeat(200), new Date(AT))).toBe(
+      `shelf-${'я'.repeat(80)}-2026-08-17.zip`,
+    );
   });
 });

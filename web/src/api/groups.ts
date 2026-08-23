@@ -190,10 +190,7 @@ export async function setGroupMembers(
     const scopeKey = keyring.get(scope.scope_id, scope.key_version);
 
     if (!scopeKey) {
-      throw new Error(
-        'You hold no key for something this group can read, so its key cannot be replaced. ' +
-          'Ask somebody with access to that folder to remove the member.',
-      );
+      throw new Error('no key held for a scope this group can read, so its key cannot be replaced');
     }
 
     const box = await seal(

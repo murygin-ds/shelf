@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { m } from '@/i18n';
 import { search } from '@/lib/search';
 import { useWorkspace } from '@/store/workspace';
 import { useDismiss } from '@/ui/dismiss';
@@ -71,7 +72,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                 openAt(cursor);
               }
             }}
-            placeholder="Find a note"
+            placeholder={m.shell.palette.placeholder}
             autoFocus
             spellCheck={false}
           />
@@ -79,7 +80,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className={styles.body}>
-          <div className={styles.section}>NOTES</div>
+          <div className={styles.section}>{m.shell.palette.notes}</div>
 
           {hits.map((hit, position) => (
             <button
@@ -95,9 +96,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             </button>
           ))}
 
-          {term && hits.length === 0 ? <div className={styles.none}>No note matched.</div> : null}
+          {term && hits.length === 0 ? (
+            <div className={styles.none}>{m.shell.palette.nothing}</div>
+          ) : null}
 
-          <div className={styles.section}>ACTIONS</div>
+          <div className={styles.section}>{m.shell.palette.actions}</div>
           <button
             type="button"
             className={styles.row}
@@ -108,15 +111,15 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             }}
           >
             <Icon name="search" size={14} style={{ color: 'var(--text-quiet)' }} />
-            <span className={styles.rowTitle}>Search everything for “{term || '…'}”</span>
+            <span className={styles.rowTitle}>{m.shell.palette.everything(term || '…')}</span>
           </button>
         </div>
 
         <div className={styles.footer}>
-          <span>↑↓ NAVIGATE</span>
-          <span>↵ OPEN</span>
+          <span>{m.shell.palette.navigate}</span>
+          <span>{m.shell.palette.openHint}</span>
           <span className={styles.footerSpacer} />
-          <span>SEARCH IS LOCAL</span>
+          <span>{m.shell.palette.local}</span>
         </div>
       </div>
     </div>

@@ -76,6 +76,8 @@
   font-weight: 400;
   letter-spacing: 0.04em;
   color: var(--text-dim);
+  /* The role used to arrive already shouted by `toUpperCase()`. */
+  text-transform: var(--label-transform);
 }
 
 /* Menu */
@@ -86,11 +88,14 @@
   z-index: 50;
 }
 
+/* 328px was sized for a role badge reading ADMIN. It reads «Администратор» now, and since
+   the badge cannot shrink the row paid for it out of the vault's name — a name three words
+   long was down to about fourteen characters. The extra 28px is the badge's own growth. */
 .menu {
   position: absolute;
   top: 38px;
   left: 0;
-  width: 328px;
+  width: 356px;
   z-index: 51;
   padding: 6px;
   background: var(--surface-raised);
@@ -130,6 +135,13 @@
 
 .groupHead:first-child {
   padding-top: 5px;
+}
+
+/* Worn by the heading itself and not by the count beside it: one is a word of ours and
+   takes the small-caps treatment, the other is a number and has nothing to shout. */
+.groupLabel {
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
 }
 
 .groupRule {

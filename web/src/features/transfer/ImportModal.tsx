@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 
+import { describe } from '@/api/errors';
 import type { ImportProgress, ImportReport } from '@/api/transfer';
+import { format, importPhaseLabel, m } from '@/i18n';
 import { parseArchive, type ImportPlan } from '@/lib/archive';
 import { unzip } from '@/lib/zip';
 import { useSession } from '@/store/session';
@@ -8,7 +10,7 @@ import { useWorkspace } from '@/store/workspace';
 import { useDismiss } from '@/ui/dismiss';
 import { Icon } from '@/ui/Icon';
 
-import { describe, summarize } from './report';
+import { summarize } from './report';
 import styles from './transfer.module.css';
 
 /**
@@ -91,15 +93,24 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const failedFolders = report?.failures.filter((one) => one.kind === 'folder').length ?? 0;
+  const failure = report?.failures[0];
+  const exported = plan && plan.exportedAt !== '' ? exportedOn(plan.exportedAt) : null;
+
   return (
     <div className={styles.overlay} {...dismiss}>
       <div className={styles.modal}>
         <div className={styles.head}>
           <div>
-            <div className={styles.title}>Import a vault</div>
-            <div className={styles.subtitle}>From an archive Shelf wrote</div>
+            <div className={styles.title}>{m.transfer.importing.title}</div>
+            <div className={styles.subtitle}>{m.transfer.importing.subtitle}</div>
           </div>
-          <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className={styles.close}
+            onClick={onClose}
+            aria-label={m.common.close}
+          >
             <Icon name="x" size={14} />
           </button>
         </div>
@@ -108,9 +119,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
           {report ? (
             <>
               <p className={styles.lede}>
-                <strong>{name}</strong> now holds {report.notes}{' '}
-                {report.notes === 1 ? 'note' : 'notes'} in {report.folders}{' '}
-                {report.folders === 1 ? 'folder' : 'folders'}.
+                <strong>{name}</strong> {m.transfer.importing.filled(report.notes, report.folders)}
               </p>
 
               {report.skipped.length > 0 ? (
@@ -122,31 +131,32 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                 </div>
               ) : null}
 
-              {report.failures.length > 0 ? (
+              {failure ? (
                 <div className={styles.note}>
                   <span className={styles.noteIcon}>
                     <Icon name="warn" size={13} />
                   </span>
                   <span>
-                    {report.failures.length} {report.failures.length === 1 ? 'node' : 'nodes'} could
-                    not be written: {report.failures[0]?.message}. The vault was kept as it stands —
-                    delete it from the vault menu if you would rather start again.
+                    {m.transfer.importing.failed(
+                      failedFolders,
+                      report.failures.length - failedFolders,
+                      failure.message,
+                    )}
                   </span>
                 </div>
               ) : null}
 
-              <div className={styles.section}>WHAT AN ARCHIVE CANNOT CARRY</div>
+              <div className={styles.section}>{m.transfer.importing.cannotCarry}</div>
               <ul className={styles.list}>
-                <li>Revision history, and the signatures on it.</li>
-                <li>Members, permissions and keys: this vault is yours alone.</li>
-                <li>Folders that had a key of their own — everything here is under the vault key.</li>
+                <li>{m.transfer.importing.noHistory}</li>
+                <li>{m.transfer.importing.noMembers}</li>
+                <li>{m.transfer.importing.noScopes}</li>
               </ul>
             </>
           ) : (
             <>
               <p className={styles.lede}>
-                This creates a <strong>new</strong> vault. Nothing in the vaults you already have is
-                read or changed.
+                <strong>{m.transfer.importing.ledeLead}</strong> {m.transfer.importing.ledeBody}
               </p>
 
               <input
@@ -172,8 +182,8 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                 onDrop={drop}
               >
                 <Icon name="inbox" size={18} />
-                {plan ? 'Choose a different archive' : 'Choose an archive'}
-                <span className={styles.pickerHint}>or drop a .zip here</span>
+                {plan ? m.transfer.importing.another : m.transfer.importing.choose}
+                <span className={styles.pickerHint}>{m.transfer.importing.dropHint}</span>
               </button>
 
               {plan ? (
@@ -181,9 +191,8 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                   <div className={styles.summary}>
                     <div className={styles.summaryTitle}>{plan.vault.name}</div>
                     <div className={styles.summaryMeta}>
-                      {plan.notes.length} {plan.notes.length === 1 ? 'note' : 'notes'} ·{' '}
-                      {plan.folders.length} {plan.folders.length === 1 ? 'folder' : 'folders'}
-                      {plan.exportedAt ? ` · exported ${plan.exportedAt.slice(0, 10)}` : ''}
+                      {m.transfer.importing.summary(plan.notes.length, plan.folders.length)}
+                      {exported === null ? '' : ` · ${exported}`}
                     </div>
                   </div>
 
@@ -197,7 +206,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                   ) : null}
 
                   <label className={styles.field}>
-                    <span className={styles.label}>NAME THE NEW VAULT</span>
+                    <span className={styles.label}>{m.transfer.importing.nameLabel}</span>
                     <input
                       className={styles.input}
                       value={name}
@@ -210,7 +219,8 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
 
               {progress ? (
                 <div className={styles.progress}>
-                  {PHASES[progress.phase]} {progress.done}/{progress.total} · KEEP THIS TAB OPEN
+                  {importPhaseLabel(progress.phase)} {progress.done}/{progress.total} ·{' '}
+                  {m.transfer.importing.keepOpen}
                 </div>
               ) : null}
             </>
@@ -221,12 +231,12 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
 
         <div className={styles.footer}>
           <span className={styles.footerNote}>
-            {report ? 'THE ARCHIVE ON YOUR DISK IS STILL PLAIN TEXT' : 'A NEW VAULT, KEYED HERE'}
+            {report ? m.transfer.importing.footerDone : m.transfer.importing.footerNew}
           </span>
           <span className={styles.footerSpacer} />
           {report ? (
             <button type="button" className={styles.done} onClick={onClose}>
-              Done
+              {m.common.done}
             </button>
           ) : (
             <button
@@ -235,7 +245,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
               onClick={() => void run()}
               disabled={!plan || !identity || busy}
             >
-              {busy ? 'Importing…' : 'Create vault'}
+              {busy ? m.transfer.importing.busy : m.transfer.importing.run}
             </button>
           )}
         </div>
@@ -244,9 +254,12 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-const PHASES: Record<ImportProgress['phase'], string> = {
-  vault: 'CREATING THE VAULT',
-  folders: 'CREATING FOLDERS',
-  notes: 'WRITING NOTES',
-  links: 'LINKING',
-};
+/**
+ * The stamp in the manifest is input like everything else, and `format.date` throws on a date
+ * it cannot parse rather than returning something odd.
+ */
+function exportedOn(iso: string): string | null {
+  const at = new Date(iso);
+
+  return Number.isNaN(at.getTime()) ? null : m.transfer.importing.exportedOn(format.date(at));
+}

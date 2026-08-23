@@ -129,7 +129,10 @@ func (h *Handler) LookupUser(c *gin.Context) {
 
 	login := c.Query("login")
 	if len(login) < 3 || len(login) > 64 {
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "not found")
+		// A login of the wrong length has to answer exactly like one that does not exist.
+		response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+			response.ReasonNotFound, "not found")
+
 		return
 	}
 
@@ -262,7 +265,8 @@ func (h *Handler) Grants(c *gin.Context) {
 	kind := c.Query("scope_type")
 	if kind != string(vault.ScopeFolder) && kind != string(vault.ScopeFile) {
 		response.FailWithDetails(c, http.StatusBadRequest, response.CodeBadRequest,
-			"invalid query parameter", map[string]string{"scope_type": "invalid"})
+			"invalid query parameter",
+			map[string]string{response.ReasonKey: response.ReasonQueryInvalid, "scope_type": "invalid"})
 
 		return
 	}
@@ -274,7 +278,8 @@ func (h *Handler) Grants(c *gin.Context) {
 
 	if refID <= 0 {
 		response.FailWithDetails(c, http.StatusBadRequest, response.CodeBadRequest,
-			"invalid query parameter", map[string]string{"scope_ref_id": "invalid"})
+			"invalid query parameter",
+			map[string]string{response.ReasonKey: response.ReasonQueryInvalid, "scope_ref_id": "invalid"})
 
 		return
 	}
@@ -382,8 +387,10 @@ func (h *Handler) CreateInvite(c *gin.Context) {
 	// the keys were already sealed to.
 	if (len(req.TokenHash) == 0) == (req.TargetUserID == nil) {
 		response.FailWithDetails(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"request validation failed",
-			map[string]string{"token_hash": "exactly one of token_hash and target_user_id"})
+			"request validation failed", map[string]string{
+				response.ReasonKey: response.ReasonInvitePath,
+				"token_hash":       "exactly one of token_hash and target_user_id",
+			})
 
 		return
 	}
@@ -545,8 +552,10 @@ func (h *Handler) Redeem(c *gin.Context) {
 
 	if (len(req.TokenHash) == 0) == (req.InviteID == 0) {
 		response.FailWithDetails(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"request validation failed",
-			map[string]string{"token_hash": "exactly one of token_hash and invite_id"})
+			"request validation failed", map[string]string{
+				response.ReasonKey: response.ReasonRedeemPath,
+				"token_hash":       "exactly one of token_hash and invite_id",
+			})
 
 		return
 	}
@@ -581,7 +590,9 @@ func (h *Handler) target(c *gin.Context) (userID, vaultID int64, ok bool) {
 func (h *Handler) caller(c *gin.Context) (int64, bool) {
 	userID, ok := middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication is required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication is required")
+
 		return 0, false
 	}
 
@@ -591,35 +602,42 @@ func (h *Handler) caller(c *gin.Context) (int64, bool) {
 func (h *Handler) fail(c *gin.Context, op string, err error) {
 	switch {
 	case errors.Is(err, access.ErrNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "not found")
+		response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+			response.ReasonNotFound, "not found")
 	case errors.Is(err, access.ErrInviteInvalid):
 		// Expired, already used, revoked and never existed answer identically: telling
-		// them apart would turn the lookup into a probe for valid codes.
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "not found")
+		// them apart would turn the lookup into a probe for valid codes. The reason has to
+		// repeat ReasonNotFound for the same purpose — a distinct one would hand the probe
+		// back in a field that is easier to read than the message.
+		response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+			response.ReasonNotFound, "not found")
 	case errors.Is(err, access.ErrForbidden):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "not allowed")
+		response.FailReason(c, http.StatusForbidden, response.CodeForbidden,
+			response.ReasonForbidden, "not allowed")
 	case errors.Is(err, access.ErrOwnerRequired):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden,
-			"the vault owner cannot be changed this way")
+		response.FailReason(c, http.StatusForbidden, response.CodeForbidden,
+			response.ReasonOwnerRequired, "the vault owner cannot be changed this way")
 	case errors.Is(err, access.ErrSelfTarget):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden,
-			"a member cannot apply this to themselves")
+		response.FailReason(c, http.StatusForbidden, response.CodeForbidden,
+			response.ReasonSelfTarget, "a member cannot apply this to themselves")
 	case errors.Is(err, access.ErrAlreadyMember):
-		response.Fail(c, http.StatusConflict, response.CodeConflict, "already a member of this vault")
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonAlreadyMember, "already a member of this vault")
 	case errors.Is(err, access.ErrKeysRequired):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"the change needs the scope keys sealed to the subject")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonKeysRequired, "the change needs the scope keys sealed to the subject")
 	case errors.Is(err, access.ErrGroupMembers):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a group must hold between 1 and 200 members")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupMembers, "a group must hold between 1 and 200 members")
 	case errors.Is(err, access.ErrGroupKeyless):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"whoever writes a group's membership must be in it")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupKeyless, "whoever writes a group's membership must be in it")
 	case errors.Is(err, access.ErrGroupScopes):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a group rotation must re-seal every scope the group holds")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupScopes, "a group rotation must re-seal every scope the group holds")
 	case errors.Is(err, access.ErrGroupRotation):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonGroupRotation,
 			"removing a member requires a new group key and its scopes sealed again")
 	default:
 		middleware.LoggerFrom(c).Error("access handler failed", zap.String("op", op), zap.Error(err))

@@ -15,7 +15,8 @@ import (
 func MaxBody(limit int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.ContentLength > limit {
-			response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeTooLarge, "request body is too large")
+			response.FailReason(c, http.StatusRequestEntityTooLarge, response.CodeTooLarge,
+				response.ReasonBodyTooLarge, "request body is too large")
 			return
 		}
 

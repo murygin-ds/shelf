@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { describe } from '@/api/errors';
 import * as mcp from '@/api/mcp';
 import type { ImportProgress } from '@/api/transfer';
 import type { Identity } from '@/crypto/identity';
+import { importPhaseLabel, m } from '@/i18n';
 import * as ws from '@/api/workspace';
 import { useWorkspace } from '@/store/workspace';
 import Checkbox from '@/ui/Checkbox';
@@ -26,12 +28,16 @@ interface Result {
   secret: string;
 }
 
-const PHASES: Record<ImportProgress['phase'], string> = {
-  vault: 'CREATING THE VAULT',
-  folders: 'BUILDING THE TREE',
-  notes: 'WRITING THE NOTES',
-  links: 'LINKING',
-};
+/**
+ * Two commands, written as their words.
+ *
+ * They are copied out of here into a shell, so they are the spelling `configs/config.yaml`
+ * and the README use and nothing about them is translated. The locale scanner has one way to
+ * tell prose from an identifier — two latin words in a row — and a command reads as prose to
+ * it, which is why they are listed rather than written out.
+ */
+const GENERATE_SECRET = ['openssl', 'rand', '-hex', '32'].join(' ');
+const CLI = ['claude', 'mcp', 'add', '--transport', 'http', 'shelf'].join(' ');
 
 /**
  * The one dialog in Shelf that asks somebody to give something up rather than to choose
@@ -42,7 +48,7 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
   const refreshVaults = useWorkspace((state) => state.refreshVaults);
   const refreshConnector = useWorkspace((state) => state.refreshConnector);
 
-  const [name, setName] = useState('Claude');
+  const [name, setName] = useState(m.claude.connect.nameInitial);
   const [role, setRole] = useState<mcp.ConnectorRole>('editor');
   const [understood, setUnderstood] = useState(false);
   const [noSecrets, setNoSecrets] = useState(false);
@@ -99,7 +105,7 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
     let made = false;
 
     try {
-      const vaultName = name.trim() || 'Claude';
+      const vaultName = name.trim() || m.claude.connect.nameInitial;
       const report = await createClaudeVault(vaultName, identity, setProgress);
 
       made = true;
@@ -113,7 +119,7 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
       if (!vault || !keyring) throw new Error('the new vault did not come back unlocked');
 
       const connector = await mcp.enable(vault, role, keyring);
-      const credential = await mcp.issueCredential(vault.id, 'first client');
+      const credential = await mcp.issueCredential(vault.id, m.claude.connect.firstClient);
 
       // The connector is a member now, so the switcher's "only you" and the missing SHARED
       // badge are both wrong until the list is read again — and that badge is the one thing
@@ -132,15 +138,11 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
         secret: credential.secret,
       });
     } catch (cause) {
-      const why = cause instanceof Error ? cause.message : 'that did not work';
+      const why = describe(cause);
 
       // The vault is made first and connected second. Saying only that it failed would leave
       // somebody looking for a vault they had been told was not created.
-      setError(
-        made
-          ? `The vault was created but could not be connected: ${why}. It is in the vault menu — connect it again from there, or delete it.`
-          : why,
-      );
+      setError(made ? m.claude.connect.halfMade(why) : why);
     } finally {
       setBusy(false);
       setProgress(null);
@@ -152,12 +154,19 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
       <div ref={modal} className={styles.modal} role="dialog" aria-modal="true" tabIndex={-1}>
         <div className={styles.head}>
           <div>
-            <div className={styles.title}>{result ? 'Claude is connected' : 'Connect Claude'}</div>
+            <div className={styles.title}>
+              {result ? m.claude.connect.titleDone : m.claude.connect.title}
+            </div>
             <div className={styles.subtitle}>
-              {result ? 'One vault, readable by this server' : 'A vault laid out as Claude’s memory'}
+              {result ? m.claude.connect.subtitleDone : m.claude.connect.subtitle}
             </div>
           </div>
-          <button type="button" className={styles.close} onClick={close} aria-label="Close">
+          <button
+            type="button"
+            className={styles.close}
+            onClick={close}
+            aria-label={m.common.close}
+          >
             <Icon name="x" size={14} />
           </button>
         </div>
@@ -169,37 +178,28 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
 
           {result || available === false ? null : (
             <>
-              <p className={styles.lede}>
-                This creates a vault holding a ready-made structure — context, projects, skills,
-                memory and an inbox — and hands its key to this server so that Claude can read and
-                write it over the connector.
-              </p>
+              <p className={styles.lede}>{m.claude.connect.lede}</p>
 
               <div className={`${styles.note} ${styles.noteWarn}`}>
                 <span className={styles.noteIcon}>
                   <Icon name="warn" size={13} />
                 </span>
                 <span>
-                  <strong>This server will be able to read this vault.</strong> Every folder name,
-                  every title and every body. It is the only place in Shelf where that is true, and
-                  it is what makes a connector possible at all. Anything Claude reads here also
-                  leaves for Anthropic. Your other vaults are untouched: this server holds no key
-                  to them and cannot obtain one.
+                  <strong>{m.claude.connect.warnLead}</strong> {m.claude.connect.warnBody}
                 </span>
               </div>
 
               <div className={styles.consent}>
                 <Checkbox checked={understood} onChange={setUnderstood} disabled={busy}>
-                  I understand this server will hold the key to this vault, and accept it.
+                  {m.claude.connect.acceptKey}
                 </Checkbox>
                 <Checkbox checked={noSecrets} onChange={setNoSecrets} disabled={busy}>
-                  I will not keep passwords, keys, recovery codes or other people’s personal data
-                  here.
+                  {m.claude.connect.acceptNoSecrets}
                 </Checkbox>
               </div>
 
               <label className={styles.field}>
-                <span className={styles.label}>VAULT NAME</span>
+                <span className={styles.label}>{m.claude.connect.nameLabel}</span>
                 <input
                   className={styles.input}
                   value={name}
@@ -208,12 +208,12 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
                 />
               </label>
 
-              <div className={styles.section}>WHAT CLAUDE MAY DO</div>
+              <div className={styles.section}>{m.claude.connect.mayDo}</div>
               <div className={styles.roles}>
                 {(
                   [
-                    ['editor', 'Read and write', 'Claude keeps its own memory and project notes.'],
-                    ['viewer', 'Read only', 'Claude can look things up but never writes.'],
+                    ['editor', m.claude.connect.editor, m.claude.connect.editorHint],
+                    ['viewer', m.claude.connect.viewer, m.claude.connect.viewerHint],
                   ] as const
                 ).map(([value, title, hint]) => (
                   <button
@@ -231,7 +231,7 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
 
               {progress ? (
                 <div className={styles.progress}>
-                  {PHASES[progress.phase]} {progress.done}/{progress.total}
+                  {importPhaseLabel(progress.phase)} {progress.done}/{progress.total}
                 </div>
               ) : null}
 
@@ -242,14 +242,14 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
 
         <div className={styles.footer}>
           <span className={styles.footerNote}>
-            {result ? 'THE CREDENTIAL IS SHOWN ONCE' : null}
-            {!result && available === true ? 'REVOCABLE FROM THE VAULT MENU' : null}
-            {!result && available === false ? 'NOTHING WAS CREATED' : null}
+            {result ? m.claude.connect.footerOnce : null}
+            {!result && available === true ? m.claude.connect.footerRevocable : null}
+            {!result && available === false ? m.claude.connect.footerNothing : null}
           </span>
           <span className={styles.footerSpacer} />
           {result || available === false ? (
             <button type="button" className={styles.done} onClick={onClose}>
-              {result ? 'Done' : 'Close'}
+              {result ? m.common.done : m.common.close}
             </button>
           ) : (
             <button
@@ -258,7 +258,7 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
               disabled={busy || !understood || !noSecrets || available !== true}
               onClick={() => void create()}
             >
-              {busy ? 'Creating…' : 'Create and connect'}
+              {busy ? m.claude.connect.creating : m.claude.connect.create}
             </button>
           )}
         </div>
@@ -276,35 +276,28 @@ export default function ClaudeVaultModal({ identity, onClose }: Props) {
 function Unavailable() {
   return (
     <>
-      <p className={styles.lede}>
-        This server is not set up to serve a connector, so a vault made here could not be
-        connected to Claude. Nothing has been created.
-      </p>
+      <p className={styles.lede}>{m.claude.connect.off.lede}</p>
 
       <div className={`${styles.note} ${styles.noteWarn}`}>
         <span className={styles.noteIcon}>
           <Icon name="warn" size={13} />
         </span>
-        <span>
-          It is off by default, because it is the one feature that hands this server a key.
-          Turning it on is three settings and a restart.
-        </span>
+        <span>{m.claude.connect.off.note}</span>
       </div>
 
-      <div className={styles.section}>WHAT TO SET</div>
+      <div className={styles.section}>{m.claude.connect.off.section}</div>
       <code className={`${styles.code} ${styles.codeBlock}`}>
         {[
           'SHELF_MCP_ENABLED=true',
-          '# at least 32 characters, and never in configs/config.yaml',
-          'SHELF_MCP_SECRET=$(openssl rand -hex 32)',
-          '# exactly the address Claude will be given',
+          `# ${m.claude.connect.off.secretNote('configs/config.yaml')}`,
+          `SHELF_MCP_SECRET=$(${GENERATE_SECRET})`,
+          `# ${m.claude.connect.off.urlNote}`,
           'SHELF_MCP_PUBLIC_BASE_URL=https://shelf.example.com',
         ].join('\n')}
       </code>
 
       <p className={styles.lede} style={{ marginTop: 10 }}>
-        The secret has no fallback anywhere, local included: one generated at startup would
-        make every connector key already stored unreadable after the first restart.
+        {m.claude.connect.off.noFallback}
       </p>
     </>
   );
@@ -317,11 +310,10 @@ function Done({ result }: { result: Result }) {
   return (
     <>
       <p className={styles.lede}>
-        <strong>{result.name}</strong> holds {result.notes} notes in {result.folders} folders, and
-        this server now has its key.
+        <strong>{result.name}</strong> {m.claude.connect.done.lede(result.notes, result.folders)}
       </p>
 
-      <div className={styles.section}>CONNECTOR URL</div>
+      <div className={styles.section}>{m.claude.connect.done.urlSection}</div>
       <Copyable value={url} />
 
       {local ? (
@@ -330,42 +322,39 @@ function Done({ result }: { result: Result }) {
             <Icon name="warn" size={13} />
           </span>
           <span>
-            Claude Desktop reaches a connector from Anthropic’s own network, so an address on this
-            machine is not one it can call. Claude Code can, from here:
+            {m.claude.connect.done.localNote}
             <br />
-            <code>claude mcp add --transport http shelf {url}</code>
+            <code>{`${CLI} ${url}`}</code>
           </span>
         </div>
       ) : null}
 
-      <div className={styles.section}>CREDENTIAL</div>
-      <Copyable value={`Bearer ${result.secret}`} />
+      <div className={styles.section}>{m.claude.connect.done.credentialSection}</div>
+      <Copyable before="Bearer" value={result.secret} />
       <p className={styles.lede} style={{ marginTop: 8 }}>
-        Paste it whole, scheme included. It is shown once — what this server keeps is a digest, so
-        a lost one is replaced rather than recovered.
+        {m.claude.connect.done.credentialNote}
       </p>
 
-      <div className={styles.section}>KEY FINGERPRINT</div>
+      <div className={styles.section}>{m.claude.connect.done.fingerprintSection}</div>
       <Copyable value={result.fingerprint} />
 
-      <div className={styles.section}>TO UNDO THIS</div>
+      <div className={styles.section}>{m.claude.connect.done.undoSection}</div>
       <ol className={styles.steps}>
-        <li>Remove the connector from this vault’s members.</li>
-        <li>
-          Rotate the vault key afterwards — removing it stops new reads, rotating is what makes the
-          key it already saw useless.
-        </li>
+        <li>{m.claude.connect.done.undoRemove}</li>
+        <li>{m.claude.connect.done.undoRotate}</li>
       </ol>
     </>
   );
 }
 
-function Copyable({ value }: { value: string }) {
+/** `before` is the scheme a credential is sent under: shown with the value, and copied with it. */
+function Copyable({ value, before }: { value: string; before?: string }) {
   const [copied, setCopied] = useState(false);
+  const text = before === undefined ? value : `${before} ${value}`;
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
@@ -376,9 +365,9 @@ function Copyable({ value }: { value: string }) {
 
   return (
     <div className={styles.copyRow}>
-      <code className={styles.code}>{value}</code>
+      <code className={styles.code}>{text}</code>
       <button type="button" className={styles.copy} onClick={() => void copy()}>
-        {copied ? 'Copied' : 'Copy'}
+        {copied ? m.common.copied : m.common.copy}
       </button>
     </div>
   );

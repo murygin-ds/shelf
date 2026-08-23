@@ -2,9 +2,25 @@ import { describe, expect, it } from 'vitest';
 
 import { fromUtf8, utf8 } from '@/crypto/bytes';
 
-import { unzip, zip, type ZipEntry } from './zip';
+import { ZipError, unzip, zip, type ZipEntry } from './zip';
 
 const stamp = new Date('2026-08-17T10:30:00Z');
+
+/**
+ * What the refusal *was*, rather than how it was worded.
+ *
+ * The message names the entry for a log and never reaches the reader, so asserting on it is
+ * asserting on copywriting; `reason` is the part a caller may depend on.
+ */
+async function refusal(run: Promise<unknown>): Promise<string> {
+  try {
+    await run;
+  } catch (cause) {
+    return cause instanceof ZipError ? cause.reason : String(cause);
+  }
+
+  return 'nothing thrown';
+}
 
 async function roundTrip(entries: ZipEntry[]): Promise<Map<string, string>> {
   const archive = await (await zip(entries, stamp)).arrayBuffer();
@@ -63,9 +79,7 @@ describe('the zip archive', () => {
   });
 
   it('refuses a file that is not an archive', async () => {
-    await expect(unzip(utf8('not a zip at all').buffer as ArrayBuffer)).rejects.toThrow(
-      'not a zip archive',
-    );
+    expect(await refusal(unzip(utf8('not a zip at all').buffer as ArrayBuffer))).toBe('not-a-zip');
   });
 
   it('refuses an archive whose payload was tampered with', async () => {
@@ -77,7 +91,7 @@ describe('the zip archive', () => {
     const payload = 30 + 'a.md'.length;
     archive[payload] = (archive[payload] ?? 0) ^ 0xff;
 
-    await expect(unzip(archive.buffer as ArrayBuffer)).rejects.toThrow('corrupt');
+    expect(await refusal(unzip(archive.buffer as ArrayBuffer))).toBe('entry-corrupt');
   });
 
   it('says so plainly when the archive is Zip64', async () => {
@@ -89,6 +103,6 @@ describe('the zip archive', () => {
     const view = new DataView(archive.buffer);
     view.setUint16(archive.length - 22 + 10, 0xffff, true);
 
-    await expect(unzip(archive.buffer as ArrayBuffer)).rejects.toThrow('Zip64');
+    expect(await refusal(unzip(archive.buffer as ArrayBuffer))).toBe('zip64');
   });
 });

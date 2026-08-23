@@ -272,7 +272,8 @@ func (h *Handler) Disable(c *gin.Context) {
 func (h *Handler) target(c *gin.Context) (userID, vaultID int64, ok bool) {
 	userID, ok = middleware.UserIDFrom(c)
 	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "authentication is required")
+		response.FailReason(c, http.StatusUnauthorized, response.CodeUnauthorized,
+			response.ReasonUnauthenticated, "authentication is required")
 
 		return 0, 0, false
 	}
@@ -290,19 +291,20 @@ func (h *Handler) target(c *gin.Context) (userID, vaultID int64, ok bool) {
 func (h *Handler) fail(c *gin.Context, op string, err error) {
 	switch {
 	case errors.Is(err, vault.ErrNotFound), errors.Is(err, mcp.ErrNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "not found")
+		response.FailReason(c, http.StatusNotFound, response.CodeNotFound,
+			response.ReasonNotFound, "not found")
 	case errors.Is(err, mcp.ErrOwnerRequired):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden,
-			"only the owner of a vault may connect it")
+		response.FailReason(c, http.StatusForbidden, response.CodeForbidden,
+			response.ReasonOwnerRequired, "only the owner of a vault may connect it")
 	case errors.Is(err, mcp.ErrRoleInvalid):
-		response.Fail(c, http.StatusUnprocessableEntity, response.CodeValidation,
-			"a connector may be an editor or a viewer")
+		response.FailReason(c, http.StatusUnprocessableEntity, response.CodeValidation,
+			response.ReasonConnectorRole, "a connector may be an editor or a viewer")
 	case errors.Is(err, mcp.ErrExists):
-		response.Fail(c, http.StatusConflict, response.CodeConflict,
-			"this vault already has a connector")
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonConnectorExists, "this vault already has a connector")
 	case errors.Is(err, vault.ErrScopeMismatch):
-		response.Fail(c, http.StatusConflict, response.CodeConflict,
-			"a key was sealed against a scope outside this vault")
+		response.FailReason(c, http.StatusConflict, response.CodeConflict,
+			response.ReasonScopeMismatch, "a key was sealed against a scope outside this vault")
 	default:
 		middleware.LoggerFrom(c).Error("connector handler failed", zap.String("op", op), zap.Error(err))
 		response.Internal(c)

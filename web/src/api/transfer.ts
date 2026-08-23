@@ -13,7 +13,8 @@ import {
 import { resolvables, resolveWikilinks } from '@/lib/wikilinks';
 import { zip, type ZipEntry } from '@/lib/zip';
 
-import { ApiError, OfflineError } from './client';
+import { OfflineError } from './client';
+import { describe } from './errors';
 import * as graph from './graph';
 import * as ws from './workspace';
 
@@ -283,11 +284,4 @@ async function decorate(
   if (!icon && tags.length === 0) return;
 
   await ws.writeMeta(node, kind, { ...(icon ? { icon } : {}), tags }, keyring);
-}
-
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message || `HTTP ${cause.status}`;
-  if (cause instanceof Error) return cause.message || cause.name;
-
-  return 'something went wrong';
 }

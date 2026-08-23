@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import { m } from '@/i18n';
 import { isReadOnly } from '@/store/prefs';
 import { useWorkspace } from '@/store/workspace';
 import { MOD, type MenuEntry, useContextMenu } from '@/ui/ContextMenu';
@@ -89,7 +90,8 @@ function fieldItems(field: Field): MenuEntry[] {
     ...(readable && writable
       ? [
           {
-            label: 'Cut',
+            id: 'cut',
+            label: m.shell.menu.cut,
             icon: 'cut' as const,
             hint: `${MOD}X`,
             onSelect: () => {
@@ -102,7 +104,8 @@ function fieldItems(field: Field): MenuEntry[] {
     ...(readable
       ? [
           {
-            label: 'Copy',
+            id: 'copy',
+            label: m.common.copy,
             icon: 'copy' as const,
             hint: `${MOD}C`,
             onSelect: () => {
@@ -115,7 +118,8 @@ function fieldItems(field: Field): MenuEntry[] {
     ...(writable && clipboard
       ? [
           {
-            label: 'Paste',
+            id: 'paste',
+            label: m.shell.menu.paste,
             icon: 'paste' as const,
             hint: `${MOD}V`,
             onSelect: () => {
@@ -137,7 +141,8 @@ function fieldItems(field: Field): MenuEntry[] {
   return [
     ...verbs,
     {
-      label: 'Select all',
+      id: 'select-all',
+      label: m.shell.menu.selectAll,
       icon: 'text',
       hint: `${MOD}A`,
       separated: verbs.length > 0,
@@ -157,7 +162,8 @@ function copyItems(): MenuEntry[] {
 
   return [
     {
-      label: 'Copy',
+      id: 'copy',
+      label: m.common.copy,
       icon: 'copy',
       hint: `${MOD}C`,
       onSelect: () => void navigator.clipboard.writeText(text).catch(() => undefined),
@@ -184,25 +190,37 @@ function appItems(
       ? []
       : ([
           {
-            label: 'New note',
+            id: 'new-note',
+            label: m.shell.menu.newNote,
             icon: 'plus',
             separated,
             onSelect: () =>
-              void ask('Note title', 'Untitled').then((title) => {
-                if (title) void addNote(null, title);
-              }),
+              void ask(m.shell.menu.noteTitlePrompt, m.shell.menu.noteTitleInitial).then(
+                (title) => {
+                  if (title) void addNote(null, title);
+                },
+              ),
           },
           {
-            label: 'New folder',
+            id: 'new-folder',
+            label: m.shell.menu.newFolder,
             icon: 'folder',
             onSelect: () =>
-              void ask('Folder name', 'New folder').then((name) => {
-                if (name) void addFolder(null, name);
-              }),
+              void ask(m.shell.menu.folderNamePrompt, m.shell.menu.folderNameInitial).then(
+                (name) => {
+                  if (name) void addFolder(null, name);
+                },
+              ),
           },
         ] as MenuEntry[])),
-    { label: 'Search', icon: 'search', separated: true, onSelect: () => setView('search') },
-    { label: 'Graph', icon: 'graph', onSelect: () => setView('graph') },
-    { label: 'Trash', icon: 'trash', onSelect: () => setView('trash') },
+    {
+      id: 'search',
+      label: m.shell.menu.search,
+      icon: 'search',
+      separated: true,
+      onSelect: () => setView('search'),
+    },
+    { id: 'graph', label: m.shell.menu.graph, icon: 'graph', onSelect: () => setView('graph') },
+    { id: 'trash', label: m.shell.menu.trash, icon: 'trash', onSelect: () => setView('trash') },
   ];
 }

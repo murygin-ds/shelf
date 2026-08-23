@@ -7,6 +7,8 @@ import {
   useState,
 } from 'react';
 
+import { language } from '@/i18n';
+
 import { Icon, type IconName } from './Icon';
 import { clampToViewport } from './position';
 import styles from './contextmenu.module.css';
@@ -14,6 +16,9 @@ import styles from './contextmenu.module.css';
 export interface MenuItem {
   /** Optional, so a plain `{ label, onSelect }` literal still reads as one of these. */
   kind?: 'item';
+  /** What the entry is, as opposed to what it says. A test asserting the menu's contents
+   *  matches on this, so rewording a label is not a failing test. */
+  id?: string;
   label: string;
   icon?: IconName;
   onSelect: () => void;
@@ -26,6 +31,7 @@ export interface MenuItem {
 
 export interface MenuSubmenu {
   kind: 'submenu';
+  id?: string;
   label: string;
   icon?: IconName;
   separated?: boolean;
@@ -63,7 +69,15 @@ interface Request {
 const ITEM_H = 30;
 const SEPARATOR_H = 7;
 const PADDING = 12;
-const WIDTH = 200;
+/**
+ * Wide enough for the language it is written in.
+ *
+ * The number is needed before React draws anything — the menu has to know whether it fits
+ * to the right of the cursor — so it cannot be measured. Russian labels run about a third
+ * longer than the English ones they were sized for, and at 200px «Режим только для чтения»
+ * wrapped inside a 30px row and was quietly cut in half.
+ */
+const WIDTH = language() === 'en' ? 200 : 248;
 const GAP = 4;
 
 /**
@@ -203,7 +217,7 @@ function Panel({ items, x, y, onClose }: Placement & { onClose: () => void }) {
                 <span className={styles.itemIcon}>
                   {entry.icon ? <Icon name={entry.icon} size={13} /> : null}
                 </span>
-                {entry.label}
+                <span className={styles.itemLabel}>{entry.label}</span>
                 <span className={styles.itemArrow}>
                   <Icon name="chev" size={12} />
                 </span>
@@ -222,7 +236,7 @@ function Panel({ items, x, y, onClose }: Placement & { onClose: () => void }) {
                 <span className={styles.itemIcon}>
                   {entry.icon ? <Icon name={entry.icon} size={13} /> : null}
                 </span>
-                {entry.label}
+                <span className={styles.itemLabel}>{entry.label}</span>
                 {entry.hint ? <span className={styles.itemHint}>{entry.hint}</span> : null}
               </button>
             )}

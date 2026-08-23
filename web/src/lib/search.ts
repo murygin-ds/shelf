@@ -1,4 +1,5 @@
 import type { NoteNode } from '@/api/workspace';
+import { format } from '@/i18n';
 
 /**
  * The decrypted index search runs against. It exists in memory only: persisting it would
@@ -31,7 +32,10 @@ const TAG_PATTERN = /(?:^|\s)#([\p{L}\p{N}][\p{L}\p{N}_-]*)/gu;
 export function extractTags(body: string): string[] {
   const tags = new Set<string>();
 
-  for (const match of body.matchAll(TAG_PATTERN)) {
+  // Composed first: `\p{L}` does not match a combining mark, so a decomposed «тёмный» would
+  // otherwise be read as the tag «те». The inspector calls this on a live editor body, not
+  // only on what the index already folded.
+  for (const match of body.normalize('NFC').matchAll(TAG_PATTERN)) {
     if (match[1]) tags.add(match[1].toLowerCase());
   }
 
@@ -49,26 +53,35 @@ export const MAX_TAGS = 24;
  * panel have to become the same tag, or one note would answer to two of them.
  */
 export function normalizeTag(raw: string): string | null {
-  const text = raw.trim().replace(/^#+/, '').trim().toLowerCase();
+  const text = raw.normalize('NFC').trim().replace(/^#+/, '').trim().toLowerCase();
 
   return TAG_SHAPE.test(text) ? text : null;
 }
 
 export function buildIndexEntry(note: NoteNode, body: string, path: string): IndexedNote {
+  // NFC at the door, and only here. «Й» and «ё» each have a composed and a decomposed
+  // spelling, and text pasted from a macOS source arrives decomposed while the same word
+  // typed on a keyboard arrives composed — so one would not find the other. Normalising the
+  // stored title and body rather than the haystack alone is what keeps the snippet honest:
+  // its offsets are counted in UTF-16 units of these two strings, and a form change moves
+  // them. It also unbreaks `#тег`, whose pattern has no place for a combining mark.
+  const title = note.name.normalize('NFC');
+  const text = body.normalize('NFC');
+
   const chosen = note.tags.flatMap((tag) => normalizeTag(tag) ?? []);
-  const tags = [...new Set([...chosen, ...extractTags(body)])];
+  const tags = [...new Set([...chosen, ...extractTags(text)])];
 
   return {
     id: note.id,
-    title: note.name,
-    body,
+    title,
+    body: text,
     folderId: note.folderId,
     path,
     tags,
     updatedAt: note.updatedAt,
     // Tags join the haystack: one chosen in the panel and never typed into the body would
     // otherwise be invisible to a `#tag` query, which is exactly how the sidebar searches.
-    haystack: `${note.name}\n${body}\n${tags.map((tag) => `#${tag}`).join(' ')}`.toLowerCase(),
+    haystack: `${title}\n${text}\n${tags.map((tag) => `#${tag}`).join(' ')}`.toLowerCase(),
   };
 }
 
@@ -82,7 +95,9 @@ export function search(
   query: string,
   filters: SearchFilters = {},
 ): SearchHit[] {
-  const needle = query.trim().toLowerCase();
+  // The same fold the index was built with, or the two would be spelling the query
+  // differently and the offsets the snippet slices by would point at the wrong characters.
+  const needle = query.trim().normalize('NFC').toLowerCase();
   if (!needle) return [];
 
   const hits: SearchHit[] = [];
@@ -102,6 +117,8 @@ export function search(
   return hits.sort((a, b) => {
     const byTitle = Number(inTitle(b, needle)) - Number(inTitle(a, needle));
 
+    // A timestamp, so not `format.compare`: it collates digits numerically and would read
+    // the fraction in `…00.5Z` as five rather than as a half.
     return byTitle !== 0 ? byTitle : b.note.updatedAt.localeCompare(a.note.updatedAt);
   });
 }
@@ -133,5 +150,5 @@ export function allTags(index: IndexedNote[]): string[] {
     for (const tag of note.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
   }
 
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([tag]) => tag);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || format.compare(a[0], b[0])).map(([tag]) => tag);
 }

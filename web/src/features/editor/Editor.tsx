@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
+import { format, m } from '@/i18n';
 import { allTags } from '@/lib/search';
 import { resolvables, resolveTarget } from '@/lib/wikilinks';
 import { usePrefs } from '@/store/prefs';
@@ -218,13 +219,13 @@ export function Editor() {
               }}
               onContextMenu={(event) =>
                 openMenu(event, [
-                  { label: 'Close', icon: 'x', onSelect: () => closeTab(tab.id) },
-                  { label: 'Close others', onSelect: () => closeOthers(tab.id) },
+                  { label: m.editor.tab.close, icon: 'x', onSelect: () => closeTab(tab.id) },
+                  { label: m.editor.tab.closeOthers, onSelect: () => closeOthers(tab.id) },
                   {
                     // Others first, so the open note is the last tab standing when it goes
                     // and the store closes the editor instead of loading a neighbour that
                     // is about to be closed too.
-                    label: 'Close all',
+                    label: m.editor.tab.closeAll,
                     onSelect: () => {
                       closeOthers(tab.id);
                       closeTab(tab.id);
@@ -254,7 +255,7 @@ export function Editor() {
               <button
                 type="button"
                 className={styles.tabClose}
-                {...tip('Close')}
+                {...tip(m.editor.tab.close)}
                 onClick={() => closeTab(tab.id)}
               >
                 <Icon name="x" size={11} />
@@ -270,7 +271,7 @@ export function Editor() {
             <button
               type="button"
               className={styles.iconButton}
-              {...tip('Change icon')}
+              {...tip(m.editor.changeIcon)}
               disabled={readOnly}
               onClick={(event) =>
                 setPicker({
@@ -296,7 +297,7 @@ export function Editor() {
           </div>
 
           <div className={styles.meta}>
-            <span>UPDATED {relative(note.updatedAt)}</span>
+            <span>{m.editor.updated(format.relative(note.updatedAt))}</span>
             <span className={styles.metaSeparator}>·</span>
             <span className={styles.metaE2e}>
               <Icon name="lock" size={11} />
@@ -306,11 +307,11 @@ export function Editor() {
             {/* The mode outranks the permission here: what the reader may do with this note
                 and what this device will do with it are the same line, and in read-only the
                 second one is the answer. */}
-            <span>{frozen ? 'READ ONLY' : note.permission.toUpperCase()}</span>
+            <span>{frozen ? m.editor.readOnly : m.editor.access[note.permission]}</span>
             {open.dirty ? (
               <>
                 <span className={styles.metaSeparator}>·</span>
-                <span>{saving ? 'ENCRYPTING…' : 'UNSAVED'}</span>
+                <span>{saving ? m.editor.encrypting : m.editor.unsaved}</span>
               </>
             ) : null}
             <Peers peers={peers} selfId={user?.id} />
@@ -319,10 +320,7 @@ export function Editor() {
           {open.locked ? (
             <div className={styles.locked}>
               <Icon name="lock" size={16} style={{ flex: 'none', marginTop: 2 }} />
-              <span>
-                This note is encrypted under a key you do not hold. The server cannot help — only
-                someone who already has access can grant it.
-              </span>
+              <span>{m.editor.locked}</span>
             </div>
           ) : (
             <MarkdownEditor
@@ -332,11 +330,7 @@ export function Editor() {
               collab={collab ?? undefined}
               readOnly={readOnly}
               context={context}
-              placeholder={
-                readOnly
-                  ? 'This note is empty.'
-                  : 'Write in markdown. Everything here is encrypted before it leaves this device.'
-              }
+              placeholder={readOnly ? m.editor.placeholder.empty : m.editor.placeholder.write}
               onChange={editBody}
               onBlur={() => void saveNote(identity ?? undefined)}
               onOpenLink={openLink}
@@ -360,15 +354,14 @@ export function Editor() {
             <div className={styles.conflict}>
               <Icon name="warn" size={15} style={{ flex: 'none', marginTop: 2 }} />
               <div>
-                Someone else saved this note while you were editing. The server holds ciphertext it
-                cannot read, so it cannot merge the two versions — you have to choose.
+                {m.editor.conflict.lead}
                 <div className={styles.conflictActions}>
                   <button
                     type="button"
                     className={styles.conflictButton}
                     onClick={() => void openNote(note)}
                   >
-                    Discard mine and reload
+                    {m.editor.conflict.reload}
                   </button>
                   {/* A conflict cannot arise while read-only is on, but one raised before it
                       went on is still on screen — and keeping this copy means writing one. */}
@@ -379,7 +372,7 @@ export function Editor() {
                       disabled={saving}
                       onClick={() => void saveAsCopy(identity ?? undefined)}
                     >
-                      Save mine as a new note
+                      {m.editor.conflict.fork}
                     </button>
                   )}
                   <button
@@ -387,7 +380,7 @@ export function Editor() {
                     className={styles.conflictButton}
                     onClick={() => void navigator.clipboard?.writeText(open.body)}
                   >
-                    Copy to clipboard
+                    {m.editor.conflict.copy}
                   </button>
                 </div>
               </div>
@@ -406,14 +399,4 @@ function slotAt(edges: number[], x: number): number {
   const at = edges.findIndex((edge) => x < edge);
 
   return at < 0 ? edges.length - 1 : at;
-}
-
-function relative(iso: string): string {
-  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-
-  if (seconds < 60) return 'JUST NOW';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}M AGO`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}H AGO`;
-
-  return `${Math.floor(seconds / 86400)}D AGO`;
 }

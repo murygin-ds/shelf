@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import { describe } from '@/api/errors';
 import * as groupsApi from '@/api/groups';
 import type { RekeyProgress } from '@/api/rekey';
 import type { FolderNode, Permission } from '@/api/workspace';
+import { m, permissionLabel, roleLabel } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -14,13 +15,8 @@ import { tip } from '@/ui/Tooltip';
 
 import styles from './access.module.css';
 
-const LEVELS: Array<{ value: Permission; label: string }> = [
-  { value: 'own', label: 'Can manage' },
-  { value: 'edit', label: 'Can edit' },
-  { value: 'comment', label: 'Can comment' },
-  { value: 'view', label: 'Can view' },
-  { value: 'none', label: 'No access' },
-];
+/** Widest first: a list of permissions reads as a ladder, and the ladder starts at the top. */
+const LEVELS: Permission[] = ['own', 'edit', 'comment', 'view', 'none'];
 
 export function PermissionsModal({
   folder,
@@ -203,9 +199,11 @@ export function PermissionsModal({
       <div className={styles.modal}>
         <div className={styles.head}>
           <div>
-            <div className={styles.title}>Permissions — {folder.name}</div>
+            <div className={`${styles.title} truncate`}>
+              {m.access.permissions.title(folder.name)}
+            </div>
             <div className={styles.subtitle}>
-              Folder · {grants.length} override{grants.length === 1 ? '' : 's'} on this node
+              {m.access.permissions.subtitle(grants.length)}
             </div>
           </div>
           <button type="button" className={styles.close} onClick={onClose}>
@@ -218,11 +216,7 @@ export function PermissionsModal({
             <div className={`${styles.note} ${styles.noteWarn}`}>
               <Icon name="warn" size={14} style={{ flex: 'none', marginTop: 2 }} />
               <span className={styles.noteBody}>
-                <span>
-                  This folder is encrypted with the vault key, so narrowing access here is
-                  enforced by the server only — everyone who already holds that key still
-                  holds it. Giving the folder its own key is what makes a denial real.
-                </span>
+                <span>{m.access.permissions.inheritsKey}</span>
 
                 {canManage ? (
                   <button
@@ -231,13 +225,13 @@ export function PermissionsModal({
                     disabled={busy || !identity}
                     onClick={() => void protectFolder()}
                   >
-                    Protect with its own key
+                    {m.access.permissions.protect}
                   </button>
                 ) : null}
 
                 {progress ? (
                   <span className={styles.progress}>
-                    RE-ENCRYPTING {progress.done}/{progress.total || '…'}
+                    {m.access.reencrypting(progress.done, progress.total)}
                   </span>
                 ) : null}
               </span>
@@ -245,13 +239,15 @@ export function PermissionsModal({
           ) : (
             <div className={styles.note}>
               <Icon name="lock" size={14} style={{ flex: 'none', marginTop: 2, color: 'var(--ok)' }} />
-              <span>This folder has its own key, so a denial here is cryptographic.</span>
+              <span>{m.access.permissions.ownKey}</span>
             </div>
           )}
 
           {error ? <div className={styles.error}>{error}</div> : null}
 
-          <div className={styles.section}>WHO HAS ACCESS · {members.length}</div>
+          <div className={styles.section}>
+            {m.access.permissions.whoHasAccess(members.length)}
+          </div>
 
           {members.map((member) => {
             const grant = grants.find(
@@ -265,12 +261,12 @@ export function PermissionsModal({
                 <span className={styles.personMain}>
                   <span className={styles.personName}>{member.display_name}</span>
                   <span className={styles.personMeta} style={{ display: 'block' }}>
-                    {grant ? 'set on this folder' : `inherited from ${member.role}`}
+                    {m.access.permissions.memberMeta(grant ? null : roleLabel(member.role))}
                   </span>
                 </span>
 
                 {locked ? (
-                  <span className={styles.cell}>{label(effective(member))}</span>
+                  <span className={styles.cell}>{permissionLabel(effective(member))}</span>
                 ) : (
                   <select
                     className={styles.select}
@@ -279,8 +275,8 @@ export function PermissionsModal({
                     onChange={(event) => void apply(member, event.target.value as Permission)}
                   >
                     {LEVELS.map((level) => (
-                      <option key={level.value} value={level.value}>
-                        {level.label}
+                      <option key={level} value={level}>
+                        {permissionLabel(level)}
                       </option>
                     ))}
                   </select>
@@ -290,7 +286,7 @@ export function PermissionsModal({
                   <button
                     type="button"
                     className={styles.rowAction}
-                    {...tip('Reset to inherited')}
+                    {...tip(m.access.permissions.resetTip)}
                     onClick={() => void clear(grant.id)}
                   >
                     <Icon name="x" size={14} />
@@ -304,7 +300,7 @@ export function PermissionsModal({
 
           {groups.length ? (
             <>
-              <div className={styles.section}>GROUPS · {groups.length}</div>
+              <div className={styles.section}>{m.access.groups.section(groups.length)}</div>
 
               {groups.map((group) => {
                 const grant = grants.find(
@@ -317,8 +313,7 @@ export function PermissionsModal({
                     <span className={styles.personMain}>
                       <span className={styles.personName}>{group.name}</span>
                       <span className={styles.personMeta} style={{ display: 'block' }}>
-                        {grant ? 'set on this folder' : 'no permission here'} ·{' '}
-                        {group.members.length} member{group.members.length === 1 ? '' : 's'}
+                        {m.access.permissions.groupMeta(grant !== undefined, group.members.length)}
                       </span>
                     </span>
 
@@ -332,13 +327,13 @@ export function PermissionsModal({
                         }
                       >
                         {LEVELS.map((level) => (
-                          <option key={level.value} value={level.value}>
-                            {level.label}
+                          <option key={level} value={level}>
+                            {permissionLabel(level)}
                           </option>
                         ))}
                       </select>
                     ) : (
-                      <span className={styles.cell}>{label(grant?.permission ?? 'none')}</span>
+                      <span className={styles.cell}>{permissionLabel(grant?.permission ?? 'none')}</span>
                     )}
 
                     <span style={{ width: 22 }} />
@@ -349,26 +344,20 @@ export function PermissionsModal({
           ) : null}
 
           {members.length <= 1 ? (
-            <p className={styles.empty}>
-              Nobody else is in this vault yet. Invite someone from Members &amp; access first.
-            </p>
+            <p className={styles.empty}>{m.access.permissions.alone}</p>
           ) : null}
         </div>
 
         <div className={styles.footer}>
-          <span className={styles.footerNote}>WIDENING SEALS THE FOLDER KEY TO THAT MEMBER</span>
+          <span className={styles.footerNote}>{m.access.permissions.footer}</span>
           <span className={styles.footerSpacer} />
           <button type="button" className={styles.done} onClick={onClose}>
-            Done
+            {m.common.done}
           </button>
         </div>
       </div>
     </div>
   );
-}
-
-function label(permission: Permission): string {
-  return LEVELS.find((level) => level.value === permission)?.label ?? permission;
 }
 
 function initials(name: string): string {
@@ -379,8 +368,3 @@ function initials(name: string): string {
     .join('');
 }
 
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message;
-
-  return cause instanceof Error ? cause.message : 'Something went wrong.';
-}

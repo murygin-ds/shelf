@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"shelf/internal/api/response"
 	handler "shelf/internal/api/v1/auth"
 	"shelf/internal/auth"
 	"shelf/internal/config"
@@ -23,11 +24,14 @@ import (
 type stubService struct {
 	tokens *auth.TokenManager
 
-	registerErr error
-	loginErr    error
-	recoveryErr error
-	deleteErr   error
-	user        *auth.User
+	registerErr         error
+	loginErr            error
+	refreshErr          error
+	recoveryErr         error
+	recoveryCompleteErr error
+	deleteErr           error
+	revokeErr           error
+	user                *auth.User
 }
 
 func (s *stubService) pair() auth.TokenPair {
@@ -66,6 +70,10 @@ func (s *stubService) Login(context.Context, string, []byte, auth.ClientMeta) (*
 }
 
 func (s *stubService) Refresh(context.Context, string, auth.ClientMeta) (auth.TokenPair, error) {
+	if s.refreshErr != nil {
+		return auth.TokenPair{}, s.refreshErr
+	}
+
 	return s.pair(), nil
 }
 
@@ -90,7 +98,7 @@ func (s *stubService) DeleteAccount(context.Context, int64, []byte) error { retu
 
 func (s *stubService) Sessions(context.Context, int64) ([]auth.Session, error) { return nil, nil }
 
-func (s *stubService) RevokeSession(context.Context, int64, int64) error { return nil }
+func (s *stubService) RevokeSession(context.Context, int64, int64) error { return s.revokeErr }
 
 func (s *stubService) ChangePassword(
 	context.Context, int64, []byte, auth.CredentialsInput, auth.ClientMeta,
@@ -114,6 +122,10 @@ func (s *stubService) RecoveryStart(context.Context, string, []byte) (*auth.Reco
 func (s *stubService) RecoveryComplete(
 	context.Context, string, auth.CredentialsInput, auth.ClientMeta,
 ) (auth.TokenPair, error) {
+	if s.recoveryCompleteErr != nil {
+		return auth.TokenPair{}, s.recoveryCompleteErr
+	}
+
 	return s.pair(), nil
 }
 
@@ -187,6 +199,25 @@ func validRegisterBody() map[string]any {
 	}
 }
 
+// blankLoginRegisterBody passes the binding rules and still trims to nothing, which is the
+// only way to reach the handler's own emptiness check.
+func blankLoginRegisterBody() map[string]any {
+	body := validRegisterBody()
+	body["login"] = "   "
+
+	return body
+}
+
+func recoveryCompleteBody() map[string]any {
+	body := validRegisterBody()
+	delete(body, "login")
+	delete(body, "display_name")
+	delete(body, "recovery")
+	body["recovery_token"] = "recovery-token"
+
+	return body
+}
+
 func doJSON(t *testing.T, router *gin.Engine, method, path string, body any, token string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -212,6 +243,145 @@ func doJSON(t *testing.T, router *gin.Engine, method, path string, body any, tok
 	router.ServeHTTP(rec, req)
 
 	return rec
+}
+
+func reasonOf(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+
+	var body response.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal %s: %v", rec.Body, err)
+	}
+
+	return body.Error.Details[response.ReasonKey]
+}
+
+// TestRefreshTellsAnExpiredTokenFromAReusedOne is why the reason exists at all: both answer
+// 401 with the same code, and the user has to be told two very different things — sign in
+// again, or every session you hold was just revoked because somebody replayed your token.
+func TestRefreshTellsAnExpiredTokenFromAReusedOne(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		err    error
+		reason string
+	}{
+		"expired":  {auth.ErrSessionNotFound, response.ReasonRefreshInvalid},
+		"replayed": {auth.ErrSessionReused, response.ReasonRefreshReused},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service := newStubService(t)
+			service.refreshErr = tc.err
+
+			rec := doJSON(t, newTestRouter(t, service), http.MethodPost, "/api/v1/auth/refresh",
+				map[string]any{"refresh_token": "refresh-token-value-0123456789"}, "")
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body)
+			}
+
+			if got := reasonOf(t, rec); got != tc.reason {
+				t.Fatalf("reason = %q, want %q", got, tc.reason)
+			}
+		})
+	}
+}
+
+// TestReasonsBehindTheAccountRefusals pins the causes the client turns into its own text.
+// The status and the code are shared by most of these rows: the reason is the only thing
+// telling them apart.
+func TestReasonsBehindTheAccountRefusals(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		prepare func(*stubService)
+		method  string
+		path    string
+		body    any
+		token   bool
+		status  int
+		reason  string
+	}{
+		"blank login": {
+			method: http.MethodPost, path: "/api/v1/auth/register",
+			body:   blankLoginRegisterBody(),
+			status: http.StatusUnprocessableEntity, reason: response.ReasonLoginBlank,
+		},
+		"login taken": {
+			prepare: func(s *stubService) { s.registerErr = auth.ErrLoginTaken },
+			method:  http.MethodPost, path: "/api/v1/auth/register", body: validRegisterBody(),
+			status: http.StatusConflict, reason: response.ReasonLoginTaken,
+		},
+		"wrong password": {
+			prepare: func(s *stubService) { s.loginErr = auth.ErrInvalidCredentials },
+			method:  http.MethodPost, path: "/api/v1/auth/login",
+			body:   map[string]any{"login": "dmitry", "auth_hash": bytes.Repeat([]byte{1}, 32)},
+			status: http.StatusUnauthorized, reason: response.ReasonInvalidCredentials,
+		},
+		"blank display name": {
+			method: http.MethodPatch, path: "/api/v1/auth/me",
+			body: map[string]any{"display_name": "   "}, token: true,
+			status: http.StatusUnprocessableEntity, reason: response.ReasonDisplayNameBlank,
+		},
+		"deletion without the password": {
+			prepare: func(s *stubService) { s.deleteErr = auth.ErrInvalidCredentials },
+			method:  http.MethodDelete, path: "/api/v1/auth/me",
+			body: map[string]any{"auth_hash": bytes.Repeat([]byte{1}, 32)}, token: true,
+			status: http.StatusUnauthorized, reason: response.ReasonPasswordInvalid,
+		},
+		"wrong recovery code": {
+			prepare: func(s *stubService) { s.recoveryErr = auth.ErrInvalidCredentials },
+			method:  http.MethodPost, path: "/api/v1/auth/recovery/start",
+			body:   map[string]any{"login": "dmitry", "recovery_auth_hash": bytes.Repeat([]byte{1}, 32)},
+			status: http.StatusUnauthorized, reason: response.ReasonRecoveryCodeInvalid,
+		},
+		"stale recovery token": {
+			prepare: func(s *stubService) { s.recoveryCompleteErr = auth.ErrInvalidToken },
+			method:  http.MethodPost, path: "/api/v1/auth/recovery/complete",
+			body:   recoveryCompleteBody(),
+			status: http.StatusUnauthorized, reason: response.ReasonRecoveryTokenInvalid,
+		},
+		"session id is not a number": {
+			method: http.MethodDelete, path: "/api/v1/auth/sessions/abc", token: true,
+			status: http.StatusBadRequest, reason: response.ReasonSessionIDInvalid,
+		},
+		"session already gone": {
+			prepare: func(s *stubService) { s.revokeErr = auth.ErrSessionNotFound },
+			method:  http.MethodDelete, path: "/api/v1/auth/sessions/4", token: true,
+			status: http.StatusNotFound, reason: response.ReasonSessionNotFound,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service := newStubService(t)
+			if tc.prepare != nil {
+				tc.prepare(service)
+			}
+
+			token := ""
+
+			if tc.token {
+				access, _, err := service.tokens.IssueAccess(1, 1, time.Now())
+				if err != nil {
+					t.Fatalf("IssueAccess() error = %v", err)
+				}
+
+				token = access
+			}
+
+			rec := doJSON(t, newTestRouter(t, service), tc.method, tc.path, tc.body, token)
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, tc.status, rec.Body)
+			}
+
+			if got := reasonOf(t, rec); got != tc.reason {
+				t.Fatalf("reason = %q, want %q", got, tc.reason)
+			}
+		})
+	}
 }
 
 func TestRegisterEndpoint(t *testing.T) {
@@ -489,6 +659,10 @@ func TestRecoveryStartRateLimit(t *testing.T) {
 	if body429.Error.Code != "too_many_requests" {
 		t.Errorf("error code = %q, want %q", body429.Error.Code, "too_many_requests")
 	}
+
+	if got := reasonOf(t, rec); got != response.ReasonRateLimited {
+		t.Errorf("reason = %q, want %q", got, response.ReasonRateLimited)
+	}
 }
 
 func TestUnlimitedByDefault(t *testing.T) {
@@ -513,12 +687,22 @@ func TestProtectedRoutesRequireToken(t *testing.T) {
 	service := newStubService(t)
 	router := newTestRouter(t, service)
 
-	if rec := doJSON(t, router, http.MethodGet, "/api/v1/auth/me", nil, ""); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status without token = %d, want %d", rec.Code, http.StatusUnauthorized)
+	missing := doJSON(t, router, http.MethodGet, "/api/v1/auth/me", nil, "")
+	if missing.Code != http.StatusUnauthorized {
+		t.Fatalf("status without token = %d, want %d", missing.Code, http.StatusUnauthorized)
 	}
 
-	if rec := doJSON(t, router, http.MethodGet, "/api/v1/auth/me", nil, "garbage"); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status with a broken token = %d, want %d", rec.Code, http.StatusUnauthorized)
+	if got := reasonOf(t, missing); got != response.ReasonAuthHeaderMissing {
+		t.Fatalf("reason = %q, want %q", got, response.ReasonAuthHeaderMissing)
+	}
+
+	broken := doJSON(t, router, http.MethodGet, "/api/v1/auth/me", nil, "garbage")
+	if broken.Code != http.StatusUnauthorized {
+		t.Fatalf("status with a broken token = %d, want %d", broken.Code, http.StatusUnauthorized)
+	}
+
+	if got := reasonOf(t, broken); got != response.ReasonTokenInvalid {
+		t.Fatalf("reason = %q, want %q", got, response.ReasonTokenInvalid)
 	}
 
 	access, _, err := service.tokens.IssueAccess(1, 1, time.Now())

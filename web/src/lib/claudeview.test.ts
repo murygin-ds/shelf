@@ -195,4 +195,15 @@ describe('the conventions it reads', () => {
     expect(bare('---\nname:\ndescription:\n---\n')).toBe(true);
     expect(bare('# Title\n\nThis is a real paragraph that says something.\n')).toBe(false);
   });
+
+  // An empty label is an empty label in any alphabet. While the pattern was ASCII-only,
+  // «**Статус:**» counted as content and an untouched Russian template looked filled in.
+  it('reads an empty label the same way whatever it is written in', () => {
+    const seed =
+      '# Переписать биллинг\n\n**Статус:**\n**Обновлено:**\n\n## Что это\n\n' +
+      '<!-- Два-три предложения. -->\n\n## Что дальше\n\n- [ ] <!-- Следующий шаг. -->\n';
+
+    expect(bare(seed)).toBe(true);
+    expect(bare('# Заголовок\n\n**Статус:** в работе\n')).toBe(false);
+  });
 });

@@ -16,8 +16,14 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* Five of these share a fixed column, so each label is one word by contract. The clip is a
+   guard for a language that breaks the contract, not a licence to write two. */
 .tab {
   flex: 1;
+  min-width: 0;
+  /* A fifth of the column is 67px and the widest label wants 60 of them, so the 6px a button
+     pads itself with by default is the difference between the word and «Структу…». */
+  padding: 0 2px;
   border: 0;
   border-bottom: 1px solid transparent;
   background: none;
@@ -25,7 +31,11 @@
   font: inherit;
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.09em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 
@@ -48,7 +58,8 @@
   margin: 0 0 8px;
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
   color: var(--text-label);
 }
 
@@ -137,6 +148,17 @@
   color: var(--text-quiet);
 }
 
+/* The one place `.itemMeta` holds a word rather than a date, so the capitals live here and
+   not on the class that also draws timestamps. */
+.revoke {
+  border: 0;
+  background: none;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .locked {
   color: var(--text-quiet);
   cursor: default;
@@ -167,7 +189,9 @@
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 0.06em;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
+  white-space: nowrap;
 }
 
 .badgeOk {

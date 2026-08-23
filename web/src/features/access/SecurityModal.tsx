@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 
 import * as audit from '@/api/audit';
-import { ApiError } from '@/api/client';
 import * as collab from '@/api/collab';
+import { describe } from '@/api/errors';
 import type { RekeyProgress } from '@/api/rekey';
+import type { Permission, Role } from '@/api/workspace';
+import { format, m, permissionLabel, roleLabel } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -83,9 +85,11 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
       <div className={`${styles.modal} ${styles.wide}`}>
         <div className={styles.head}>
           <div>
-            <div className={styles.title}>Keys &amp; history</div>
-            <div className={styles.subtitle}>
-              {vault ? `${vault.name} · vault key v${vault.keyVersion}` : 'No vault'}
+            <div className={styles.title}>{m.access.security.title}</div>
+            <div className={`${styles.subtitle} truncate`}>
+              {vault
+                ? m.access.security.subtitle(vault.name, vault.keyVersion)
+                : m.access.security.noVault}
             </div>
           </div>
           <button type="button" className={styles.close} onClick={onClose}>
@@ -94,7 +98,7 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className={styles.body}>
-          <div className={styles.section}>VAULT KEY</div>
+          <div className={styles.section}>{m.access.security.section}</div>
 
           <div className={styles.note}>
             <Icon
@@ -104,18 +108,10 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
             />
             <span className={styles.noteBody}>
               <span>
-                Version {vault?.keyVersion ?? 1}, wrapped for {members.length} member
-                {members.length === 1 ? '' : 's'}. {soloKeys} folder
-                {soloKeys === 1 ? '' : 's'} carry a key of their own and are untouched by a
-                rotation here.
+                {m.access.security.vaultKey(vault?.keyVersion ?? 1, members.length, soloKeys)}
               </span>
 
-              {stale ? (
-                <span>
-                  Somebody who held this key has been removed. Rotating it protects every
-                  future read; it cannot un-read what they already opened.
-                </span>
-              ) : null}
+              {stale ? <span>{m.access.security.stale}</span> : null}
 
               {canRotate ? (
                 <button
@@ -124,17 +120,15 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
                   disabled={busy || !identity}
                   onClick={() => void rotate()}
                 >
-                  {stale ? 'Rotate key & revoke old copies' : 'Rotate the vault key'}
+                  {stale ? m.access.security.rotateAndRevoke : m.access.rotateVaultKey}
                 </button>
               ) : null}
 
-              {canManage && readOnly ? (
-                <span>Read-only mode is on, so the key cannot be rotated from this device.</span>
-              ) : null}
+              {canManage && readOnly ? <span>{m.access.security.readOnly}</span> : null}
 
               {progress ? (
                 <span className={styles.progress}>
-                  RE-ENCRYPTING {progress.done}/{progress.total || '…'}
+                  {m.access.reencrypting(progress.done, progress.total)}
                 </span>
               ) : null}
             </span>
@@ -142,14 +136,12 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
 
           {error ? <div className={styles.error}>{error}</div> : null}
 
-          <div className={styles.section}>ACCESS HISTORY</div>
+          <div className={styles.section}>{m.access.security.history}</div>
 
           {!canManage ? (
-            <p className={styles.empty}>
-              The history records who works with whom, so it is kept to owners and admins.
-            </p>
+            <p className={styles.empty}>{m.access.security.historyPrivate}</p>
           ) : events.length === 0 ? (
-            <p className={styles.empty}>Nothing has changed hands in this vault yet.</p>
+            <p className={styles.empty}>{m.access.security.historyEmpty}</p>
           ) : (
             events.map((event) => (
               <div key={event.id} className={styles.person}>
@@ -157,11 +149,11 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
                 <span className={styles.personMain}>
                   <span className={styles.personName}>{describeEvent(event, tree)}</span>
                   <span className={styles.personMeta} style={{ display: 'block' }}>
-                    {event.actor_name || event.actor_login || 'a removed account'} ·{' '}
-                    {when(event.created_at)}
+                    {event.actor_name || event.actor_login || m.access.security.removedAccount} ·{' '}
+                    {format.recent(event.created_at)}
                   </span>
                 </span>
-                <span className={styles.pill}>{event.action}</span>
+                <span className={styles.pill}>{m.access.audit.names[event.action]}</span>
               </div>
             ))
           )}
@@ -172,16 +164,16 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
               className={styles.noteAction}
               onClick={() => void load(cursor)}
             >
-              Load older
+              {m.access.security.older}
             </button>
           ) : null}
         </div>
 
         <div className={styles.footer}>
-          <span className={styles.footerNote}>THE SERVER KEEPS IDS, NOT NAMES</span>
+          <span className={styles.footerNote}>{m.access.security.footer}</span>
           <span className={styles.footerSpacer} />
           <button type="button" className={styles.done} onClick={onClose}>
-            Done
+            {m.common.done}
           </button>
         </div>
       </div>
@@ -189,58 +181,72 @@ export function SecurityModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+interface Tree {
+  folders: Array<{ id: number; name: string; locked: boolean }>;
+}
+
 /**
- * Renders one entry against the reader's own tree. A node they cannot open has no name to
- * show, so it stays an id rather than borrowing one from somewhere it does not belong.
+ * Renders one entry against the reader's own tree.
+ *
+ * The dictionary writes the whole sentence rather than handing back a verb for this to glue
+ * a target onto: Russian declines the thing acted on, and which case it takes is the verb's
+ * choice, not this function's.
  */
-function describeEvent(
-  event: audit.AuditEventDto,
-  tree: { folders: Array<{ id: number; name: string; locked: boolean }> },
-): string {
-  const target = () => {
-    if (event.target_type === 'folder' && event.target_id !== undefined) {
-      const folder = tree.folders.find((candidate) => candidate.id === event.target_id);
-
-      return folder && !folder.locked ? `“${folder.name}”` : `folder #${event.target_id}`;
-    }
-
-    if (event.target_type === 'file') return `note #${event.target_id}`;
-
-    return 'the vault';
-  };
+function describeEvent(event: audit.AuditEventDto, tree: Tree): string {
+  const { actions, names } = m.access.audit;
+  const target = () => describeTarget(event, tree);
 
   switch (event.action) {
     case 'member.joined':
-      return `joined as ${String(event.detail.role ?? 'a member')}`;
+      return actions['member.joined'](roleWord(event.detail.role));
     case 'member.role_changed':
-      return `changed a member's role to ${String(event.detail.role ?? '?')}`;
+      return actions['member.role_changed'](roleWord(event.detail.role));
     case 'member.removed':
-      return 'removed a member';
+      return actions['member.removed'];
     case 'grant.set':
-      return `set ${String(event.detail.permission ?? '?')} on ${target()}`;
+      return actions['grant.set'](target(), permissionWord(event.detail.permission));
     case 'grant.cleared':
-      return 'reset a permission to inherited';
+      return actions['grant.cleared'];
     case 'invite.created':
-      return `opened ${event.detail.by_code ? 'a code invite' : 'an invite'}`;
+      return actions['invite.created'](Boolean(event.detail.by_code));
     case 'invite.revoked':
-      return 'revoked an invite';
+      return actions['invite.revoked'];
     case 'key.protected':
-      return `gave ${target()} a key of its own`;
+      return actions['key.protected'](target());
     case 'key.rotated':
-      return `rotated the key of ${target()} to v${String(event.detail.to_version ?? '?')}`;
+      return actions['key.rotated'](target(), String(event.detail.to_version ?? '?'));
     default:
-      return event.action;
+      return names[event.action];
   }
 }
 
-function when(iso: string): string {
-  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+/** A node the reader cannot open has no name to show, so it stays an id. */
+function describeTarget(event: audit.AuditEventDto, tree: Tree): string {
+  const targets = m.access.audit.targets;
 
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h ago`;
+  if (event.target_type === 'folder' && event.target_id !== undefined) {
+    const folder = tree.folders.find((candidate) => candidate.id === event.target_id);
 
-  return new Date(iso).toLocaleDateString();
+    return folder && !folder.locked
+      ? targets.folder(folder.name)
+      : targets.folderId(event.target_id);
+  }
+
+  if (event.target_type === 'file') return targets.note(event.target_id);
+
+  return targets.vault;
+}
+
+// `detail` holds whatever the server wrote there. A value no dictionary knows is left out of
+// the sentence rather than printed raw, which is what the sentence templates expect of null.
+function roleWord(value: unknown): string | null {
+  return typeof value === 'string' && value in m.enums.role ? roleLabel(value as Role) : null;
+}
+
+function permissionWord(value: unknown): string | null {
+  return typeof value === 'string' && value in m.enums.permission
+    ? permissionLabel(value as Permission)
+    : null;
 }
 
 function initials(name: string): string {
@@ -251,9 +257,3 @@ function initials(name: string): string {
     .join('');
 }
 
-function describe(cause: unknown): string {
-  if (cause instanceof ApiError) return cause.message || `HTTP ${cause.status}`;
-  if (cause instanceof Error) return cause.message || cause.name;
-
-  return 'something went wrong';
-}
