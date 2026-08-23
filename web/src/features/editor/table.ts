@@ -11,6 +11,11 @@ import {
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 
+import { resolveTarget } from '@/lib/wikilinks';
+
+import { EMPTY_CONTEXT, openWikilink, vaultContext } from './context';
+import { inlineSpans, isPlain, sourceOffset, type InlineSpan } from './inline';
+
 /**
  * Tables, drawn as tables and edited as tables.
  *
@@ -22,6 +27,11 @@ import type { SyntaxNode } from '@lezer/common';
  *
  * A block replacement may not come from a view plugin, which is why this is a state field
  * and not part of `livepreview.ts`.
+ *
+ * The pipes being gone is also why a cell renders its own markdown: the rest of the note can
+ * fall back on the reader seeing the markers, and a cell cannot. So a cell has two faces —
+ * the markdown it holds, kept on the element, and the text that stands in for it — and the
+ * caret arriving is what brings the first one back, exactly as it does for a heading.
  */
 
 export type Align = 'left' | 'center' | 'right';
@@ -216,12 +226,21 @@ class TableWidget extends WidgetType {
      * while the prose around it has stopped being.
      */
     private readonly readOnly: boolean,
+    /**
+     * What a `[[link]]` in a cell resolves against. Carried so that a note appearing under
+     * a name the table already links to redraws the link, which no keystroke would.
+     */
+    private readonly targets: Targets,
   ) {
     super();
   }
 
   override eq(other: TableWidget): boolean {
-    return other.source === this.source && other.readOnly === this.readOnly;
+    return (
+      other.source === this.source &&
+      other.readOnly === this.readOnly &&
+      other.targets === this.targets
+    );
   }
 
   /**
@@ -242,18 +261,40 @@ class TableWidget extends WidgetType {
     const editable = !this.readOnly;
 
     const head = grid.appendChild(document.createElement('thead'));
-    head.appendChild(rowDOM(this.model.header, 'th', this.model.aligns, editable));
+    head.appendChild(rowDOM(this.model.header, 'th', this.model.aligns, editable, this.targets));
 
     const body = grid.appendChild(document.createElement('tbody'));
     for (const row of this.model.rows) {
-      body.appendChild(rowDOM(row, 'td', this.model.aligns, editable));
+      body.appendChild(rowDOM(row, 'td', this.model.aligns, editable, this.targets));
     }
 
     table.addEventListener('keydown', (event) => onKey(event, view, table));
     table.addEventListener('contextmenu', (event) => onContextMenu(event, view, table));
-    table.addEventListener('focusout', () => {
-      // A blur that lands on another cell of the same table is navigation, not an exit.
+    table.addEventListener('mousedown', (event) => onDown(event, view));
+    table.addEventListener('click', (event) => onClick(event, view));
+
+    // Reached by the keyboard as well as by the pointer, so the swap to markdown lives here
+    // rather than with the click that usually causes it.
+    table.addEventListener('focusin', (event) => {
+      const cell = cellOf(event.target);
+
+      if (cell && !view.state.readOnly) {
+        paint(cell, cell.dataset.md ?? '', 'source', targetsOf(view));
+      }
+    });
+
+    table.addEventListener('focusout', (event) => {
+      const cell = cellOf(event.target);
+
       queueMicrotask(() => {
+        // Whatever was typed is only in the element until now; the cell is about to stop
+        // showing it. `sourceOf` rather than the element, because a commit further down the
+        // same keystroke may already have painted this cell back.
+        if (cell && document.activeElement !== cell) {
+          paint(cell, sourceOf(cell), 'shown', targetsOf(view));
+        }
+
+        // A blur that lands on another cell of the same table is navigation, not an exit.
         if (!table.contains(document.activeElement)) commit(view, table);
       });
     });
@@ -286,8 +327,7 @@ class TableWidget extends WidgetType {
         // Otherwise never the focused one: it holds the caret, and rewriting its text moves it.
         if (cell === document.activeElement) return;
 
-        const text = texts[column] ?? '';
-        if (cell.textContent !== text) cell.textContent = text;
+        paint(cell, texts[column] ?? '', 'shown', this.targets);
 
         cell.style.textAlign = this.model.aligns[column] ?? 'left';
       });
@@ -391,13 +431,19 @@ export function removeTable(ref: TableCellRef): void {
   });
 }
 
-function rowDOM(cells: string[], tag: 'th' | 'td', aligns: Align[], editable: boolean): HTMLElement {
+function rowDOM(
+  cells: string[],
+  tag: 'th' | 'td',
+  aligns: Align[],
+  editable: boolean,
+  targets: Targets,
+): HTMLElement {
   const row = document.createElement('tr');
 
   cells.forEach((text, index) => {
     const cell = row.appendChild(document.createElement(tag));
 
-    cell.textContent = text;
+    paint(cell, text, 'shown', targets);
     cell.contentEditable = String(editable);
     cell.spellcheck = false;
     cell.style.textAlign = aligns[index] ?? 'left';
@@ -406,14 +452,112 @@ function rowDOM(cells: string[], tag: 'th' | 'td', aligns: Align[], editable: bo
   return row;
 }
 
+/** What a vault's `[[links]]` resolve against, which is the facet's map and its identity. */
+type Targets = ReadonlyMap<string, number>;
+
+function targetsOf(view: EditorView): Targets {
+  return view.state.facet(vaultContext).targets;
+}
+
+/**
+ * Puts one of a cell's two faces on screen, and keeps the markdown on the element either way
+ * — `bold` is not something `**bold**` can be read back out of, and the document is what the
+ * cells are written to.
+ */
+function paint(cell: HTMLElement, md: string, face: 'source' | 'shown', targets: Targets): void {
+  cell.dataset.md = md;
+  cell.dataset.face = face;
+
+  if (face === 'source') {
+    setText(cell, md);
+
+    return;
+  }
+
+  const spans = inlineSpans(md);
+
+  // Nothing to render, which is what nearly every cell is: one text node, and no rebuilding
+  // of it on keystrokes landing elsewhere in the table.
+  if (spans.every(isPlain)) {
+    setText(cell, spans.map((span) => span.text).join(''));
+
+    return;
+  }
+
+  cell.replaceChildren(...spans.map((span) => spanDOM(span, targets)));
+}
+
+/**
+ * The cell as one text node. Left alone when it already is one saying that, because the
+ * caret is in it — but a cell that still holds the elements of a previous render has to be
+ * rebuilt even when they happen to spell the same thing.
+ */
+function setText(cell: HTMLElement, value: string): void {
+  const lone = cell.firstChild instanceof Text && cell.firstChild === cell.lastChild;
+
+  if (!lone || cell.textContent !== value) cell.textContent = value;
+}
+
+/**
+ * One span as elements. Built rather than parsed from a string of HTML: the reader's own
+ * text only ever becomes a text node, so a cell holding `<script>` holds those characters.
+ *
+ * The classes are live preview's, so a bold word reads the same inside a table as outside.
+ */
+function spanDOM(span: InlineSpan, targets: Targets): Node {
+  let node: Node = document.createTextNode(span.text);
+
+  if (span.code) node = wrap('code', 'cm-md-code', node);
+
+  if (span.wiki !== undefined) {
+    const known = resolveTarget(span.wiki, targets) !== undefined;
+    const link = wrap('span', known ? 'cm-md-wiki' : 'cm-md-wiki cm-md-wiki-missing', node);
+
+    // Resolved again when it is pressed: where a target leads is the vault's business, and by
+    // then the vault may hold the note this one is still missing.
+    link.dataset.link = span.wiki;
+    node = link;
+  } else if (span.link) {
+    node = wrap('span', 'cm-md-link', node);
+  }
+
+  if (span.strike) node = wrap('s', 'cm-md-strike', node);
+  if (span.em) node = wrap('em', 'cm-md-em', node);
+  if (span.strong) node = wrap('strong', 'cm-md-strong', node);
+
+  return node;
+}
+
+function wrap(tag: string, cls: string, child: Node): HTMLElement {
+  const element = document.createElement(tag);
+
+  element.className = cls;
+  element.appendChild(child);
+
+  return element;
+}
+
 function readDOM(table: HTMLElement, aligns: Align[]): TableModel {
   const rows = dataRows(table).map((row) =>
-    [...row.children].map((cell) => (cell.textContent ?? '').trim()),
+    [...row.children].map((cell) => sourceOf(cell as HTMLElement)),
   );
 
   const [header = [], ...body] = rows;
 
   return { header, rows: body, aligns };
+}
+
+/**
+ * The markdown a cell holds.
+ *
+ * A cell showing its source is the one being typed into, so there the element is the truth
+ * and what it was last painted with is already stale. Everywhere else it is the other way
+ * round: the element says `bold`, and `**bold**` is what the document has to keep.
+ */
+function sourceOf(cell: HTMLElement): string {
+  const md = cell.dataset.face === 'source' ? cell.textContent : cell.dataset.md;
+
+  return (md ?? cell.textContent ?? '').trim();
 }
 
 /**
@@ -447,15 +591,126 @@ function cellsOfDOM(table: HTMLElement): HTMLElement[] {
   return dataRows(table).flatMap((row) => [...row.children] as HTMLElement[]);
 }
 
-function focusCell(cell: HTMLElement | undefined): void {
+function cellOf(target: EventTarget | null): HTMLElement | null {
+  return (target as HTMLElement | null)?.closest?.('th, td') ?? null;
+}
+
+/** The wikilink target a point in the grid belongs to, if it belongs to one. */
+function linkOf(target: EventTarget | null): string | undefined {
+  const link = (target as HTMLElement | null)?.closest?.('[data-link]');
+
+  return link instanceof HTMLElement ? link.dataset.link : undefined;
+}
+
+function follow(view: EditorView, target: string, event: MouseEvent): void {
+  event.preventDefault();
+  view.state.facet(openWikilink)?.(target, event.metaKey || event.ctrlKey ? 'tab' : 'here');
+}
+
+/**
+ * A press inside the grid.
+ *
+ * The caret is placed here rather than by the browser, because the press is also what brings
+ * a cell's markdown back: the browser would measure the click against the rendered text and
+ * then land the caret in text that has since grown a pair of asterisks. `sourceOffset` maps
+ * the one to the other, so the caret ends up on the character that was actually clicked.
+ */
+function onDown(event: MouseEvent, view: EditorView): void {
+  const link = linkOf(event.target);
+
+  // Middle-click opens a link in another tab and never places a caret. Swallowing it also
+  // keeps the browser from starting its own autoscroll on the way to the click.
+  if (event.button === 1) {
+    if (link !== undefined) follow(view, link, event);
+
+    return;
+  }
+
+  // While reading, a press is the start of a selection and the link is followed on the click.
+  if (event.button !== 0 || view.state.readOnly) return;
+
+  // A link that leads somewhere is followed; one that leads nowhere is text to be fixed, and
+  // its cursor says as much. Taken on the press rather than on the click because the swap
+  // below removes the very element a click would be reported on.
+  if (link !== undefined && resolveTarget(link, targetsOf(view)) !== undefined) {
+    follow(view, link, event);
+
+    return;
+  }
+
+  const cell = cellOf(event.target);
+  if (!cell) return;
+
+  const md = cell.dataset.md ?? '';
+
+  // Nothing was rendered away, so the browser's own answer is already the right one.
+  if (cell.dataset.face === 'source' || cell.textContent === md) return;
+
+  const at = sourceOffset(inlineSpans(md), offsetIn(cell, caretAt(event.clientX, event.clientY)));
+
+  event.preventDefault();
+  paint(cell, md, 'source', targetsOf(view));
+  focusCell(cell, at);
+}
+
+/** Following a link while reading, where no cell takes the caret and nothing is swapped. */
+function onClick(event: MouseEvent, view: EditorView): void {
+  if (event.button !== 0 || !view.state.readOnly) return;
+
+  const link = linkOf(event.target);
+  if (link !== undefined) follow(view, link, event);
+}
+
+interface CaretPoint {
+  node: Node;
+  offset: number;
+}
+
+/**
+ * The character a point lands on. Two spellings of one question — the older one WebKit's, the
+ * newer one the standard's — and which of them a browser has is not something to guess at.
+ */
+function caretAt(x: number, y: number): CaretPoint | null {
+  const range = document.caretRangeFromPoint?.(x, y);
+  if (range) return { node: range.startContainer, offset: range.startOffset };
+
+  const position = document.caretPositionFromPoint?.(x, y);
+
+  return position ? { node: position.offsetNode, offset: position.offset } : null;
+}
+
+/** Where a point falls in a cell's rendered text, counted across the elements it is made of. */
+function offsetIn(cell: HTMLElement, at: CaretPoint | null): number {
+  const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    if (at && text === at.node) return seen + at.offset;
+
+    seen += text.textContent?.length ?? 0;
+  }
+
+  return seen;
+}
+
+function focusCell(cell: HTMLElement | undefined, at?: number): void {
   if (!cell) return;
 
   cell.focus();
 
-  // Caret at the end of the cell rather than wherever the browser felt like putting it.
+  // The markdown is back on screen by now — focus is what brings it — so the offset the
+  // caller asked for is an offset into it.
+  const text = cell.firstChild;
   const range = document.createRange();
-  range.selectNodeContents(cell);
-  range.collapse(false);
+
+  if (at !== undefined && text instanceof Text) {
+    range.setStart(text, Math.max(0, Math.min(at, text.length)));
+    range.collapse(true);
+  } else {
+    // Otherwise the end of the cell, rather than wherever the browser felt like putting it.
+    range.selectNodeContents(cell);
+    range.collapse(false);
+  }
 
   const selection = window.getSelection();
   selection?.removeAllRanges();
@@ -463,7 +718,7 @@ function focusCell(cell: HTMLElement | undefined): void {
 }
 
 function onContextMenu(event: MouseEvent, view: EditorView, table: HTMLElement): void {
-  const cell = (event.target as HTMLElement | null)?.closest('th, td');
+  const cell = cellOf(event.target);
   const handler = view.state.facet(tableMenu);
   if (!cell || !handler) return;
 
@@ -653,7 +908,9 @@ function appendRow(table: HTMLElement, columns: number): void {
 
   // Only ever reached from a keystroke inside a cell, which is to say from a grid that
   // takes the caret in the first place.
-  body.appendChild(rowDOM(Array.from({ length: columns }, () => ''), 'td', [], true));
+  body.appendChild(
+    rowDOM(Array.from({ length: columns }, () => ''), 'td', [], true, EMPTY_CONTEXT.targets),
+  );
 }
 
 function build(state: EditorState): DecorationSet {
@@ -676,7 +933,12 @@ function build(state: EditorState): DecorationSet {
       found.push(
         Decoration.replace({
           block: true,
-          widget: new TableWidget(model, state.doc.sliceString(node.from, node.to), state.readOnly),
+          widget: new TableWidget(
+            model,
+            state.doc.sliceString(node.from, node.to),
+            state.readOnly,
+            state.facet(vaultContext).targets,
+          ),
         }).range(node.from, node.to),
       );
 
@@ -691,9 +953,14 @@ const grid = StateField.define<DecorationSet>({
   create: (state) => build(state),
   // Rebuilt when the mode changes as well as when the text does: read-only is reconfigured
   // into a live editor — the note on screen can become unwritable without a keystroke — and
-  // the widgets carry it.
+  // the widgets carry it. The vault around the note is the third of those: a note created
+  // under a name a cell links to turns that link from missing into one that leads somewhere.
   update: (value, tr) =>
-    tr.docChanged || tr.startState.readOnly !== tr.state.readOnly ? build(tr.state) : value,
+    tr.docChanged ||
+    tr.startState.readOnly !== tr.state.readOnly ||
+    tr.startState.facet(vaultContext) !== tr.state.facet(vaultContext)
+      ? build(tr.state)
+      : value,
   provide: (field) => EditorView.decorations.from(field),
 });
 

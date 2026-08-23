@@ -508,6 +508,10 @@ export const editorTheme = EditorView.theme(
       color: 'var(--text)',
     },
     '.cm-md-grid td': { color: 'var(--text-body)' },
+    // The cells render their own markdown, in live preview's classes, so a bold word reads
+    // the same inside a table as it does in the prose above it. Code is the one that has to
+    // be told twice: the grid is set in the sans face and a code span is not.
+    '.cm-md-grid .cm-md-code': { fontFamily: 'var(--font-mono)', fontSize: '0.92em' },
     // An empty cell would otherwise collapse to a hairline and break the grid.
     '.cm-md-grid td:empty::after': { content: '"\\00a0"' },
     // The cells are edited in place, so the focus ring is the only thing saying which one
