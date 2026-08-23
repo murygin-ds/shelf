@@ -25,13 +25,17 @@ write here is what you will still know in the next conversation.
 ## How to work here
 
 1. Read [[context/context.md]] before answering anything that depends on who you are talking to.
-2. Search before you write. A note that already exists should be updated, not duplicated.
-3. When something is decided, append it to the project's \`decisions.md\` **and** to the
+2. Before you help with anything specific, walk \`shelf_list_tree\` over \`projects/\`, find the
+   project it belongs to and read its \`CLAUDE.md\`. Nothing that is only true of one project
+   is written here at the root. If none of them matches, start one the way
+   [[projects/projects.md]] describes.
+3. Search before you write. A note that already exists should be updated, not duplicated.
+4. When something is decided, append it to the project's \`decisions.md\` **and** to the
    current month in \`memory/\`. A decision recorded in only one of them is one you will
    later find without its reasoning.
-4. Write in the same voice as what is already here. These are notes, not chat transcripts.
-5. When you are unsure where something goes, put it in \`inbox/\` rather than guessing.
-6. Link. A note nothing points at is a note nobody finds again.
+5. Write in the same voice as what is already here. These are notes, not chat transcripts.
+6. When you are unsure where something goes, put it in \`inbox/\` rather than guessing.
+7. Link. A note nothing points at is a note nobody finds again.
 
 ## Linking
 
@@ -122,6 +126,17 @@ it and describe the split here.
 
 Make \`projects/<name>/\` and give it a \`CLAUDE.md\`. The Claude view has a button for it, and
 \`shelf_create_note\` does the same from a tool call.
+
+A project is something with its own codebase and its own working rhythm: a service, a
+repository, a product. A company or a team is not a project — a folder under its name holds
+only what genuinely crosses several projects: calls, shared agreements, cross-team work.
+Everything else belongs to the project it is about.
+
+When one conversation describes several services at once — a handful of READMEs pasted in a
+row, say — that is that many projects, not one large one. Make a folder for each and link
+them together: pulling apart projects that grew into one costs more later than linking two
+neighbours now. When you cannot tell whether it is one or two, ask rather than decide
+silently.
 
 One folder per project, named the way the person names it out loud. Inside:
 
