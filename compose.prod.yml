@@ -1,0 +1,139 @@
+# Production topology: Caddy terminates TLS, and neither the application nor the database is
+# reachable from anywhere but the network at the bottom of this file.
+#
+# This file lives at the repository root rather than under deploy/ on purpose. Compose resolves
+# the build context and every bind mount against the project directory, which defaults to the
+# directory of this file — so from here "." is the clone, and a bare `docker compose ps` run in
+# /opt/shelf finds this deployment. install.sh writes .env beside it, naming COMPOSE_FILE, which
+# is the other half of what makes those bare commands work.
+
+name: shelf
+
+x-logging: &logging
+  driver: json-file
+  # An unrotated log at info level fills a small disk in a matter of months, and a full disk is
+  # how Postgres stops accepting writes.
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # No ports. The only client is the app container, on the network below.
+    environment:
+      # initdb runs once, against an empty volume. Editing these afterwards renames nothing and
+      # locks the application out of the database it already has.
+      POSTGRES_USER: ${SHELF_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${SHELF_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${SHELF_POSTGRES_DATABASE}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    # The default 64 MB is enough until a query sorts more than that and fails on a device
+    # nobody thinks to look at.
+    shm_size: 256mb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${SHELF_POSTGRES_USER} -d ${SHELF_POSTGRES_DATABASE}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [ internal ]
+    logging: *logging
+
+  app:
+    # image and build together: with --build the image is built and tagged with this name,
+    # without it the same name is pulled. One file serves a source install and a registry
+    # install, and moving between them is a variable rather than an edit.
+    image: ${SHELF_IMAGE:-shelf-app:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # The schema is applied by the service itself on startup, from the migrations built into the
+    # binary, so waiting for the database to be healthy is the whole of the ordering.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No ports. Caddy reaches it over the network below, and nothing else can.
+    environment:
+      # local would keep gin in debug mode and permit an empty auth secret. Neither belongs here.
+      SHELF_APP_ENV: ${SHELF_APP_ENV:-prod}
+      SHELF_LOG_LEVEL: ${SHELF_LOG_LEVEL:-info}
+      # console encodes the level with ANSI colour, which in a captured log is noise no parser
+      # will thank anyone for.
+      SHELF_LOG_FORMAT: ${SHELF_LOG_FORMAT:-json}
+
+      SHELF_HTTP_PORT: 8080
+      # Caddy is the only thing that can reach that port and it lives on this network, so the
+      # subnet is the whole of the trust. Without it every per-address rate limit sees the proxy
+      # and becomes one bucket shared by the internet.
+      SHELF_HTTP_TRUSTED_PROXIES: ${SHELF_DOCKER_SUBNET}
+      SHELF_HTTP_SWAGGER_ENABLED: ${SHELF_HTTP_SWAGGER_ENABLED:-false}
+
+      SHELF_POSTGRES_HOST: postgres
+      SHELF_POSTGRES_PORT: 5432
+      SHELF_POSTGRES_USER: ${SHELF_POSTGRES_USER}
+      SHELF_POSTGRES_PASSWORD: ${SHELF_POSTGRES_PASSWORD}
+      SHELF_POSTGRES_DATABASE: ${SHELF_POSTGRES_DATABASE}
+      # The connection never leaves this host's network namespace and the image ships no server
+      # certificate, so the default of prefer would negotiate TLS, be refused, and reconnect in
+      # the clear — one round trip to arrive where disable starts.
+      SHELF_POSTGRES_SSL_MODE: ${SHELF_POSTGRES_SSL_MODE:-disable}
+      SHELF_POSTGRES_AUTO_MIGRATE: ${SHELF_POSTGRES_AUTO_MIGRATE:-true}
+
+      SHELF_AUTH_SECRET: ${SHELF_AUTH_SECRET}
+
+      SHELF_MCP_ENABLED: ${SHELF_MCP_ENABLED:-false}
+      SHELF_MCP_SECRET: ${SHELF_MCP_SECRET:-}
+      SHELF_MCP_PUBLIC_BASE_URL: ${SHELF_MCP_PUBLIC_BASE_URL:-}
+    # http.shutdown_timeout is 10s and Docker's default grace period is the same, which leaves
+    # the process no room to finish draining before it is killed.
+    stop_grace_period: 20s
+    networks: [ internal ]
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [ app ]
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3. Caddy offers it by default and a browser only finds it if the port is published.
+      - "443:443/udp"
+    environment:
+      SHELF_DOMAIN: ${SHELF_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      # Substituted here rather than defaulted in the Caddyfile: an empty value reaches Caddy
+      # as an acme_ca directive with no argument, which is a parse error rather than a default.
+      # install.sh --staging writes the staging directory into .env instead.
+      ACME_CA: ${ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Local additions, created by install.sh and never tracked, so an edit here survives an
+      # update instead of conflicting with one.
+      - ./caddy.d:/etc/caddy/conf.d:ro
+      # The ACME account key and every issued certificate. Losing this volume means asking
+      # Let's Encrypt for all of them again, against a limit of five a week for one name.
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [ internal ]
+    logging: *logging
+
+networks:
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        # Fixed rather than assigned, because SHELF_HTTP_TRUSTED_PROXIES has to name it and a
+        # range Docker picks would change under the deployment. install.sh chooses one that does
+        # not collide with an existing network and writes it to .env.
+        - subnet: ${SHELF_DOCKER_SUBNET}
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

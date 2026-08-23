@@ -1,0 +1,63 @@
+# The proxy in front of Shelf. Values come from the container's environment, which
+# compose.prod.yml fills from .env.
+#
+# HTTPS is not a preference here. Every key the client derives goes through WebCrypto, which a
+# page served over plain HTTP may not use at all, and Anthropic's network will only call a
+# connector over a certificate it trusts.
+
+{
+	email {$ACME_EMAIL}
+	# Always set, and set by compose.prod.yml rather than defaulted here: an empty value would
+	# reach this line as a directive with no argument. install.sh --staging points it at the
+	# staging directory, so a domain whose DNS is still wrong can be retried without spending
+	# the failures the real one counts.
+	acme_ca {$ACME_CA}
+	# The admin API stays on the container's loopback, where `caddy reload` reaches it and
+	# nothing on the network does.
+	admin localhost:2019
+}
+
+{$SHELF_DOMAIN} {
+	log {
+		output stderr
+		format json
+	}
+
+	# Nothing here is secret, but the version of the proxy in front of it need not be published.
+	header -Server
+
+	# Caddy does not set HSTS on its own, and the application cannot: it never sees a TLS
+	# connection and has no way to know it is behind one. A year, without includeSubDomains —
+	# this deployment owns one name, and pinning a whole zone is not a notes app's call.
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy and
+	# Permissions-Policy are set by the application on every response, the API included
+	# (internal/api/middleware/headers.go). Repeating them here would put two values on one
+	# header, and a browser resolving that either way is following a policy nobody wrote.
+
+	# Local additions: another name, an allow list, a header this file does not set. The
+	# directory is created by install.sh, is not tracked, and is read on every start.
+	import /etc/caddy/conf.d/*.caddy
+
+	# The connector's stream must not be collected before it is passed on. Caddy already flushes
+	# text/event-stream as it arrives; saying so explicitly means a change in that heuristic
+	# cannot turn a live Claude session into a long silence.
+	@mcp path /api/v1/mcp /api/v1/mcp/*
+	handle @mcp {
+		reverse_proxy app:8080 {
+			flush_interval -1
+		}
+	}
+
+	# Everything else: the REST API, the OAuth discovery documents under /.well-known, the
+	# probes, the websocket at /api/v1/realtime, and the SPA behind all of them.
+	#
+	# Two things this relies on, neither configured here because both are what Caddy already
+	# does: it upgrades a websocket without being told to, and it passes Host through unchanged.
+	# The origin check on the socket and the byte-for-byte match the OAuth metadata needs are
+	# both built on the second one.
+	handle {
+		reverse_proxy app:8080
+	}
+}

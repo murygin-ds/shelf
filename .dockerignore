@@ -16,3 +16,11 @@ internal/web/dist/
 .idea/
 .vscode/
 .DS_Store
+
+# Deployment scaffolding: read on the host, never inside the image.
+install.sh
+compose.prod.yml
+deploy/
+caddy.d/
+CLAUDE.md
+README.md
