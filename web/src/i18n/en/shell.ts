@@ -63,6 +63,7 @@ export const shell = {
     readOnlyMode: 'Read-only mode',
     /** The hint column, beside ⌘X and ⌘C rather than among the labels: it stays a token. */
     readOnlyOn: 'ON',
+    language: 'Language',
     lockKeys: 'Lock keys',
     signOut: 'Sign out',
     keyUnlocked: 'Key unlocked',

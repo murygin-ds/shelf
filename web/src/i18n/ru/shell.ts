@@ -55,6 +55,7 @@ export const shell = {
     profile: 'Профиль',
     readOnlyMode: 'Только чтение',
     readOnlyOn: 'Вкл',
+    language: 'Язык',
     lockKeys: 'Заблокировать ключи',
     signOut: 'Выйти',
     keyUnlocked: 'Ключ открыт',

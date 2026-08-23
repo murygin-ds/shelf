@@ -10,7 +10,7 @@
 export { m } from './messages';
 export * as format from './format';
 export { importPhaseLabel, permissionLabel, projectStatusLabel, roleLabel } from './labels';
-export { DEFAULT, TAG, language, setLanguage } from './locale';
+export { DEFAULT, LANGUAGES, NAME, TAG, language, setLanguage } from './locale';
 export type { Language } from './locale';
 export { counted, countedEn, plural, pluralEn } from './plural';
 export type { Forms } from './plural';

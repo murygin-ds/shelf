@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from 'react';
 
 import { PassphraseMeter } from '@/features/auth/PassphraseMeter';
-import { format, m } from '@/i18n';
+import { format, LANGUAGES, language, m, NAME } from '@/i18n';
 import { isAcceptable, MIN_PASSPHRASE_LENGTH } from '@/lib/passphrase';
+import { switchLanguage } from '@/store/language';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
 import { Icon } from '@/ui/Icon';
@@ -83,6 +84,9 @@ export function ProfileView() {
             />
           </dl>
 
+          <div className={styles.section}>{m.views.profile.interface}</div>
+          <LanguageChoice />
+
           <div className={styles.section}>{m.views.profile.keys}</div>
           <dl className={styles.facts}>
             <Fact
@@ -124,6 +128,38 @@ export function ProfileView() {
           <DangerZone login={user?.login ?? ''} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The language, chosen rather than detected.
+ *
+ * Both names are written in their own language: this is the one control a reader reaches
+ * precisely because they cannot read the rest of the screen.
+ */
+function LanguageChoice() {
+  const current = language();
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel} id="profile-language">
+        {m.views.profile.language}
+      </span>
+      <div className={styles.choices} role="group" aria-labelledby="profile-language">
+        {LANGUAGES.map((code) => (
+          <button
+            key={code}
+            type="button"
+            className={code === current ? `${styles.choice} ${styles.chosen}` : styles.choice}
+            aria-pressed={code === current}
+            onClick={() => switchLanguage(code)}
+          >
+            {NAME[code]}
+          </button>
+        ))}
+      </div>
+      <p className={styles.note}>{m.views.profile.languageNote}</p>
     </div>
   );
 }

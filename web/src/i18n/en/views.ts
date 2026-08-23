@@ -66,6 +66,7 @@ export const views = {
     back: 'Back to notes',
 
     account: 'Account',
+    interface: 'Interface',
     keys: 'Keys',
     passphrase: 'Passphrase',
     danger: 'Danger zone',
@@ -87,6 +88,10 @@ export const views = {
 
     displayName: 'Display name',
     nameFailed: 'Could not save the name.',
+
+    language: 'Language',
+    languageNote:
+      'The language is picked once, as the app loads, so switching reloads the page. Anything typed is saved before it does.',
 
     currentPassphrase: 'Current passphrase',
     newPassphrase: 'New passphrase',

@@ -16,6 +16,17 @@ export const DEFAULT: Language = 'ru';
 /** BCP 47 tags, for the Intl constructors. */
 export const TAG: Record<Language, string> = { ru: 'ru-RU', en: 'en-GB' };
 
+/** The order a chooser lists them in, the default first. */
+export const LANGUAGES: readonly Language[] = ['ru', 'en'];
+
+/**
+ * What each language calls itself, and the one row of labels that is never translated: the
+ * reader who opens the chooser is the reader who wants out of the language it is written
+ * in, and «Английский» is no help to somebody who has no Russian to find it with.
+ */
+// i18n-ignore — endonyms, not prose
+export const NAME: Record<Language, string> = { ru: 'Русский', en: 'English' };
+
 export function language(): Language {
   try {
     return localStorage.getItem(KEY) === 'en' ? 'en' : DEFAULT;

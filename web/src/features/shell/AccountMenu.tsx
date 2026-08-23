@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 
-import { m } from '@/i18n';
+import { LANGUAGES, language, m, NAME } from '@/i18n';
+import { switchLanguage } from '@/store/language';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -25,6 +26,7 @@ export function AccountMenu() {
   const saveNote = useWorkspace((state) => state.saveNote);
   const { readOnly, setReadOnly } = usePrefs();
   const { open: openMenu, menu } = useContextMenu();
+  const current = language();
 
   // Whatever is typed and not yet sealed goes out before the door closes. After it the
   // autosave is refused, and an unsaved body would sit in the editor with nowhere to land
@@ -70,6 +72,20 @@ export function AccountMenu() {
       icon: 'eye',
       ...(readOnly ? { hint: m.shell.account.readOnlyOn } : {}),
       onSelect: () => (readOnly ? setReadOnly(false) : freeze()),
+    },
+    // Ticked rather than labelled «current»: the row the reader is looking for is written
+    // in a language they may not read, so the mark has to carry the state on its own.
+    {
+      kind: 'submenu',
+      id: 'language',
+      label: m.shell.account.language,
+      icon: 'globe',
+      items: LANGUAGES.map((code) => ({
+        id: `language-${code}`,
+        label: NAME[code],
+        ...(code === current ? { icon: 'check' as const } : {}),
+        onSelect: () => switchLanguage(code),
+      })),
     },
     // The keys drop but the session stays, so this is not a way out — it is the lock the
     // top bar used to carry as an icon of its own.
