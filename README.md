@@ -425,8 +425,8 @@ document raises its epoch and drops the pending updates, which is right when an 
 client replays a write and looks like theft when it lands mid-sentence. And a write to a note
 whose live document still owes its body a commit is refused for the same reason with nobody
 left in the room to notice — a tab that went away without writing back leaves what was typed
-in the log, and `shelf_read_note` reports it as `pending_edits` so a model reads the body
-knowing it is not the whole of the note.
+in the log, and both `shelf_read_note` and `shelf_search_notes` report it as `pending_edits`
+so a model reads the body, or a snippet of it, knowing it is not the whole of the note.
 
 A connector admitted as a viewer is not offered the writing tools at all, rather than offered
 tools that refuse. A model shown a tool will try it.

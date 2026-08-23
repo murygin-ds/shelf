@@ -77,6 +77,7 @@ type Vaults interface {
 	RestoreFolder(ctx context.Context, userID, folderID int64) error
 	UpdateContent(ctx context.Context, userID, fileID int64, in vault.ContentUpdate) (*vault.File, error)
 	LiveDoc(ctx context.Context, userID, fileID int64) (*vault.CRDTDoc, error)
+	PendingDocs(ctx context.Context, userID, vaultID int64, fileIDs []int64) ([]int64, error)
 	SetLinks(ctx context.Context, userID, fileID int64, to []int64) error
 	MoveFile(ctx context.Context, userID, fileID int64, in vault.Move) (*vault.File, error)
 	DeleteFile(ctx context.Context, userID, fileID int64) error
@@ -134,6 +135,9 @@ type Trashed struct {
 type Hit struct {
 	Node
 	Snippet string
+	// PendingEdits marks a hit whose body the live document has moved past, the same way
+	// ReadNote does: the snippet is from the last version that was written back.
+	PendingEdits bool
 }
 
 // The two kinds a node can be, as they appear in tool output.
@@ -550,6 +554,37 @@ func (w *Workspace) Search(ctx context.Context, query Query, limit int) ([]Hit, 
 		case strings.Contains(strings.ToLower(at.node.Name), needle):
 			hits = append(hits, Hit{Node: at.node, Snippet: first(body)})
 		}
+	}
+
+	return w.markPending(ctx, hits)
+}
+
+// markPending flags the hits whose body is behind their live document.
+//
+// Asked after the hits are chosen rather than before: the question is only worth a query for
+// what is being reported, and that is at most one page of results.
+func (w *Workspace) markPending(ctx context.Context, hits []Hit) ([]Hit, error) {
+	if len(hits) == 0 {
+		return hits, nil
+	}
+
+	ids := make([]int64, 0, len(hits))
+	for _, hit := range hits {
+		ids = append(ids, hit.ID)
+	}
+
+	pending, err := w.vaults.PendingDocs(ctx, w.userID, w.vaultID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read live documents: %w", err)
+	}
+
+	behind := make(map[int64]bool, len(pending))
+	for _, id := range pending {
+		behind[id] = true
+	}
+
+	for i := range hits {
+		hits[i].PendingEdits = behind[hits[i].ID]
 	}
 
 	return hits, nil

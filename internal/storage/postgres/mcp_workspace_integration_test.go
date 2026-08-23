@@ -104,6 +104,34 @@ func TestConnectorRefusesToWriteOverEditsNobodyWroteBack(t *testing.T) {
 		t.Error("the read did not say the body is behind the live copy")
 	}
 
+	// A search reports the same thing: the snippet comes from the body, and the body is not
+	// the whole note.
+	if _, err := space.CreateNote(ctx, "inbox/quiet", "half a sentence, written once"); err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	hits, err := space.Search(ctx, mcp.Query{Text: "half a sentence"}, 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+
+	behind := map[string]bool{}
+	for _, hit := range hits {
+		behind[hit.Path] = hit.PendingEdits
+	}
+
+	if len(hits) != 2 {
+		t.Fatalf("the search found %d notes, want both", len(hits))
+	}
+
+	if !behind["inbox/draft"] {
+		t.Error("the hit for the edited note did not say its body is behind the live copy")
+	}
+
+	if behind["inbox/quiet"] {
+		t.Error("a note nobody has opened was reported as having unwritten edits")
+	}
+
 	if _, err := space.AppendNote(ctx, "inbox/draft", " and more"); !errors.Is(err, mcp.ErrUnsettled) {
 		t.Errorf("appending over unwritten edits returned %v, want ErrUnsettled", err)
 	}

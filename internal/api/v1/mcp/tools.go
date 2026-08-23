@@ -94,6 +94,8 @@ type (
 	hitOut struct {
 		nodeOut
 		Snippet string `json:"snippet"`
+		//nolint:lll // the description is the contract a model reads.
+		PendingEdits bool `json:"pending_edits,omitempty" jsonschema:"The snippet is from a body the note's live copy has moved past: somebody typed in the editor and the session ended before it was written back."`
 	}
 
 	folderInput struct {
@@ -252,7 +254,9 @@ func (t *Transport) readTools(server *sdk.Server, connector *mcp.Connector) {
 
 		out := searchOutput{Hits: make([]hitOut, 0, len(hits))}
 		for _, hit := range hits {
-			out.Hits = append(out.Hits, hitOut{nodeOut: nodeOf(hit.Node), Snippet: hit.Snippet})
+			out.Hits = append(out.Hits, hitOut{
+				nodeOut: nodeOf(hit.Node), Snippet: hit.Snippet, PendingEdits: hit.PendingEdits,
+			})
 		}
 
 		return nil, out, nil

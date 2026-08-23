@@ -109,6 +109,9 @@ type CRDTStore interface {
 	// it is handed rather than merge its own copy into it.
 	SeedCRDTDoc(ctx context.Context, in NewCRDTDoc, actorID int64) (*CRDTDoc, bool, error)
 	CRDTUpdates(ctx context.Context, fileID int64, epoch int32, since int64) ([]CRDTUpdate, error)
+	// PendingDocs names, among the notes given, the ones whose log is not empty. Filtered
+	// by what the caller may see, like every other read of several notes at once.
+	PendingDocs(ctx context.Context, vaultID, userID int64, fileIDs []int64) ([]int64, error)
 	AppendCRDTUpdate(ctx context.Context, in NewCRDTUpdate, actorID int64) (*CRDTUpdate, error)
 }
 
@@ -125,6 +128,23 @@ func (s *Service) LiveDoc(ctx context.Context, userID, fileID int64) (*CRDTDoc, 
 	}
 
 	return doc, nil
+}
+
+// PendingDocs names, among the notes given, the ones holding edits their body does not.
+//
+// One query for the whole batch: a search opens as many bodies as it was asked for, and
+// asking after each one's document separately would double that in round trips.
+func (s *Service) PendingDocs(ctx context.Context, userID, vaultID int64, fileIDs []int64) ([]int64, error) {
+	if _, err := s.member(ctx, vaultID, userID); err != nil {
+		return nil, err
+	}
+
+	pending, err := s.crdt.PendingDocs(ctx, vaultID, userID, fileIDs)
+	if err != nil {
+		return nil, translate(err, "read live documents")
+	}
+
+	return pending, nil
 }
 
 // LiveUpdates reads the log from a sequence the caller already holds.

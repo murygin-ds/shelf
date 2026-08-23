@@ -193,6 +193,52 @@ func refillCRDTDoc(
 	))
 }
 
+// PendingDocs names the notes among those given whose log still holds updates.
+//
+// The access CTE is here for the same reason it is on every other read of several notes at
+// once: the ids come from a caller that may not see all of them, and «this note has edits
+// nobody has written back» is something about a note.
+func (r *VaultRepository) PendingDocs(
+	ctx context.Context,
+	vaultID, userID int64,
+	fileIDs []int64,
+) ([]int64, error) {
+	if len(fileIDs) == 0 {
+		return []int64{}, nil
+	}
+
+	query := accessCTE + `
+		SELECT fd.file_id
+		  FROM file_crdt_docs fd
+		  JOIN file_access fia ON fia.id = fd.file_id
+		 WHERE fd.vault_id = $1 AND fd.file_id = ANY($3)
+		   AND fd.pending_count > 0 AND permission_rank(fia.perm) > 0`
+
+	rows, err := r.pool.Query(ctx, query, vaultID, userID, fileIDs)
+	if err != nil {
+		return nil, fmt.Errorf("select live documents with pending updates: %w", err)
+	}
+	defer rows.Close()
+
+	pending := make([]int64, 0, len(fileIDs))
+
+	for rows.Next() {
+		var fileID int64
+
+		if err := rows.Scan(&fileID); err != nil {
+			return nil, fmt.Errorf("scan live document: %w", err)
+		}
+
+		pending = append(pending, fileID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read live documents: %w", err)
+	}
+
+	return pending, nil
+}
+
 // CRDTUpdates reads the log past a sequence the caller already holds.
 func (r *VaultRepository) CRDTUpdates(
 	ctx context.Context,
