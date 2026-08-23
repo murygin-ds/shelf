@@ -14,7 +14,7 @@ import * as cache from '@/db/cache';
 import type { ImportPlan } from '@/lib/archive';
 import { claudeOsPlan, decisionsSeed, projectSeed, skillSeed } from '@/lib/claudeos';
 import { MAX_TAGS, normalizeTag, type IndexedNote } from '@/lib/search';
-import { resolveWikilinks } from '@/lib/wikilinks';
+import { resolvables, resolveWikilinks } from '@/lib/wikilinks';
 import { isReadOnly } from '@/store/prefs';
 import type { PeerDto } from '@/api/realtime';
 import { createSession, type EditingSession } from '@/collab/session';
@@ -905,7 +905,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
       // Links are resolved against what this reader can open, so they are recorded from
       // here rather than derived on the server, which holds no titles to match.
-      const { resolved } = resolveWikilinks(open.body, tree.notes, open.note.id);
+      const { resolved } = resolveWikilinks(
+        open.body,
+        resolvables(tree.folders, tree.notes),
+        open.note.id,
+      );
 
       try {
         await graphApi.setLinks(open.note.id, resolved);
@@ -1332,7 +1336,7 @@ export async function commitBody(
       ])
       .catch(() => undefined);
 
-    const { resolved } = resolveWikilinks(text, tree.notes, note.id);
+    const { resolved } = resolveWikilinks(text, resolvables(tree.folders, tree.notes), note.id);
     await graphApi.setLinks(note.id, resolved).catch(() => undefined);
   } catch (cause) {
     // A refused write-back leaves the document as the truth, which is where it already was.

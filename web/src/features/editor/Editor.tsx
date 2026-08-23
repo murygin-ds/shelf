@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { IconPicker, type PickerTarget, pickerPosition } from '@/features/sidebar/IconPicker';
 import { allTags } from '@/lib/search';
+import { resolvables, resolveTarget } from '@/lib/wikilinks';
 import { usePrefs } from '@/store/prefs';
 import { useSession } from '@/store/session';
 import { useWorkspace } from '@/store/workspace';
@@ -52,19 +53,18 @@ export function Editor() {
   const timer = useRef<number | undefined>(undefined);
   const { open: openMenu, menu } = useContextMenu();
 
+  // Paths as well as names, because a link may be written as either. A path also carries
+  // the name at its end, so one signature covers a rename and a move alike.
+  const linkable = resolvables(tree.folders, tree.notes);
   // Keyed on a cheap signature rather than on the array: the poller hands out a new
   // `tree.notes` every eight seconds with the same contents in it, and reconfiguring the
   // editor on each of those would be work for nothing.
-  const signature = tree.notes.map((note) => `${note.id}:${note.name}`).join('|');
+  const signature = linkable.map((note) => `${note.id}:${note.path}`).join('|');
   // A tag can hold no whitespace, so joining them is a signature and a value at once.
   const tags = allTags(index).join(' ');
 
   const context = useMemo(
-    () =>
-      contextOf(
-        tree.notes.map((note) => ({ id: note.id, name: note.name })),
-        tags ? tags.split(' ') : [],
-      ),
+    () => contextOf(linkable, tags ? tags.split(' ') : []),
     [signature, tags],
   );
 
@@ -169,16 +169,14 @@ export function Editor() {
     frozen || open.locked || note.permission === 'view' || note.permission === 'comment';
 
   /**
-   * Resolved here rather than in the editor, and by the same rule the graph uses: titles are
-   * encrypted, so only a holder of the key can turn one into a note — and when two notes
-   * share a title the older one wins, so the same body always leads to the same place.
+   * Resolved here rather than in the editor, and by the same rule the graph uses: a target is
+   * a path or a title, both of them encrypted, so only a holder of the key can turn one into
+   * a note — and when two notes share a title the older one wins, so the same body always
+   * leads to the same place.
    */
   const openLink = (target: string, where: LinkWhere) => {
-    const wanted = target.trim().toLowerCase();
-
-    const found = tree.notes
-      .filter((candidate) => candidate.name.trim().toLowerCase() === wanted)
-      .sort((a, b) => a.id - b.id)[0];
+    const id = resolveTarget(target, context.targets);
+    const found = id === undefined ? undefined : tree.notes.find((note) => note.id === id);
 
     if (!found) return;
 

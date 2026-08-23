@@ -388,6 +388,13 @@ Searching narrows by folder, by tag, or both, and either the text or the tag is 
 own. The narrowing is not only a filter: a search opens every note it looks at, so scoping is
 what keeps the cost of asking about one project proportional to that project.
 
+A write also records the note's links. `[[a/path.md]]` and `[[A title]]` are resolved against
+the tree the connector just decrypted — paths first, since the tree it is given repeats titles
+by design, and a shared title settles on the older note. That resolution exists twice, here
+and in the browser (`internal/mcp/links.go` and `web/src/lib/wikilinks.ts`), because only a
+holder of the key can turn a title into a note and both sides hold one. Without it everything
+Claude wrote would stay off the graph until a person opened each note and saved it again.
+
 Two refusals are worth knowing about. A write quoting a stale `content_seq` is refused rather
 than merged, because nobody here can merge two ciphertexts. And a write to a note somebody
 has open in the editor is refused rather than performed: a body written from outside the live
@@ -708,11 +715,10 @@ Stated plainly, because each of them is a decision rather than an oversight:
 - **Revision history stays under the key it was written with.** Giving a folder its own key
   re-encrypts the current rows, not the archive — the same limit as "rotation cannot un-read
   what was already read".
-- **A note the connector writes does not enter the link graph until a browser opens it.**
-  Wikilinks are resolved on the client, against the note names it holds, and the server has
-  no copy of that logic. Porting it would put the same resolution in two languages and give
-  it two chances to disagree; recomputing it on the next sync is the fix, and it is not
-  written yet.
+- **Links go stale when a note moves.** A link is stored as a pair of ids, resolved from the
+  text that was there when the note was last written. Renaming or moving the target leaves
+  the edge pointing where it always did, while the body now names a path nothing carries.
+  The next write of either note settles it; nothing sweeps the vault to do it sooner.
 - **Read-only mode does not stop the connector.** It is a promise about one browser — the
   account keeps every role it had, and another tab, another device or a connector are all
   unaffected by it. Pausing Claude is a different thing from putting a tab in read-only, and

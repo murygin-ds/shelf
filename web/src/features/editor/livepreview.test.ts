@@ -12,13 +12,14 @@ import { buildDecorations, type Span } from './livepreview';
  * changes the answer.
  */
 
+// A note is named by the last segment of what is passed, and reachable by the whole of it:
+// links are written as either, and the editor has to draw both as resolved.
 function open(doc: string, titles: string[] = []): EditorState {
+  const notes = titles.map((path, id) => ({ id, name: path.split('/').pop() ?? path, path }));
+
   return EditorState.create({
     doc,
-    extensions: [
-      noteLanguage,
-      vaultContext.of(contextOf(titles.map((name, id) => ({ id, name })), [])),
-    ],
+    extensions: [noteLanguage, vaultContext.of(contextOf(notes, []))],
   });
 }
 
@@ -129,6 +130,16 @@ describe('wikilinks', () => {
 
   it('matches titles the way the graph does, ignoring case and surrounding space', () => {
     expect(marks('[[  launch PLAN ]]', ['Launch Plan'])).toContain('cm-md-wiki');
+  });
+
+  // Claude writes links by path, because the tree it fills repeats titles. They are drawn
+  // as resolved for the same reason they resolve: they name a note this reader can open.
+  it('draws a link written as a path as resolved', () => {
+    const vault = ['projects/shelf/CLAUDE.md'];
+
+    expect(marks('[[projects/shelf/CLAUDE.md]]', vault)).toContain('cm-md-wiki');
+    expect(marks('[[CLAUDE.md]]', vault)).toContain('cm-md-wiki');
+    expect(marks('[[projects/atlas/CLAUDE.md]]', vault)).toContain('cm-md-wiki cm-md-wiki-missing');
   });
 });
 

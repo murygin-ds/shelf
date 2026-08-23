@@ -8,6 +8,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -46,7 +47,7 @@ func workspace(t *testing.T, f *fixture, repo *MCPRepository) *mcp.Workspace {
 		t.Fatalf("Grants: %v", err)
 	}
 
-	opened, err := mcp.Open(ctx, service, nil, mcp.NewKeyring(identity, grants), identity, connector)
+	opened, err := mcp.Open(ctx, service, nil, zap.NewNop(), mcp.NewKeyring(identity, grants), identity, connector)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -102,7 +103,7 @@ func TestConnectorRefusesToWriteOverALiveSession(t *testing.T) {
 		CRDT: store, Logger: zap.NewNop(),
 	})
 
-	occupied, err := mcp.Open(ctx, vaults, busy{editing: true},
+	occupied, err := mcp.Open(ctx, vaults, busy{editing: true}, zap.NewNop(),
 		mcp.NewKeyring(identity, grants), identity, connector)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -212,6 +213,113 @@ func TestConnectorWritesAndReadsNotes(t *testing.T) {
 	if !strings.Contains(appended.Body, "Rewritten.") {
 		t.Error("append lost what was already there")
 	}
+}
+
+// What the connector writes has to reach the graph, or a vault a model fills stays a pile of
+// unconnected notes until somebody opens each one in a browser and saves it again.
+func TestConnectorRecordsTheLinksItWrites(t *testing.T) {
+	pool := connect(t)
+	f := seed(t, pool, vault.RoleOwner)
+	space := workspace(t, f, NewMCPRepository(pool, nil))
+	ctx := context.Background()
+
+	// Two projects with the same note name, which is what the template produces: a bare
+	// [[CLAUDE.md]] cannot say which of them is meant, and a path can.
+	alpha, err := space.CreateNote(ctx, "projects/alpha/CLAUDE.md", "# Alpha\n")
+	if err != nil {
+		t.Fatalf("CreateNote alpha: %v", err)
+	}
+
+	beta, err := space.CreateNote(ctx, "projects/beta/CLAUDE.md", "# Beta\n")
+	if err != nil {
+		t.Fatalf("CreateNote beta: %v", err)
+	}
+
+	log, err := space.CreateNote(ctx, "memory/2026-08.md",
+		"Shipped [[projects/beta/CLAUDE.md]], parked [[projects/alpha/CLAUDE.md|alpha]].\n")
+	if err != nil {
+		t.Fatalf("CreateNote log: %v", err)
+	}
+
+	// Read as the owner, which is the browser's view of the same graph.
+	store := NewVaultRepository(pool, nil)
+
+	drawn := edgesOf(t, store, f, log.ID)
+	if want := []int64{beta.ID, alpha.ID}; !sameSet(drawn, want) {
+		t.Errorf("the graph holds %v, want edges to %v", drawn, want)
+	}
+
+	// An append resolves against the body it produces, so the earlier edges survive it and
+	// the new one joins them.
+	if _, err := space.AppendNote(ctx, "memory/2026-08.md", "Also read [[Beta]].\n"); err != nil {
+		t.Fatalf("AppendNote: %v", err)
+	}
+
+	if drawn := edgesOf(t, store, f, log.ID); !sameSet(drawn, []int64{beta.ID, alpha.ID}) {
+		t.Errorf("appending left the graph at %v", drawn)
+	}
+
+	// A title nothing carries is dropped rather than stored, and a body that says nothing
+	// takes its edges with it: the note is the truth about what it points at.
+	read, err := space.ReadNote(ctx, "memory/2026-08.md")
+	if err != nil {
+		t.Fatalf("ReadNote: %v", err)
+	}
+
+	if _, err := space.WriteNote(ctx, "memory/2026-08.md", "Nothing points anywhere now.\n",
+		read.ContentSeq); err != nil {
+		t.Fatalf("WriteNote: %v", err)
+	}
+
+	if drawn := edgesOf(t, store, f, log.ID); len(drawn) != 0 {
+		t.Errorf("the rewrite left %v behind", drawn)
+	}
+}
+
+// edgesOf lists what one note points at, as the vault's owner sees the graph.
+func edgesOf(t *testing.T, store *VaultRepository, f *fixture, from int64) []int64 {
+	t.Helper()
+
+	graph, err := store.Graph(context.Background(), f.vaultID, f.ownerID)
+	if err != nil {
+		t.Fatalf("Graph: %v", err)
+	}
+
+	out := []int64{}
+
+	for _, edge := range graph.Edges {
+		if edge.From != strconv.FormatInt(from, 10) {
+			continue
+		}
+
+		to, err := strconv.ParseInt(edge.To, 10, 64)
+		if err != nil {
+			t.Fatalf("a visible node is named %q rather than by its id", edge.To)
+		}
+
+		out = append(out, to)
+	}
+
+	return out
+}
+
+func sameSet(got, want []int64) bool {
+	if len(got) != len(want) {
+		return false
+	}
+
+	found := make(map[int64]bool, len(got))
+	for _, id := range got {
+		found[id] = true
+	}
+
+	for _, id := range want {
+		if !found[id] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func TestConnectorSearchesBodies(t *testing.T) {

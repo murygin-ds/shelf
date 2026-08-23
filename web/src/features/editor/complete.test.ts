@@ -35,6 +35,29 @@ describe('note titles', () => {
     expect(result?.options.map((option) => option.label)).toEqual(['Roadmap', 'Launch plan']);
   });
 
+  // A title two notes carry cannot say which is meant, so the offer is the path — the same
+  // target the graph would resolve them apart by.
+  it('offers a repeated title by path', () => {
+    const shared = [
+      { id: 1, name: 'CLAUDE.md', path: 'projects/shelf/CLAUDE.md' },
+      { id: 2, name: 'CLAUDE.md', path: 'projects/atlas/CLAUDE.md' },
+      { id: 3, name: 'Roadmap', path: 'Roadmap' },
+    ];
+
+    const state = EditorState.create({
+      doc: 'see [[',
+      extensions: [noteLanguage, vaultContext.of(contextOf(shared, TAGS))],
+    });
+
+    const result = wikilinkSource(new CompletionContext(state, 6, false));
+
+    expect(result?.options.map((option) => option.label)).toEqual([
+      'projects/shelf/CLAUDE.md',
+      'projects/atlas/CLAUDE.md',
+      'Roadmap',
+    ]);
+  });
+
   it('starts the replacement after the brackets, so typing filters', () => {
     const result = wikilinkSource(at('see [[Road'));
 

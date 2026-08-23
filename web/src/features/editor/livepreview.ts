@@ -8,6 +8,8 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 
+import { resolveTarget } from '@/lib/wikilinks';
+
 import { vaultContext } from './context';
 import { wikilinkParts } from './wikilink';
 
@@ -194,7 +196,7 @@ export function buildDecorations(
         if (name === 'Wikilink') {
           const text = state.doc.sliceString(node.from, node.to);
           const { target, hidden: cuts } = wikilinkParts(text);
-          const known = state.facet(vaultContext).titles.has(target.toLowerCase());
+          const known = resolveTarget(target, state.facet(vaultContext).targets) !== undefined;
 
           mark(node.from, node.to, known ? 'cm-md-wiki' : 'cm-md-wiki cm-md-wiki-missing');
 

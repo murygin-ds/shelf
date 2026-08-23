@@ -12,6 +12,7 @@ import (
 	"shelf/internal/vault"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // MaxBodyBytes is the largest note body that still fits the ciphertext ceiling once it has
@@ -71,6 +72,7 @@ type Vaults interface {
 	RestoreFile(ctx context.Context, userID, fileID int64) error
 	RestoreFolder(ctx context.Context, userID, folderID int64) error
 	UpdateContent(ctx context.Context, userID, fileID int64, in vault.ContentUpdate) (*vault.File, error)
+	SetLinks(ctx context.Context, userID, fileID int64, to []int64) error
 	MoveFile(ctx context.Context, userID, fileID int64, in vault.Move) (*vault.File, error)
 	DeleteFile(ctx context.Context, userID, fileID int64) error
 }
@@ -139,6 +141,7 @@ const (
 type Workspace struct {
 	vaults   Vaults
 	live     Live
+	log      *zap.Logger
 	ring     *Keyring
 	identity *envelope.Identity
 	userID   int64
@@ -153,14 +156,22 @@ type scope struct {
 }
 
 // Open prepares a workspace over a vault the connector has been admitted to.
+//
+// The logger is optional, and only a write that stored a body but not its links has anything
+// to say through it.
 func Open(
 	ctx context.Context,
 	vaults Vaults,
 	live Live,
+	log *zap.Logger,
 	ring *Keyring,
 	identity *envelope.Identity,
 	connector *Connector,
 ) (*Workspace, error) {
+	if log == nil {
+		log = zap.NewNop()
+	}
+
 	summaries, err := vaults.Vaults(ctx, connector.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("read vaults: %w", err)
@@ -174,6 +185,7 @@ func Open(
 		return &Workspace{
 			vaults:   vaults,
 			live:     live,
+			log:      log,
 			ring:     ring,
 			identity: identity,
 			userID:   connector.UserID,

@@ -8,6 +8,8 @@ import (
 
 	"shelf/internal/envelope"
 	"shelf/internal/vault"
+
+	"go.uber.org/zap"
 )
 
 // CreateFolder makes a folder, and every folder above it that does not exist yet.
@@ -172,7 +174,7 @@ func (w *Workspace) CreateNote(ctx context.Context, path, body string) (*Note, e
 		return &Note{Node: w.noteNode(*file, name, join(parentPath, name)), Body: ""}, nil
 	}
 
-	return w.write(ctx, *file, join(parentPath, name), name, body)
+	return w.write(ctx, built, *file, join(parentPath, name), name, body)
 }
 
 // WriteNote replaces a body under the optimistic lock the caller read.
@@ -199,7 +201,7 @@ func (w *Workspace) WriteNote(ctx context.Context, path, body string, expectedSe
 			vault.ErrVersionConflict, at.file.ContentSeq, expectedSeq)
 	}
 
-	return w.write(ctx, at.file, at.node.Path, at.node.Name, body)
+	return w.write(ctx, built, at.file, at.node.Path, at.node.Name, body)
 }
 
 // AppendNote adds to the end of a note. Read and write in one call, because a model asked to
@@ -267,8 +269,17 @@ func (w *Workspace) TrashNote(ctx context.Context, path string) error {
 	return w.vaults.DeleteFile(ctx, w.userID, at.file.ID)
 }
 
-// write seals and stores a body, signed as the connector.
-func (w *Workspace) write(ctx context.Context, file vault.File, path, name, body string) (*Note, error) {
+// write seals and stores a body, signed as the connector, and records the links it carries.
+//
+// The tree is the one the caller already read: resolution needs the titles and paths around
+// the note, and decrypting the vault a second time to learn what it just knew is work for
+// nothing.
+func (w *Workspace) write(
+	ctx context.Context,
+	built *tree,
+	file vault.File,
+	path, name, body string,
+) (*Note, error) {
 	// A body written without a document to speak for it invalidates the live one, dropping
 	// whatever the person at the keyboard has not committed yet. Refusing is the only
 	// answer that does not throw away somebody's sentence mid-word.
@@ -309,7 +320,31 @@ func (w *Workspace) write(ctx context.Context, file vault.File, path, name, body
 		return nil, err
 	}
 
+	w.recordLinks(ctx, built, updated.ID, body)
+
 	return &Note{Node: w.noteNode(*updated, name, path), Body: body}, nil
+}
+
+// recordLinks makes the note's outgoing edges exactly what its body says.
+//
+// The graph is written from here for the same reason the browser writes it: a `[[wikilink]]`
+// is a title, titles are encrypted, and only somebody holding the key can turn one into a
+// note. Left out, everything the connector writes would stay off the graph until a person
+// opened the note and saved it again.
+//
+// A failure is logged rather than returned. The body is stored, and answering with an error
+// would send a model back to rewrite a note that is already written — where it would meet
+// its own write as a version conflict.
+func (w *Workspace) recordLinks(ctx context.Context, built *tree, fileID int64, body string) {
+	links := resolveLinks(body, built.linkables(), fileID)
+
+	if err := w.vaults.SetLinks(ctx, w.userID, fileID, links); err != nil {
+		w.log.Warn("connector stored a body but not its links",
+			zap.Int64("vault_id", w.vaultID),
+			zap.Int64("file_id", fileID),
+			zap.Error(err),
+		)
+	}
 }
 
 // folder creates one level and returns it indexed, so a caller walking a path can carry on.
