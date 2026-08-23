@@ -425,9 +425,11 @@ document raises its epoch and drops the pending updates, which is right when an 
 client replays a write and looks like theft when it lands mid-sentence. And a write to a note
 whose live document still owes its body a commit is refused for the same reason with nobody
 left in the room to notice — a tab that went away without writing back leaves what was typed
-in the log. Every tool that reports a note carries `pending_edits` on it — the listing, the
-search and the read alike — so a model sees the body, or a snippet of it, knowing that it is
-not the whole of the note and that writing to it will be refused.
+in the log. The mark rides on the note itself, so every tool that answers with one carries
+`pending_edits` — the listing, the search, the read, and the move and rename that only touch
+its metadata. A model sees the body, or a snippet of it, knowing that it is not the whole of
+the note and that writing to it will be refused. A write that succeeds clears it by
+construction: there is nothing left in the log for the body not to carry.
 
 A connector admitted as a viewer is not offered the writing tools at all, rather than offered
 tools that refuse. A model shown a tool will try it.

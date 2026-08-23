@@ -149,11 +149,33 @@ func TestConnectorRefusesToWriteOverEditsNobodyWroteBack(t *testing.T) {
 		t.Error("a note nobody has opened was reported as having unwritten edits")
 	}
 
-	if _, err := space.AppendNote(ctx, "inbox/draft", " and more"); !errors.Is(err, mcp.ErrUnsettled) {
+	// The note carries the mark wherever it goes: moving it and renaming it answer with it
+	// too, so a model that only touched its metadata still knows what it is holding.
+	moved, err := space.MoveNote(ctx, "inbox/draft", "archive")
+	if err != nil {
+		t.Fatalf("MoveNote: %v", err)
+	}
+
+	if !moved.PendingEdits {
+		t.Error("the moved note did not say its body is behind the live copy")
+	}
+
+	name := "draft-2"
+
+	renamed, err := space.SetMeta(ctx, "archive/draft", mcp.MetaPatch{Name: &name})
+	if err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+
+	if !renamed.PendingEdits {
+		t.Error("the renamed note did not say its body is behind the live copy")
+	}
+
+	if _, err := space.AppendNote(ctx, "archive/draft-2", " and more"); !errors.Is(err, mcp.ErrUnsettled) {
 		t.Errorf("appending over unwritten edits returned %v, want ErrUnsettled", err)
 	}
 
-	if _, err := space.WriteNote(ctx, "inbox/draft", "clobbered", read.ContentSeq); !errors.Is(err, mcp.ErrUnsettled) {
+	if _, err := space.WriteNote(ctx, "archive/draft-2", "clobbered", read.ContentSeq); !errors.Is(err, mcp.ErrUnsettled) {
 		t.Errorf("writing over unwritten edits returned %v, want ErrUnsettled", err)
 	}
 
@@ -182,8 +204,13 @@ func TestConnectorRefusesToWriteOverEditsNobodyWroteBack(t *testing.T) {
 		t.Fatalf("fold the log into the body: %v", err)
 	}
 
-	if _, err := space.WriteNote(ctx, "inbox/draft", "the connector's turn", read.ContentSeq+1); err != nil {
+	written, err := space.WriteNote(ctx, "archive/draft-2", "the connector's turn", read.ContentSeq+1)
+	if err != nil {
 		t.Fatalf("writing after the editor wrote back: %v", err)
+	}
+
+	if written.PendingEdits {
+		t.Error("the note still reports unwritten edits after they were written")
 	}
 }
 

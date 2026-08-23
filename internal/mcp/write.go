@@ -248,7 +248,13 @@ func (w *Workspace) MoveNote(ctx context.Context, path, folder string) (*Node, e
 		return nil, err
 	}
 
+	pending, err := w.pending(ctx, moved.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	node := w.noteNode(*moved, at.node.Name, join(clean(folder), at.node.Name))
+	node.PendingEdits = pending
 
 	return &node, nil
 }
