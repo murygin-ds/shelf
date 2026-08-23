@@ -705,10 +705,12 @@ write_env() {
 	SUBNET=$(env_value SHELF_DOCKER_SUBNET)
 	[[ -n $SUBNET ]] || SUBNET=$(choose_subnet)
 
-	local mcp_enabled=false mcp_base=""
+	# The base URL is written whether or not the connector is on, for the same reason its secret
+	# is: turning it on later has to be one line rather than two, and the line nobody thinks of
+	# is this one — an enabled connector without it refuses to start.
+	local mcp_enabled=false
 	if (( MCP )); then
 		mcp_enabled=true
-		mcp_base="https://$DOMAIN"
 	fi
 
 	local acme_ca=$ACME_CA
@@ -767,15 +769,17 @@ SHELF_POSTGRES_AUTO_MIGRATE=true
 # Signs access and refresh tokens. Replacing it signs everybody out; it loses no data.
 SHELF_AUTH_SECRET=$auth_secret
 
-# The Claude connector.
+# The Claude connector. To turn it on later, set this to true and restart:
+#   cd $DIR && docker compose up -d
 SHELF_MCP_ENABLED=$mcp_enabled
 # Wraps the connector credentials at rest. Written whether or not the connector is on, so that
 # turning it on later is a single change rather than two. There is no fallback and no recovery:
 # replacing this makes every connector already attached to a vault permanently unreadable, and
 # the failure reads as corruption rather than as a changed setting.
 SHELF_MCP_SECRET=$mcp_secret
-# Has to equal, byte for byte, the URL typed into Claude.
-SHELF_MCP_PUBLIC_BASE_URL=$mcp_base
+# Has to equal, byte for byte, the URL typed into Claude. Read only when the connector is on,
+# so it is written either way and one setting above is the whole of the switch.
+SHELF_MCP_PUBLIC_BASE_URL=https://$DOMAIN
 ENV
 	mv -f "$tmp" "$ENV_FILE"
 	chown root:root "$ENV_FILE"
