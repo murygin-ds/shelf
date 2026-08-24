@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { contextOf, vaultContext } from './context';
 import { noteLanguage } from './language';
-import { buildDecorations, type Span } from './livepreview';
+import { buildDecorations, toggleTask, type Span } from './livepreview';
 
 /**
  * Live preview decides what a note looks like when nobody is typing in it, so a mistake here
@@ -14,12 +14,16 @@ import { buildDecorations, type Span } from './livepreview';
 
 // A note is named by the last segment of what is passed, and reachable by the whole of it:
 // links are written as either, and the editor has to draw both as resolved.
-function open(doc: string, titles: string[] = []): EditorState {
+function open(doc: string, titles: string[] = [], readOnly = false): EditorState {
   const notes = titles.map((path, id) => ({ id, name: path.split('/').pop() ?? path, path }));
 
   return EditorState.create({
     doc,
-    extensions: [noteLanguage, vaultContext.of(contextOf(notes, []))],
+    extensions: [
+      noteLanguage,
+      vaultContext.of(contextOf(notes, [])),
+      EditorState.readOnly.of(readOnly),
+    ],
   });
 }
 
@@ -56,6 +60,32 @@ function marks(doc: string, titles: string[] = []): string[] {
     const cls = (value.spec as { class?: string }).class;
 
     if (from !== to && cls) out.push(cls);
+  });
+
+  return out;
+}
+
+interface Box {
+  done: boolean;
+  readOnly: boolean;
+}
+
+/**
+ * The checkboxes, as the range each one covers and the state it was built from. There is no
+ * DOM here — these tests run without one — but the widget is what decides what the DOM will
+ * say, so reading it is reading the checkbox.
+ */
+function boxes(doc: string, caret?: number, readOnly = false): Array<Span & Box> {
+  const state = open(doc, [], readOnly);
+  const spans: Span[] = caret === undefined ? [] : [{ from: caret, to: caret }];
+  const { decorations } = buildDecorations(state, [{ from: 0, to: doc.length }], spans);
+
+  const out: Array<Span & Box> = [];
+
+  decorations.between(0, doc.length, (from, to, value) => {
+    const widget = (value.spec as { widget?: Box }).widget;
+
+    if (widget) out.push({ from, to, done: widget.done, readOnly: widget.readOnly });
   });
 
   return out;
@@ -161,6 +191,78 @@ describe('text that must never be concealed', () => {
 
 });
 
+describe('checkboxes', () => {
+  const doc = '- [x] Сделано\n- [ ] Не сделано';
+
+  it('hides the bullet and the box together, leaving the text of the task', () => {
+    expect(rendered(doc)).toBe('Сделано\nНе сделано');
+  });
+
+  it('draws one checkbox per item, ticked as the marker says', () => {
+    expect(boxes(doc)).toEqual([
+      { from: 0, to: 6, done: true, readOnly: false },
+      { from: 14, to: 20, done: false, readOnly: false },
+    ]);
+  });
+
+  // The same rule as every other marker here: the line the caret is on is the line being
+  // written, and what is written there is `- [x]`.
+  it('gives the markdown back on the line the caret is on, and only there', () => {
+    expect(rendered(doc, 8)).toBe('- [x] Сделано\nНе сделано');
+    expect(boxes(doc, 8).map((box) => box.from)).toEqual([14]);
+  });
+
+  it('takes an upper-case X as ticked', () => {
+    expect(boxes('- [X] done').map((box) => box.done)).toEqual([true]);
+  });
+
+  it('draws one on an ordered item and on a nested one', () => {
+    expect(boxes('1. [ ] first')).toEqual([{ from: 0, to: 7, done: false, readOnly: false }]);
+    expect(boxes('- a\n  - [ ] deep')).toEqual([{ from: 6, to: 12, done: false, readOnly: false }]);
+  });
+
+  // `- [ ]` alone is not a task to the parser — there is nothing for the box to belong to —
+  // and a bullet that lost its dash to a checkbox nobody can see is a list with a hole in it.
+  it('leaves a marker with nothing after it as text', () => {
+    expect(boxes('- [ ]')).toEqual([]);
+    expect(rendered('- [ ]')).toBe('- [ ]');
+  });
+
+  it('leaves an ordinary bullet alone', () => {
+    expect(boxes('- one')).toEqual([]);
+    expect(rendered('- one')).toBe('- one');
+  });
+
+  it('draws the box unavailable on a note that may not be written', () => {
+    expect(boxes(doc, undefined, true).map((box) => box.readOnly)).toEqual([true, true]);
+  });
+});
+
+describe('ticking a box', () => {
+  const doc = '- [ ] one\n- [x] two';
+
+  // One character, so the rest of the line — and anyone else editing it — is untouched.
+  it('writes the one character between the brackets', () => {
+    expect(toggleTask(open(doc), 0)).toEqual({ changes: { from: 3, to: 4, insert: 'x' } });
+    expect(toggleTask(open(doc), 10)).toEqual({ changes: { from: 13, to: 14, insert: ' ' } });
+  });
+
+  it('answers for the task the position is on, wherever on the line it is', () => {
+    expect(toggleTask(open(doc), 7)).toEqual({ changes: { from: 3, to: 4, insert: 'x' } });
+  });
+
+  it('has nothing to say about a line that is not a task', () => {
+    expect(toggleTask(open('- one'), 2)).toBeNull();
+    expect(toggleTask(open('# heading'), 2)).toBeNull();
+  });
+
+  // The widget on screen was drawn under whatever mode held at the time, so read-only is
+  // answered here rather than trusted to have reached the checkbox first.
+  it('refuses on a note that may not be written', () => {
+    expect(toggleTask(open(doc, [], true), 0)).toBeNull();
+  });
+});
+
 describe('fenced code', () => {
   const doc = '```js\nconst x = 1;\n```';
 
@@ -222,6 +324,10 @@ describe('malformed input', () => {
     'a**b**c**d',
     '~~s~~',
     '- [ ] task',
+    '- [x]',
+    '- [ ] ',
+    '> - [x] quoted',
+    '- [x] **bold** and [[link]]',
     '',
     'x'.repeat(2000),
     '## \n\n### x ###',

@@ -17,6 +17,8 @@ export const editor = {
 
   changeIcon: 'Change icon',
   body: 'Note body',
+  /** The checkbox a task list item is drawn with, which has nothing else to be called. */
+  task: 'Task',
 
   updated: (when: string) => `Updated ${when}`,
   readOnly: 'Read only',

@@ -1,13 +1,16 @@
 import { syntaxTree } from '@codemirror/language';
-import type { EditorState, Line, Range } from '@codemirror/state';
+import type { EditorState, Line, Range, TransactionSpec } from '@codemirror/state';
 import {
   Decoration,
   EditorView,
   ViewPlugin,
+  WidgetType,
   type DecorationSet,
   type ViewUpdate,
 } from '@codemirror/view';
+import type { SyntaxNode } from '@lezer/common';
 
+import { m } from '@/i18n';
 import { resolveTarget } from '@/lib/wikilinks';
 
 import { vaultContext } from './context';
@@ -18,9 +21,11 @@ import { wikilinkParts } from './wikilink';
  * always editable and always rendered. A heading is a heading the moment the caret leaves
  * its line, and its `#` comes back the moment the caret returns.
  *
- * Everything here is line, mark and inline-replace decorations. Nothing produces HTML — the
- * characters on screen are the document's own text nodes — so there is no sanitising to get
- * wrong and no way for a note body to become markup.
+ * Everything here is line, mark and inline-replace decorations: the characters on screen are
+ * the document's own text nodes, so there is no sanitising to get wrong and no way for a note
+ * body to become markup. The one widget — the checkbox a task list item is drawn with — is
+ * built from a single boolean and carries no text out of the note, which is what keeps that
+ * true.
  */
 
 export interface Span {
@@ -131,10 +136,10 @@ export function buildDecorations(
     all.push(Decoration.mark({ class: cls }).range(from, to));
   };
 
-  const conceal = (from: number, to: number) => {
+  const conceal = (from: number, to: number, widget?: WidgetType) => {
     if (from >= to) return;
 
-    const deco = Decoration.replace({});
+    const deco = Decoration.replace(widget ? { widget } : {});
     all.push(deco.range(from, to));
     hidden.push(deco.range(from, to));
   };
@@ -213,9 +218,26 @@ export function buildDecorations(
           return;
         }
 
-        // A bullet is never concealed — dropping it collapses the indent it creates.
-        if (name === 'ListMark' || name === 'TaskMarker') {
-          mark(node.from, node.to, 'cm-md-marker');
+        // A bullet is never concealed — dropping it collapses the indent it creates. A
+        // task's is the exception: it is half of the `- [ ]` one checkbox stands in for, and
+        // the marker below draws the pair whole, so this side only steps out of its way.
+        if (name === 'ListMark') {
+          if (node.node.nextSibling?.name !== 'Task' || isRaw(spans, state.doc.lineAt(node.from))) {
+            mark(node.from, node.to, 'cm-md-marker');
+          }
+
+          return;
+        }
+
+        if (name === 'TaskMarker') {
+          const run = taskRun(state, node.node);
+
+          if (!run || isRaw(spans, state.doc.lineAt(node.from))) {
+            mark(node.from, node.to, 'cm-md-marker');
+            return;
+          }
+
+          conceal(run.from, run.to, new TaskWidget(run.done, state.readOnly));
           return;
         }
 
@@ -320,6 +342,117 @@ export function buildDecorations(
   };
 }
 
+interface TaskRun extends Span {
+  /** Whether the box is ticked. */
+  done: boolean;
+}
+
+/**
+ * The whole `- [x] ` a task item opens with, given the `[x]` the parser found inside it.
+ *
+ * Bullet and box are drawn as one control, so they are hidden as one: a checkbox with a
+ * stray dash in front of it is the raw markdown with extra steps.
+ */
+function taskRun(state: EditorState, marker: SyntaxNode): TaskRun | null {
+  const bullet = marker.parent?.parent?.firstChild;
+  if (!bullet || bullet.name !== 'ListMark') return null;
+
+  const line = state.doc.lineAt(marker.from);
+  const pad = state.doc.sliceString(marker.to, marker.to + 1) === ' ' ? 1 : 0;
+
+  return {
+    from: bullet.from,
+    to: Math.min(marker.to + pad, line.to),
+    done: state.doc.sliceString(marker.from + 1, marker.from + 2) !== ' ',
+  };
+}
+
+/**
+ * Ticking a box, as the one-character change it actually is. Null when the position is not
+ * on a task line, and null on a note that may not be written — a widget on screen outlives
+ * the mode it was drawn in, so the answer cannot rest on it having been redrawn in time.
+ */
+export function toggleTask(state: EditorState, pos: number): TransactionSpec | null {
+  if (state.readOnly) return null;
+
+  const marker = markerOn(state, pos);
+  if (!marker) return null;
+
+  const box = marker.from + 1;
+  const done = state.doc.sliceString(box, box + 1) !== ' ';
+
+  return { changes: { from: box, to: box + 1, insert: done ? ' ' : 'x' } };
+}
+
+/** The `[x]` of the task on this position's line, if the line holds one. */
+function markerOn(state: EditorState, pos: number): SyntaxNode | null {
+  const line = state.doc.lineAt(pos);
+
+  let found: SyntaxNode | undefined;
+
+  syntaxTree(state).iterate({
+    from: line.from,
+    to: line.to,
+    enter: (node) => {
+      if (node.name === 'TaskMarker') found = node.node;
+
+      return found === undefined;
+    },
+  });
+
+  return found ?? null;
+}
+
+/**
+ * The `- [ ]` of a task, drawn as the control it describes.
+ *
+ * The mode is part of the widget rather than something the click asks for, because it is
+ * also what the box looks like: read-only reaching a note has to take the tick away, and
+ * nothing about a checkbox already on screen would otherwise redraw it.
+ */
+class TaskWidget extends WidgetType {
+  constructor(
+    private readonly done: boolean,
+    private readonly readOnly: boolean,
+  ) {
+    super();
+  }
+
+  override eq(other: TaskWidget): boolean {
+    return other.done === this.done && other.readOnly === this.readOnly;
+  }
+
+  override toDOM(view: EditorView): HTMLElement {
+    const box = document.createElement('input');
+
+    box.type = 'checkbox';
+    box.className = 'cm-md-task';
+    box.checked = this.done;
+    box.disabled = this.readOnly;
+    box.setAttribute('aria-label', m.editor.task);
+
+    // Without this the caret lands on the line, the raw `- [x]` takes the checkbox's place,
+    // and the click on its way arrives at an element that is no longer there.
+    box.addEventListener('mousedown', (event) => event.preventDefault());
+
+    // The document is what says whether the box is ticked, so the browser's own toggle is
+    // refused and the change is made in the one place a redraw will read it back from.
+    box.addEventListener('click', (event) => {
+      event.preventDefault();
+
+      const spec = toggleTask(view.state, view.posAtDOM(box));
+      if (spec) view.dispatch(spec);
+    });
+
+    return box;
+  }
+
+  // The checkbox answers its own click; CodeMirror has nothing to do with what happens here.
+  override ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 function build(view: EditorView): Built {
   return buildDecorations(view.state, view.visibleRanges, cursorSpans(view));
 }
@@ -341,6 +474,9 @@ class LivePreview {
       !update.viewportChanged &&
       !update.focusChanged &&
       !moved(update) &&
+      // Read-only is reconfigured into a live editor, so a note can stop being writable
+      // without a keystroke — and the checkboxes carry that.
+      update.startState.readOnly === update.state.readOnly &&
       syntaxTree(update.state) === syntaxTree(update.startState)
     ) {
       return;
@@ -432,6 +568,20 @@ export const editorTheme = EditorView.theme(
 
     // Hanging indent, so a wrapped item lines up past its bullet.
     '.cm-md-li': { paddingLeft: '1.5em', textIndent: '-1.5em' },
+
+    // Sized against the mono body rather than in absolute pixels, so the box and the line it
+    // sits on stay in proportion. A real input rather than a styled span: it is what carries
+    // the ticked state to a screen reader, which a drawn box would only look like.
+    '.cm-md-task': {
+      width: '0.95em',
+      height: '0.95em',
+      margin: '0 0.5em 0 0',
+      verticalAlign: '-0.1em',
+      accentColor: 'var(--accent)',
+      cursor: 'pointer',
+    },
+    // Read-only, where the state is still worth reading and no longer worth offering.
+    '.cm-md-task:disabled': { cursor: 'default', opacity: '0.55' },
 
     '.cm-md-codeline': {
       backgroundColor: 'var(--surface-code)',
