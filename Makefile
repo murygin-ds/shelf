@@ -85,6 +85,10 @@ web-test: ## Frontend tests
 web-typecheck: ## Frontend type check
 	cd $(WEB_DIR) && $(NPM) run typecheck
 
+.PHONY: web-i18n
+web-i18n: ## Frontend scan for untranslated prose
+	cd $(WEB_DIR) && $(NPM) run i18n:scan
+
 .PHONY: tidy
 tidy: ## Tidy
 	$(GO) mod tidy
