@@ -9,6 +9,7 @@ export const editor = {
 
   changeIcon: 'Сменить значок',
   body: 'Текст заметки',
+  task: 'Задача',
 
   updated: (when: string) => `Обновлено ${when}`,
   readOnly: 'Только чтение',
