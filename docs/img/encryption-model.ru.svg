@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 620" width="1040" height="620" role="img" aria-labelledby="t d">
+<title id="t">Как шифрует Shelf</title>
+<desc id="d">Парольная фраза растягивается Argon2id в ключ-обёртку, который остаётся на устройстве, и auth_hash, который уходит на сервер. Мастер-ключ, ключи личности и ключи областей не покидают вкладку браузера; серверу достаются только проверочное значение и шифротекст.</desc>
+<style>
+  :root {
+    --fg:#1f2328; --muted:#59636e; --line:#8c959f;
+    --panel:#f6f8fa; --panelStroke:#d1d9e0;
+    --box:#ffffff; --boxStroke:#d1d9e0;
+    --key:#0969da; --keyBg:#ddf4ff;
+    --cipher:#8250df; --cipherBg:#fbefff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg:#e6edf3; --muted:#9198a1; --line:#6e7681;
+      --panel:#0d1117; --panelStroke:#3d444d;
+      --box:#151b23; --boxStroke:#3d444d;
+      --key:#4493f8; --keyBg:#121d2f;
+      --cipher:#ab7df8; --cipherBg:#1d1730;
+    }
+  }
+  text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .panel { fill: var(--panel); stroke: var(--panelStroke); stroke-width: 1; }
+  .panelTitle { font-size: 11px; font-weight: 600; letter-spacing: .09em; fill: var(--muted); }
+  .box { fill: var(--box); stroke: var(--boxStroke); stroke-width: 1; }
+  .boxKey { fill: var(--keyBg); stroke: var(--key); stroke-width: 1; }
+  .boxCipher { fill: var(--cipherBg); stroke: var(--cipher); stroke-width: 1; }
+  .t { font-size: 13px; font-weight: 600; fill: var(--fg); }
+  .tk { font-size: 13px; font-weight: 600; fill: var(--key); }
+  .tc { font-size: 13px; font-weight: 600; fill: var(--cipher); }
+  .s { font-size: 11px; fill: var(--muted); }
+  .flow { stroke: var(--line); stroke-width: 1.4; fill: none; }
+  .flowKey { stroke: var(--key); stroke-width: 1.4; fill: none; }
+  .flowCipher { stroke: var(--cipher); stroke-width: 1.4; fill: none; }
+  .border { stroke: var(--line); stroke-width: 1.4; stroke-dasharray: 5 5; fill: none; }
+  .arrow { fill: var(--line); }
+  .arrowKey { fill: var(--key); }
+  .arrowCipher { fill: var(--cipher); }
+</style>
+<defs>
+  <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L8,4 L0,8 z"/></marker>
+  <marker id="ak" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowKey" d="M0,0 L8,4 L0,8 z"/></marker>
+  <marker id="ac" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowCipher" d="M0,0 L8,4 L0,8 z"/></marker>
+</defs>
+
+<rect class="panel" x="16" y="44" width="660" height="540" rx="14"/>
+<text class="panelTitle" x="40" y="74">ВАШЕ УСТРОЙСТВО — ВКЛАДКА БРАУЗЕРА</text>
+
+<rect class="panel" x="748" y="44" width="276" height="540" rx="14"/>
+<text class="panelTitle" x="772" y="74">СЕРВЕР — И ЛЮБОЙ С ДАМПОМ БАЗЫ</text>
+
+<line class="border" x1="712" y1="44" x2="712" y2="584"/>
+<text class="panelTitle" x="694" y="314" text-anchor="middle" transform="rotate(-90 694 314)">КЛЮЧИ НЕ ПЕРЕСЕКАЮТ ЭТУ ЛИНИЮ</text>
+
+<rect class="box" x="252" y="96" width="180" height="42" rx="8"/>
+<text class="t" x="342" y="122" text-anchor="middle">Парольная фраза</text>
+
+<path class="flow" d="M342,138 L342,156 M200,156 L484,156"/>
+<path class="flow" d="M200,158 L200,172" marker-end="url(#a)"/>
+<path class="flow" d="M484,158 L484,172" marker-end="url(#a)"/>
+<text class="s" x="352" y="152">Argon2id · 64 байта</text>
+
+<rect class="boxKey" x="110" y="174" width="180" height="48" rx="8"/>
+<text class="tk" x="200" y="196" text-anchor="middle">Ключ-обёртка</text>
+<text class="s" x="200" y="212" text-anchor="middle">32 байта · остаётся здесь</text>
+
+<rect class="box" x="394" y="174" width="180" height="48" rx="8"/>
+<text class="t" x="484" y="196" text-anchor="middle">auth_hash</text>
+<text class="s" x="484" y="212" text-anchor="middle">32 байта</text>
+
+<path class="flow" d="M574,198 L742,198" marker-end="url(#a)"/>
+
+<rect class="box" x="764" y="174" width="244" height="64" rx="8"/>
+<text class="t" x="886" y="199" text-anchor="middle">Argon2id-хеш от auth_hash</text>
+<text class="s" x="886" y="217" text-anchor="middle">проверочное значение, ничего не открывает</text>
+
+<path class="flowKey" d="M200,222 L200,254" marker-end="url(#ak)"/>
+<text class="s" x="212" y="243">разворачивает</text>
+
+<rect class="boxKey" x="110" y="258" width="180" height="44" rx="8"/>
+<text class="tk" x="200" y="285" text-anchor="middle">Мастер-ключ</text>
+
+<path class="flowKey" d="M290,280 L390,280" marker-end="url(#ak)"/>
+<rect class="boxKey" x="394" y="258" width="250" height="44" rx="8"/>
+<text class="tk" x="519" y="277" text-anchor="middle">Ключи личности</text>
+<text class="s" x="519" y="293" text-anchor="middle">ECDH получает · ECDSA подписывает</text>
+
+<path class="flowKey" d="M200,302 L200,334" marker-end="url(#ak)"/>
+
+<rect class="boxKey" x="110" y="338" width="180" height="60" rx="8"/>
+<text class="tk" x="200" y="360" text-anchor="middle">Ключ области</text>
+<text class="s" x="200" y="376" text-anchor="middle">хранилище, папка или заметка</text>
+<text class="s" x="200" y="391" text-anchor="middle">AES-256-GCM</text>
+
+<rect class="box" x="394" y="338" width="180" height="60" rx="8"/>
+<text class="t" x="484" y="365" text-anchor="middle">Заметка</text>
+<text class="s" x="484" y="384" text-anchor="middle">заголовок · тело · имя папки</text>
+
+<path class="flow" d="M200,398 L200,410 L342,410 M484,398 L484,410 L342,410"/>
+<path class="flow" d="M342,410 L342,420" marker-end="url(#a)"/>
+
+<rect class="box" x="252" y="424" width="180" height="44" rx="8"/>
+<text class="t" x="342" y="451" text-anchor="middle">Шифрование + AAD</text>
+<text class="s" x="342" y="486" text-anchor="middle">shelf/v1 | хранилище | сущность | uuid | область | версия ключа</text>
+<text class="s" x="342" y="500" text-anchor="middle">привязывает каждый шифротекст к его месту</text>
+
+<path class="flowCipher" d="M342,504 L342,522" marker-end="url(#ac)"/>
+
+<rect class="boxCipher" x="252" y="526" width="180" height="42" rx="8"/>
+<text class="tc" x="342" y="552" text-anchor="middle">Шифротекст</text>
+
+<path class="flowCipher" d="M432,535 L742,535" marker-end="url(#ac)"/>
+
+<rect class="box" x="764" y="290" width="244" height="112" rx="8"/>
+<text class="t" x="886" y="316" text-anchor="middle">Метаданные, которых не избежать</text>
+<text class="s" x="784" y="340">• форма дерева</text>
+<text class="s" x="784" y="358">• размеры с точностью до 4 КиБ</text>
+<text class="s" x="784" y="376">• отметки времени</text>
+<text class="s" x="784" y="394">• кто что менял</text>
+
+<rect class="boxCipher" x="764" y="500" width="244" height="70" rx="8"/>
+<text class="tc" x="886" y="530" text-anchor="middle">Шифротекст</text>
+<text class="s" x="886" y="550" text-anchor="middle">заголовки · тела · имена папок</text>
+</svg>
