@@ -72,6 +72,11 @@
   color: var(--text-body);
 }
 
+.tool[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent-text);
+}
+
 .tool:disabled {
   opacity: 0.4;
   cursor: default;
@@ -111,8 +116,16 @@
 }
 
 .edge {
-  stroke: var(--border-strong, var(--border));
+  stroke: var(--border-hover);
   stroke-width: 1;
+  stroke-opacity: 0.45;
+}
+
+/* A line inside one folder takes its colour, so a cluster reads as one shape. */
+.edgeGroup {
+  stroke: var(--c);
+  stroke-width: 1;
+  stroke-opacity: 0.32;
 }
 
 /* A link into something the reader cannot open is drawn, but never as a solid fact. */
@@ -131,13 +144,13 @@
 }
 
 .dot {
-  fill: var(--accent);
+  fill: var(--c, var(--accent));
   stroke: var(--canvas);
   stroke-width: 2;
 }
 
 .node:hover .dot {
-  fill: var(--accent-hover, var(--accent));
+  filter: brightness(1.2);
 }
 
 .dotMasked {
@@ -156,23 +169,27 @@
 .label {
   fill: var(--text-quiet);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  /* Counter-scaled by the zoom, so a name is the same size on screen at any distance and
+     the placement pass can measure it without asking the DOM. */
+  font-size: calc(9.5px / var(--k, 1));
   text-anchor: middle;
   pointer-events: none;
+  opacity: 0;
 }
 
 .node:hover .label {
   fill: var(--text-body);
 }
 
-/* Names are the first thing to collide — two neighbouring dots are enough — so they arrive
-   as the reader comes closer. Which tier is on is written on the canvas by the viewport. */
-.canvas[data-labels='off'] .label {
-  opacity: 0;
+/* Which names are drawn is decided by `placeLabels`: only those that touch nothing else. */
+.canvas [data-label] .label {
+  opacity: 1;
 }
 
-.canvas[data-labels='hubs'] [data-ref]:not([data-hub]) .label {
-  opacity: 0;
+/* A folder in focus: the rest fades further than a hover would, since it stays that way. */
+.canvas[data-focus] [data-ref]:not([data-in]),
+.canvas[data-focus] [data-edge]:not([data-in]) {
+  opacity: 0.08;
 }
 
 /* Hovering one note dims everything that is not it, its neighbours, or the lines between. */
@@ -186,10 +203,125 @@
   opacity: 1;
 }
 
-/* Written after the tiers and at their specificity: a lit name is readable at any zoom. */
-.canvas[data-labels] [data-ref][data-lit] .label {
+/* A lit name is readable whether or not it found room of its own. */
+.canvas[data-dim] [data-ref][data-lit] .label,
+.canvas [data-ref]:hover .label {
   opacity: 1;
   fill: var(--text-body);
+}
+
+/* The centre of a local graph wears a ring and keeps its name whatever else is lit. */
+.canvas [data-centre] .dot {
+  stroke: var(--text-body);
+  stroke-width: 2.5;
+}
+
+.canvas [data-centre] .label {
+  opacity: 1;
+  fill: var(--text-body);
+}
+
+.local {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.localTitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
+  color: var(--text-label);
+}
+
+.localName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c);
+}
+
+.depth {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-quiet);
+  cursor: pointer;
+}
+
+.depth:hover {
+  color: var(--text-body);
+}
+
+.depth[aria-pressed='true'] {
+  border-color: var(--accent-focus);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+}
+
+.groups {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 8px 12px 8px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-quiet);
+  cursor: pointer;
+}
+
+.group:hover {
+  border-color: var(--border-hover);
+  color: var(--text-body);
+}
+
+.group[aria-pressed='true'] {
+  border-color: var(--c);
+  color: var(--text-body);
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.count {
+  color: var(--text-disabled);
+}
+
+.more {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-disabled);
 }
 
 .foot {

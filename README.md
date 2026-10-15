@@ -221,6 +221,8 @@ does the vault's own root document. No other vault is affected.
 Full-text search over an index that is built in the tab and dies with it.
 
 **Graph.** Every note in the vault as a node, a force layout, neighbour highlighting. Notes
+are coloured by project folder, a folder can be brought into focus from the legend, and
+shift-clicking a note draws its local graph — only what is one to three links away. Notes
 you hold no key for are drawn as grey dashed nodes without a name, so that a note connected
 only through them does not look isolated.
 

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { describe } from '@/api/errors';
 import * as graphApi from '@/api/graph';
+import type { Tree } from '@/api/workspace';
 import { m } from '@/i18n';
 import { usePrefs } from '@/store/prefs';
 import { useWorkspace } from '@/store/workspace';
@@ -9,12 +10,22 @@ import { Icon } from '@/ui/Icon';
 import { tip } from '@/ui/Tooltip';
 
 import styles from './graph.module.css';
-import { bounds, buildLayout, nodeRadius, simulate, type LaidNode } from './layout';
+import {
+  bounds,
+  buildLayout,
+  MAX_DEPTH,
+  MAX_GROUPS,
+  nodeRadius,
+  simulate,
+  type Around,
+  type LaidEdge,
+  type LaidNode,
+} from './layout';
 import {
   fit,
   IDENTITY,
-  labelTier,
   pan,
+  placeLabels,
   recentre,
   toWorld,
   transform,
@@ -36,7 +47,9 @@ export function GraphView() {
   const vaultId = useWorkspace((state) => state.vaultId);
   const keyring = useWorkspace((state) => state.keyring);
 
-  const [graph, setGraph] = useState<graphApi.Graph | null>(null);
+  // The tree is taken once, with the graph it explains: the live one changes on every sync,
+  // and a layout keyed on it would restart the simulation under the reader every few seconds.
+  const [loaded, setLoaded] = useState<{ graph: graphApi.Graph; tree: Tree } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,7 +64,7 @@ export function GraphView() {
     graphApi
       .graph(vaultId, keyring)
       .then((next) => {
-        if (live) setGraph(next);
+        if (live) setLoaded({ graph: next, tree: useWorkspace.getState().tree });
       })
       .catch((cause: unknown) => {
         if (live) setError(describe(cause));
@@ -70,7 +83,7 @@ export function GraphView() {
     );
   }
 
-  if (!graph) {
+  if (!loaded) {
     return (
       <div className={styles.pane}>
         <p className={styles.empty}>{m.views.graph.drawing}</p>
@@ -78,7 +91,7 @@ export function GraphView() {
     );
   }
 
-  if (graph.nodes.length === 0) {
+  if (loaded.graph.nodes.length === 0) {
     return (
       <div className={styles.pane}>
         <p className={styles.empty}>{m.views.graph.empty}</p>
@@ -86,13 +99,14 @@ export function GraphView() {
     );
   }
 
-  return <Canvas graph={graph} />;
+  return <Canvas graph={loaded.graph} tree={loaded.tree} />;
 }
 
 interface Controls {
   zoom: (factor: number) => void;
   fit: () => void;
   reset: () => void;
+  focus: (group: number | null) => void;
 }
 
 /**
@@ -106,11 +120,29 @@ interface Controls {
  * callback per node: document order is the order they were mapped in, and an array of refs
  * would be one more thing to keep in step with a list whose length changes.
  */
-function Canvas({ graph }: { graph: graphApi.Graph }) {
+function Canvas({ graph, tree }: { graph: graphApi.Graph; tree: Tree }) {
   const orphans = usePrefs((state) => state.graphOrphans);
   const setOrphans = usePrefs((state) => state.setGraphOrphans);
 
-  const layout = useMemo(() => buildLayout(graph, { orphans }), [graph, orphans]);
+  const [around, setAround] = useState<Around | null>(null);
+  const layout = useMemo(
+    () => buildLayout(graph, { orphans, tree, around }),
+    [graph, orphans, tree, around],
+  );
+  const [focused, setFocused] = useState<number | null>(null);
+
+  const openRef = useWorkspace((state) => {
+    const id = state.open?.note.id;
+
+    return id === undefined ? null : (graph.nodes.find((node) => node.id === id)?.ref ?? null);
+  });
+
+  // A new arrangement starts unfocused; the effect below has already cleared the canvas.
+  const [laidFor, setLaidFor] = useState(layout);
+  if (laidFor !== layout) {
+    setLaidFor(layout);
+    setFocused(null);
+  }
 
   const canvas = useRef<SVGSVGElement>(null);
   const world = useRef<SVGGElement>(null);
@@ -118,6 +150,9 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
   const size = useRef<Size>({ width: 0, height: 0 });
   const box = useRef<DOMRect | null>(null);
   const controls = useRef<Controls | null>(null);
+  // Where every note of the whole graph last stood, so stepping into a local graph starts from
+  // the arrangement the reader was looking at, and stepping back out returns to it.
+  const positions = useRef(new Map<string, { x: number; y: number }>());
 
   useEffect(() => {
     const svg = canvas.current;
@@ -134,6 +169,24 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
       const ref = nodes[index]?.ref;
       if (ref !== undefined) byRef.set(ref, dot);
     });
+
+    const centre = layout.centre === null ? undefined : nodes.find((node) => node.ref === layout.centre);
+    const origin = (centre && positions.current.get(centre.ref)) ?? { x: 0, y: 0 };
+
+    for (const node of nodes) {
+      const was = positions.current.get(node.ref);
+      if (!was) continue;
+
+      node.x = was.x - origin.x;
+      node.y = was.y - origin.y;
+    }
+
+    // The centre of a local graph is held in the middle, and everything else finds its
+    // distance from it — which is the whole reading of a local graph.
+    if (centre) {
+      centre.fx = 0;
+      centre.fy = 0;
+    }
 
     const sim = simulate(layout);
 
@@ -163,13 +216,43 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
       }
     };
 
+    let labelled = new Array<boolean>(nodes.length).fill(false);
+    let group: number | null = null;
+
+    const relabel = () => {
+      const tags = nodes.map((node) => ({
+        x: node.x ?? 0,
+        y: node.y ?? 0,
+        radius: nodeRadius(node.degree),
+        chars: node.caption.length,
+        rank: node === centre ? Number.MAX_SAFE_INTEGER : node.degree,
+        quiet: group !== null && node.group !== group && node !== centre,
+      }));
+      const next = placeLabels(tags, view.current, size.current);
+
+      for (let index = 0; index < nodes.length; index += 1) {
+        if (next[index] === labelled[index]) continue;
+
+        const dot = dots[index];
+        if (!dot) continue;
+
+        if (next[index]) dot.dataset.label = '1';
+        else delete dot.dataset.label;
+      }
+
+      labelled = next;
+    };
+
     const show = () => {
       layer.setAttribute('transform', transform(view.current));
-      svg.dataset.labels = labelTier(view.current.k);
+      layer.style.setProperty('--k', String(view.current.k));
+      relabel();
     };
 
     const toFit = () => {
-      view.current = fit(bounds(nodes), size.current, FIT_PADDING);
+      const shown = group === null ? nodes : nodes.filter((node) => node.group === group);
+
+      view.current = fit(bounds(shown), size.current, FIT_PADDING);
       show();
     };
 
@@ -189,6 +272,7 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
       paint();
 
       if (following) toFit();
+      else relabel();
 
       if (sim.alpha() > sim.alphaMin()) animating = requestAnimationFrame(step);
     };
@@ -321,12 +405,20 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
         }
       };
 
-      const release = () => {
+      const release = (up: PointerEvent) => {
         stop();
 
-        // A press that never became a drag is a click, and the note under it opens.
+        // A press that never became a drag is a click: it opens the note under it, or with
+        // shift held draws the graph around it — which is also how a local graph is walked.
         if (!armed) {
-          if (node && node.id !== null && !node.locked) open(node.id);
+          if (node && (up.shiftKey || up.altKey)) {
+            const ref = node.ref;
+
+            setAround((was) => ({ ref, depth: was?.depth ?? 1 }));
+          } else if (node && node.id !== null && !node.locked) {
+            open(node.id);
+          }
+
           return;
         }
 
@@ -416,10 +508,31 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
         following = false;
         toFit();
       },
+      // A folder in focus keeps its notes and the lines among them; everything else fades,
+      // gives up its names, and the camera moves to what is left.
+      focus: (next) => {
+        group = next;
+
+        dots.forEach((dot, index) => {
+          if (next !== null && nodes[index]?.group === next) dot.dataset.in = '1';
+          else delete dot.dataset.in;
+        });
+
+        lines.forEach((line, index) => {
+          if (next !== null && within(edges[index]) === next) line.dataset.in = '1';
+          else delete line.dataset.in;
+        });
+
+        if (next === null) delete svg.dataset.focus;
+        else svg.dataset.focus = '1';
+
+        following = false;
+        toFit();
+      },
       reset: () => {
         for (let index = 0; index < nodes.length; index += 1) {
           const node = nodes[index];
-          if (!node) continue;
+          if (!node || node === centre) continue;
 
           node.fx = null;
           node.fy = null;
@@ -441,6 +554,17 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
       // highlight left over from the previous graph would dim the next one for good.
       highlight(null);
       delete svg.dataset.grabbing;
+      delete svg.dataset.focus;
+
+      // Dots are keyed by note, so the next arrangement reuses these very elements, and it
+      // starts from "nothing named, nothing pinned" — which has to be true of the DOM too.
+      for (const dot of dots) {
+        delete dot.dataset.label;
+        delete dot.dataset.pinned;
+        delete dot.dataset.in;
+      }
+
+      for (const line of lines) delete line.dataset.in;
 
       svg.removeEventListener('pointerdown', onPointerDown);
       svg.removeEventListener('wheel', onWheel);
@@ -451,10 +575,16 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
 
       sim.stop();
       controls.current = null;
+
+      if (!centre) {
+        for (const node of nodes) positions.current.set(node.ref, { x: node.x ?? 0, y: node.y ?? 0 });
+      }
     };
   }, [layout]);
 
   const drawn = layout.nodes.length > 0;
+  const centre = layout.nodes.find((node) => node.ref === layout.centre);
+  const beyond = layout.groups.slice(MAX_GROUPS).filter((entry) => entry.count > 0).length;
 
   return (
     <div
@@ -464,6 +594,7 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
         if (event.key === '+' || event.key === '=') controls.current?.zoom(ZOOM_STEP);
         else if (event.key === '-' || event.key === '_') controls.current?.zoom(1 / ZOOM_STEP);
         else if (event.key === '0') controls.current?.fit();
+        else if (event.key === 'Escape' && around) setAround(null);
         else return;
 
         event.preventDefault();
@@ -481,6 +612,22 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
         <span className={styles.spacer} />
 
         <div className={styles.tools}>
+          <button
+            type="button"
+            className={styles.tool}
+            disabled={openRef === null}
+            aria-pressed={openRef !== null && layout.centre === openRef}
+            onClick={() => {
+              if (openRef === null) return;
+
+              setAround((was) =>
+                was?.ref === openRef ? null : { ref: openRef, depth: was?.depth ?? 1 },
+              );
+            }}
+            {...tip(m.views.graph.localOpen)}
+          >
+            <Icon name="link" />
+          </button>
           <button
             type="button"
             className={styles.toggle}
@@ -529,6 +676,67 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
         </div>
       </div>
 
+      {centre ? (
+        <div className={styles.local}>
+          <span className={styles.localTitle}>{m.views.graph.localTitle}</span>
+          <span
+            className={styles.localName}
+            style={{ '--c': groupColour(centre.group) } as CSSProperties}
+          >
+            {centre.caption}
+          </span>
+          <span className={styles.spacer} />
+          <span className={styles.localTitle}>{m.views.graph.depth}</span>
+          {Array.from({ length: MAX_DEPTH }, (_, at) => at + 1).map((depth) => (
+            <button
+              key={depth}
+              type="button"
+              className={styles.depth}
+              aria-pressed={around?.depth === depth}
+              onClick={() => setAround((was) => (was ? { ...was, depth } : was))}
+              {...tip(m.views.graph.depthTip(depth))}
+            >
+              {depth}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={styles.tool}
+            onClick={() => setAround(null)}
+            {...tip(m.views.graph.localClose)}
+          >
+            <Icon name="x" />
+          </button>
+        </div>
+      ) : null}
+
+      {layout.groups.filter((entry) => entry.count > 0).length > 1 ? (
+        <div className={styles.groups}>
+          {layout.groups.slice(0, MAX_GROUPS).map((entry, index) =>
+            entry.count === 0 ? null : (
+            <button
+              key={index}
+              type="button"
+              className={styles.group}
+              aria-pressed={focused === index}
+              style={{ '--c': groupColour(index) } as CSSProperties}
+              onClick={() => {
+                const next = focused === index ? null : index;
+
+                setFocused(next);
+                controls.current?.focus(next);
+              }}
+            >
+              <span className={styles.swatch} />
+              {entry.name}
+              <span className={styles.count}>{entry.count}</span>
+            </button>
+            ),
+          )}
+          {beyond > 0 ? <span className={styles.more}>{m.views.graph.moreGroups(beyond)}</span> : null}
+        </div>
+      ) : null}
+
       {drawn ? (
         <svg ref={canvas} className={styles.canvas} role="img" aria-label={m.views.graph.canvas}>
           <g ref={world}>
@@ -537,12 +745,23 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
                 const from = edge.source as LaidNode;
                 const to = edge.target as LaidNode;
 
+                const shared = within(edge);
+
                 return (
                   <line
                     key={index}
                     data-edge=""
                     vectorEffect="non-scaling-stroke"
-                    className={from.locked || to.locked ? styles.edgeMasked : styles.edge}
+                    className={
+                      from.locked || to.locked
+                        ? styles.edgeMasked
+                        : shared === null
+                          ? styles.edge
+                          : styles.edgeGroup
+                    }
+                    style={
+                      shared === null ? undefined : ({ '--c': groupColour(shared) } as CSSProperties)
+                    }
                   />
                 );
               })}
@@ -557,15 +776,16 @@ function Canvas({ graph }: { graph: graphApi.Graph }) {
                     key={node.ref}
                     data-ref={node.ref}
                     data-index={index}
-                    data-hub={node.degree >= layout.hub ? '1' : undefined}
+                    data-centre={node.ref === layout.centre ? '1' : undefined}
                     className={node.locked ? styles.nodeMasked : styles.node}
+                    style={{ '--c': groupColour(node.group) } as CSSProperties}
                   >
                     <circle r={radius} className={node.locked ? styles.dotMasked : styles.dot} />
-                    <text y={radius + 13} className={styles.label}>
-                      {node.locked ? '••••••' : truncate(node.name)}
+                    <text y={radius} dy="1.3em" className={styles.label}>
+                      {node.caption}
                     </text>
                     {node.locked ? null : (
-                      <title>{m.views.graph.node(node.name, node.degree)}</title>
+                      <title>{m.views.graph.node(node.path, node.degree)}</title>
                     )}
                   </g>
                 );
@@ -597,6 +817,24 @@ function open(id: number): void {
   setView('editor');
 }
 
-function truncate(name: string): string {
-  return name.length > 22 ? `${name.slice(0, 21)}…` : name;
+/** The folder both ends share, or null for a line between two of them. */
+function within(edge: LaidEdge | undefined): number | null {
+  if (!edge) return null;
+
+  const from = (edge.source as LaidNode).group;
+  const to = (edge.target as LaidNode).group;
+
+  return from >= 0 && from === to ? from : null;
+}
+
+/**
+ * A hue per folder, spaced by the golden angle so neighbours in the legend never come out as
+ * two shades of one colour. The root and every folder past the legend share the accent.
+ */
+function groupColour(group: number): string {
+  if (group < 0 || group >= MAX_GROUPS) return 'var(--accent)';
+
+  const hue = Math.round(200 + group * 137.508) % 360;
+
+  return `hsl(${hue} 62% 66%)`;
 }

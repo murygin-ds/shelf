@@ -5,10 +5,11 @@ import {
   fit,
   FIT_MAX_K,
   IDENTITY,
-  labelTier,
+  LABEL_MIN_K,
   MAX_K,
   MIN_K,
   pan,
+  placeLabels,
   recentre,
   toScreen,
   toWorld,
@@ -106,11 +107,46 @@ describe('recentre', () => {
   });
 });
 
-describe('labelTier', () => {
-  it('gives more names the closer the reader gets', () => {
-    expect(labelTier(0.2)).toBe('off');
-    expect(labelTier(0.6)).toBe('hubs');
-    expect(labelTier(1)).toBe('all');
+describe('placeLabels', () => {
+  const SIZE = { width: 800, height: 600 };
+  const AT_ONE: View = { x: 400, y: 300, k: 1 };
+  const tag = (x: number, y: number, rank: number) => ({ x, y, radius: 5, chars: 10, rank });
+
+  it('gives a name to a note with room around it', () => {
+    expect(placeLabels([tag(0, 0, 1), tag(200, 0, 1)], AT_ONE, SIZE)).toEqual([true, true]);
+  });
+
+  it('lets the busier of two crowded notes keep its name', () => {
+    expect(placeLabels([tag(0, 0, 1), tag(8, 4, 5)], AT_ONE, SIZE)).toEqual([false, true]);
+  });
+
+  it('does not write a name across a neighbouring dot', () => {
+    // The second dot sits right under the first one's label.
+    expect(placeLabels([tag(0, 0, 5), tag(0, 16, 1)], AT_ONE, SIZE)[0]).toBe(false);
+  });
+
+  it('gives back the names crowding took away once the reader zooms in', () => {
+    const tags = [tag(0, 0, 1), tag(30, 0, 5)];
+    const close: View = { x: 400, y: 300, k: 3 };
+
+    expect(placeLabels(tags, AT_ONE, SIZE)).toEqual([false, true]);
+    expect(placeLabels(tags, close, SIZE)).toEqual([true, true]);
+  });
+
+  it('draws none from far enough away', () => {
+    const far: View = { x: 400, y: 300, k: LABEL_MIN_K / 2 };
+
+    expect(placeLabels([tag(0, 0, 1)], far, SIZE)).toEqual([false]);
+  });
+
+  it('lets a note faded out of focus neither take a name nor block one', () => {
+    const quiet = { ...tag(0, 16, 9), quiet: true };
+
+    expect(placeLabels([tag(0, 0, 1), quiet], AT_ONE, SIZE)).toEqual([true, false]);
+  });
+
+  it('skips names that would land off screen', () => {
+    expect(placeLabels([tag(2000, 0, 1)], AT_ONE, SIZE)).toEqual([false]);
   });
 });
 

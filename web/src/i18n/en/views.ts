@@ -39,6 +39,13 @@ export const views = {
     node: (name: string, links: number) => `${name} · ${countedEn(links, ['link', 'links'])}`,
     /** Sits after the legend and qualifies it, so it opens on the separator. */
     legendHidden: (hidden: number) => `· ${hidden} unlinked`,
+    /** Ends the row of folder chips once there are more folders than colours. */
+    moreGroups: (count: number) => `+${countedEn(count, ['folder', 'folders'])}`,
+    localOpen: 'Local graph of the open note',
+    localTitle: 'Local graph',
+    localClose: 'Back to the whole graph',
+    depth: 'Depth',
+    depthTip: (depth: number) => `Notes up to ${countedEn(depth, ['link', 'links'])} away`,
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     fit: 'Fit to the panel',
@@ -48,7 +55,7 @@ export const views = {
     /** The picture is empty because of the filter, not because the vault is. */
     noLinks:
       'Nothing references anything yet. Turn unlinked notes on to see them all, or point one note at another with [[a title]].',
-    hint: 'Scroll to zoom, drag the canvas to move it, drag a note to pin it where you put it. Resetting the layout lets every pinned note go.',
+    hint: 'Scroll to zoom, drag the canvas to move it, drag a note to pin it where you put it. Shift-click a note to see only its neighbours, Esc to go back. Resetting the layout lets every pinned note go.',
     revealsLocked:
       'Dashed nodes are notes you hold no key for. They are drawn without a name or an id, because a graph that hid them would show connected notes as isolated.',
     hidesLocked:

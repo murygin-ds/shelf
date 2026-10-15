@@ -93,18 +93,112 @@ export function recentre(view: View, from: Size, to: Size): View {
   return pan(view, (to.width - from.width) / 2, (to.height - from.height) / 2);
 }
 
-/**
- * How many names the picture can carry at this scale.
- *
- * Labels are the first thing to collide — two adjacent dots are enough — so they arrive as
- * the reader comes closer rather than being drawn and hoped for. The tiers are an attribute
- * on the canvas; which text they actually hide is a stylesheet's business.
- */
-export function labelTier(k: number): 'off' | 'hubs' | 'all' {
-  if (k < 0.45) return 'off';
-  if (k < 0.85) return 'hubs';
+/** A name to place under its dot: world position and radius, length and how much it matters. */
+export interface Tag {
+  x: number;
+  y: number;
+  radius: number;
+  chars: number;
+  rank: number;
+  /** Faded out of focus: neither named nor in the way of a name, being barely drawn. */
+  quiet?: boolean;
+}
 
-  return 'all';
+/** Below this scale the picture is a shape, not a map, and no name is drawn at all. */
+export const LABEL_MIN_K = 0.2;
+
+/** On-screen metrics of a label: the stylesheet counter-scales it to this size at any zoom. */
+export const LABEL_FONT_PX = 9.5;
+const CHAR_PX = LABEL_FONT_PX * 0.6;
+const LINE_PX = 12;
+const GAP_PX = 3;
+const CELL_PX = 64;
+
+interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  owner: number;
+}
+
+/**
+ * Which names fit on screen without touching another name or somebody else's dot.
+ *
+ * Greedy and in rank order, so the busiest notes keep their names and the rest arrive as the
+ * reader zooms in and the dots move apart. Done in screen space because labels are a constant
+ * size on screen; a fixed rule by degree or zoom either leaves a dense corner illegible or
+ * hides names that would have fit.
+ */
+export function placeLabels(tags: Tag[], view: View, size: Size): boolean[] {
+  const shown = new Array<boolean>(tags.length).fill(false);
+  if (view.k < LABEL_MIN_K || size.width <= 0 || size.height <= 0) return shown;
+
+  const grid = new Map<number, Rect[]>();
+  const cells = (rect: Rect, visit: (key: number) => boolean | void): boolean => {
+    const x0 = Math.floor(rect.left / CELL_PX);
+    const x1 = Math.floor(rect.right / CELL_PX);
+    const y0 = Math.floor(rect.top / CELL_PX);
+    const y1 = Math.floor(rect.bottom / CELL_PX);
+
+    for (let cx = x0; cx <= x1; cx += 1) {
+      for (let cy = y0; cy <= y1; cy += 1) {
+        if (visit(cx * 100003 + cy)) return true;
+      }
+    }
+
+    return false;
+  };
+  const insert = (rect: Rect) =>
+    cells(rect, (key) => {
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(rect);
+      else grid.set(key, [rect]);
+    });
+  const blocked = (rect: Rect) =>
+    cells(rect, (key) =>
+      (grid.get(key) ?? []).some(
+        (other) =>
+          other.owner !== rect.owner &&
+          other.left < rect.right &&
+          rect.left < other.right &&
+          other.top < rect.bottom &&
+          rect.top < other.bottom,
+      ),
+    );
+
+  const centres = tags.map((tag) => toScreen(view, tag));
+
+  tags.forEach((tag, index) => {
+    const at = centres[index];
+    if (!at || tag.quiet) return;
+
+    const r = tag.radius * view.k;
+    insert({ left: at.x - r, top: at.y - r, right: at.x + r, bottom: at.y + r, owner: index });
+  });
+
+  const order = tags.map((_, index) => index).sort((a, b) => (tags[b]?.rank ?? 0) - (tags[a]?.rank ?? 0));
+
+  for (const index of order) {
+    const tag = tags[index];
+    const at = centres[index];
+    if (!tag || !at || tag.quiet) continue;
+
+    const half = (tag.chars * CHAR_PX) / 2 + 2;
+    const top = at.y + tag.radius * view.k + GAP_PX;
+    const rect = { left: at.x - half, top, right: at.x + half, bottom: top + LINE_PX, owner: index };
+
+    if (rect.right < 0 || rect.left > size.width || rect.bottom < 0 || rect.top > size.height) {
+      continue;
+    }
+
+    if (blocked(rect)) continue;
+
+    insert(rect);
+    shown[index] = true;
+  }
+
+  return shown;
 }
 
 /** Rounded, because this string is rewritten on every animation frame. */

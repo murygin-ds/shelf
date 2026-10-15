@@ -126,6 +126,15 @@ difference between sixty frames a second and a slideshow — and the loop stops 
 comes to rest. Nothing about the arrangement is stored: a note pinned by hand stays where it
 was put until the view is left.
 
+The graph response carries no folders, so colour comes from the tree the tab already holds,
+snapshotted with the graph — a layout keyed on the live tree would restart under the reader
+on every sync. Groups are top-level folders, except that one holding most of the picture
+across subfolders (`projects/`) is split into them. A local graph is the same layout run on a
+breadth-first neighbourhood of one note, placed *after* grouping so a folder keeps its colour
+and a repeated name keeps its folder prefix on the way in and out. Labels are placed
+greedily in screen space (`placeLabels`), busiest notes first, and only where they touch no
+other name and no other dot.
+
 **Writes carry an optimistic lock.** `PUT /files/{id}/content` takes `If-Match:
 <content_seq>` and also names the key version it sealed under — a re-key moves the row to a
 new key without touching that sequence, so a write held up across a rotation has to be

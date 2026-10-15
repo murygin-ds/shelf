@@ -31,6 +31,9 @@ const KEPT = [
   'ZIP',
   'PDF',
   'Inter',
+  // Keys are named as printed on the keyboard, in either language.
+  'Shift',
+  'Esc',
   'context',
   'projects',
   'skills',
